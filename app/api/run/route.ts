@@ -1,65 +1,96 @@
-import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { generateMockResults } from '@/lib/mock-ai'
+import { queryPlatform } from '@/lib/ai-clients'
+import { PLATFORMS } from '@/lib/utils'
 
 export async function POST(req: Request) {
-  try {
-    const body = await req.json().catch(() => ({}))
-    const batchId = body.batchId as string | undefined
+  const body = await req.json().catch(() => ({}))
+  const batchId = body.batchId as string | undefined
 
-    // Find unrun prompts (no results yet)
-    const prompts = await prisma.prompt.findMany({
-      where: {
-        ...(batchId ? { batchId } : {}),
-        results: { none: {} },
-      },
-    })
+  const prompts = await prisma.prompt.findMany({
+    where: {
+      ...(batchId ? { batchId } : {}),
+      results: { none: {} },
+    },
+  })
 
-    if (prompts.length === 0) {
-      return NextResponse.json({ success: true, processed: 0, message: 'No unrun prompts found' })
-    }
+  if (prompts.length === 0) {
+    return Response.json({ success: true, processed: 0, message: 'No unrun prompts found' })
+  }
 
-    let processed = 0
+  const encoder = new TextEncoder()
 
-    for (const prompt of prompts) {
-      const mockResults = generateMockResults(
-        prompt.id,
-        prompt.communityName,
-        prompt.city,
-        prompt.market,
-        prompt.levelOfCare,
-        prompt.promptType
-      )
-
-      for (const mock of mockResults) {
-        const result = await prisma.result.create({
-          data: {
-            promptId: prompt.id,
-            platform: mock.platform,
-            responseText: mock.responseText,
-            isMentioned: mock.isMentioned,
-            isCited: mock.isCited,
-          },
-        })
-
-        if (mock.citations.length > 0) {
-          await prisma.citation.createMany({
-            data: mock.citations.map((c) => ({
-              resultId: result.id,
-              url: c.url,
-              title: c.title,
-              domain: c.domain,
-            })),
-          })
-        }
+  const stream = new ReadableStream({
+    async start(controller) {
+      function send(data: object) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
       }
 
-      processed++
-    }
+      let processed = 0
+      let errors = 0
+      const total = prompts.length
 
-    return NextResponse.json({ success: true, processed })
-  } catch (error) {
-    console.error('Run error:', error)
-    return NextResponse.json({ error: 'Failed to run prompts' }, { status: 500 })
-  }
+      send({ type: 'start', total })
+
+      for (const prompt of prompts) {
+        // Run all 6 platforms concurrently for this prompt
+        const platformResults = await Promise.all(
+          PLATFORMS.map(async (platform) => {
+            const result = await queryPlatform(platform, prompt.promptText, prompt.communityName)
+            return { platform, result }
+          })
+        )
+
+        for (const { platform, result } of platformResults) {
+          const saved = await prisma.result.create({
+            data: {
+              promptId: prompt.id,
+              platform,
+              responseText: result.responseText,
+              isMentioned: result.isMentioned,
+              isCited: result.isCited,
+            },
+          })
+
+          if (result.citations.length > 0) {
+            await prisma.citation.createMany({
+              data: result.citations.map((c) => ({
+                resultId: saved.id,
+                url: c.url,
+                title: c.title,
+                domain: c.domain,
+              })),
+            })
+          }
+
+          if (result.error) errors++
+        }
+
+        processed++
+        send({
+          type: 'progress',
+          processed,
+          total,
+          prompt: prompt.promptText.slice(0, 80),
+          community: prompt.communityName,
+          platformResults: platformResults.map(({ platform, result }) => ({
+            platform,
+            isMentioned: result.isMentioned,
+            isCited: result.isCited,
+            error: result.error ?? null,
+          })),
+        })
+      }
+
+      send({ type: 'done', processed, errors })
+      controller.close()
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
+  })
 }
