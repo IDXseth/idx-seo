@@ -1,0 +1,55 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Batch {
+  id        String   @id @default(cuid())
+  name      String
+  fileName  String
+  prompts   Prompt[]
+  createdAt DateTime @default(now())
+}
+
+model Prompt {
+  id            String   @id @default(cuid())
+  batchId       String
+  batch         Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  promptType    String   // "brand" | "nonbrand"
+  category      String
+  communityName String
+  city          String
+  market        String
+  levelOfCare   String   // "Assisted Living" | "Independent Living" | "Memory Care" | "Skilled Nursing" | "Short Term Care" | ""
+  promptText    String
+  results       Result[]
+  createdAt     DateTime @default(now())
+}
+
+model Result {
+  id           String     @id @default(cuid())
+  promptId     String
+  prompt       Prompt     @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  platform     String     // "chatgpt" | "claude" | "perplexity" | "gemini" | "google_aio" | "google_ai_mode"
+  responseText String
+  isMentioned  Boolean    @default(false)
+  isCited      Boolean    @default(false)
+  citations    Citation[]
+  runAt        DateTime   @default(now())
+}
+
+model Citation {
+  id       String @id @default(cuid())
+  resultId String
+  result   Result @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  url      String
+  title    String
+  domain   String
+}
