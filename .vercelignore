@@ -1,0 +1,4 @@
+# Vercel deployment config
+prisma/dev.db
+prisma/dev.db-shm
+prisma/dev.db-wal
