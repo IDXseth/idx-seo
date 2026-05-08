@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge'
 import { PLATFORM_LABELS, PLATFORM_COLORS } from '@/lib/utils'
 import { ChevronLeft, ExternalLink, MapPin, Building2, Tag, Heart } from 'lucide-react'
 
+export const dynamic = 'force-dynamic'
+
 async function getPromptData(promptId: string) {
   const prompt = await prisma.prompt.findUnique({
     where: { id: promptId },

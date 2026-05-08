@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { PLATFORMS } from '@/lib/utils'
 import { SegmentDetail } from '@/components/segment-detail'
 
+export const dynamic = 'force-dynamic'
+
 async function getCommunityData(id: string) {
   // Decode the slug and find matching community
   const decodedId = decodeURIComponent(id)

@@ -7,6 +7,8 @@ import { PlatformMentionChart } from '@/components/platform-chart'
 import { BarChart3, Target, Quote, Layers } from 'lucide-react'
 import { slugify } from '@/lib/utils'
 
+export const dynamic = 'force-dynamic'
+
 async function getDashboardData() {
   const [totalPrompts, totalResults, mentionedResults, citedResults] = await Promise.all([
     prisma.prompt.count(),

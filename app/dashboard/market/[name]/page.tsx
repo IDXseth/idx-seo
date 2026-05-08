@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { PLATFORMS } from '@/lib/utils'
 import { SegmentDetail } from '@/components/segment-detail'
 
+export const dynamic = 'force-dynamic'
+
 async function getMarketData(name: string) {
   const decodedName = decodeURIComponent(name)
 
