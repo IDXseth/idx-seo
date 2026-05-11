@@ -28,7 +28,8 @@ export default async function ResultsDetailPage({
   params: Promise<{ promptId: string }>
 }) {
   const { promptId } = await params
-  const prompt = await getPromptData(promptId)
+  let prompt: Awaited<ReturnType<typeof getPromptData>> = null
+  try { prompt = await getPromptData(promptId) } catch { /* DB not configured */ }
   if (!prompt) notFound()
 
   const sortedResults = [...prompt.results].sort(

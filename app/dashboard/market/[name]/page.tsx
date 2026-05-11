@@ -64,7 +64,8 @@ export default async function MarketDetailPage({
   params: Promise<{ name: string }>
 }) {
   const { name } = await params
-  const data = await getMarketData(name)
+  let data: Awaited<ReturnType<typeof getMarketData>> = null
+  try { data = await getMarketData(name) } catch { /* DB not configured */ }
 
   if (!data) notFound()
 

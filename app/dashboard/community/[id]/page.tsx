@@ -93,11 +93,10 @@ export default async function CommunityDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const data = await getCommunityData(id)
+  let data: Awaited<ReturnType<typeof getCommunityData>> = null
+  try { data = await getCommunityData(id) } catch { /* DB not configured */ }
 
-  if (!data) {
-    notFound()
-  }
+  if (!data) notFound()
 
   return (
     <SegmentDetail

@@ -119,8 +119,24 @@ async function getDashboardData() {
 }
 
 export default async function DashboardPage() {
-  const data = await getDashboardData()
-  const isEmpty = data.overview.totalPrompts === 0
+  let data: Awaited<ReturnType<typeof getDashboardData>> | null = null
+  try {
+    data = await getDashboardData()
+  } catch {
+    // DB not configured — show empty state
+  }
+
+  if (!data || data.overview.totalPrompts === 0) {
+    return (
+      <div>
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
+          <p className="text-slate-500 mt-1 text-sm">AI mention and citation monitoring across your senior living portfolio</p>
+        </div>
+        <EmptyDashboard />
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -130,10 +146,7 @@ export default async function DashboardPage() {
         <p className="text-slate-500 mt-1 text-sm">AI mention and citation monitoring across your senior living portfolio</p>
       </div>
 
-      {isEmpty ? (
-        <EmptyDashboard />
-      ) : (
-        <>
+      <>
           {/* Hero stat strip */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <StatCard
@@ -252,8 +265,7 @@ export default async function DashboardPage() {
               />
             </TabsContent>
           </Tabs>
-        </>
-      )}
+      </>
     </div>
   )
 }
