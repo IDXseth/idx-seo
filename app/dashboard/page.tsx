@@ -130,8 +130,8 @@ export default async function DashboardPage() {
     return (
       <div>
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-          <p className="text-slate-500 mt-1 text-sm">AI mention and citation monitoring across your senior living portfolio</p>
+          <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Dashboard</h1>
+          <p className="text-[#5a7a85] mt-1 text-sm">AI mention and citation monitoring across your senior living portfolio</p>
         </div>
         <EmptyDashboard />
       </div>
@@ -142,16 +142,16 @@ export default async function DashboardPage() {
     <div>
       {/* Page header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-        <p className="text-slate-500 mt-1 text-sm">AI mention and citation monitoring across your senior living portfolio</p>
+        <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Dashboard</h1>
+        <p className="text-[#5a7a85] mt-1 text-sm">AI mention and citation monitoring across your senior living portfolio</p>
       </div>
 
       <>
           {/* Hero stat strip */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <StatCard
-              icon={<BarChart3 className="h-5 w-5 text-indigo-600" />}
-              iconBg="bg-indigo-50"
+              icon={<BarChart3 className="h-5 w-5 text-[#084c61]" />}
+              iconBg="bg-[#e6f2f5]"
               label="Prompts Analyzed"
               value={data.overview.totalPrompts.toLocaleString()}
             />
@@ -164,16 +164,16 @@ export default async function DashboardPage() {
               subtextColor={rateTextColor(data.overview.overallMentionRate)}
             />
             <StatCard
-              icon={<Quote className="h-5 w-5 text-blue-600" />}
-              iconBg="bg-blue-50"
+              icon={<Quote className="h-5 w-5 text-[#177e89]" />}
+              iconBg="bg-[#e6f2f5]"
               label="Overall Citation Rate"
               value={formatPercent(data.overview.overallCitationRate)}
               subtext={rateLabel(data.overview.overallCitationRate)}
               subtextColor={rateTextColor(data.overview.overallCitationRate)}
             />
             <StatCard
-              icon={<Layers className="h-5 w-5 text-purple-600" />}
-              iconBg="bg-purple-50"
+              icon={<Layers className="h-5 w-5 text-[#084c61]" />}
+              iconBg="bg-[#e6f2f5]"
               label="Platforms Monitored"
               value={String(PLATFORMS.length)}
               subtext="AI platforms"
@@ -288,14 +288,14 @@ function StatCard({
   subtextColor?: string
 }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5">
+    <div className="bg-white rounded-xl border border-[#dde6ea] p-5">
       <div className="flex items-center gap-3 mb-3">
         <div className={`p-2 rounded-lg ${iconBg}`}>{icon}</div>
-        <p className="text-xs font-medium text-slate-500">{label}</p>
+        <p className="text-xs font-medium text-[#5a7a85]">{label}</p>
       </div>
-      <p className="text-3xl font-bold text-slate-900 leading-none">{value}</p>
+      <p className="text-3xl font-bold text-[#084c61] leading-none">{value}</p>
       {subtext && (
-        <p className={`text-xs mt-1.5 font-medium ${subtextColor ?? 'text-slate-400'}`}>{subtext}</p>
+        <p className={`text-xs mt-1.5 font-medium ${subtextColor ?? 'text-[#8aadb8]'}`}>{subtext}</p>
       )}
     </div>
   )
@@ -303,8 +303,8 @@ function StatCard({
 
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-6">
-      <h2 className="text-sm font-semibold text-slate-700 mb-4">{title}</h2>
+    <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
+      <h2 className="text-sm font-semibold text-[#084c61] mb-4">{title}</h2>
       {children}
     </div>
   )
@@ -321,8 +321,8 @@ function TabGrid<T>({
 }) {
   if (items.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-slate-200 py-12 text-center">
-        <p className="text-slate-400 text-sm">{empty}</p>
+      <div className="bg-white rounded-xl border border-[#dde6ea] py-12 text-center">
+        <p className="text-[#8aadb8] text-sm">{empty}</p>
       </div>
     )
   }
@@ -335,21 +335,21 @@ function TabGrid<T>({
 
 function EmptyDashboard() {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+    <div className="bg-white rounded-2xl border border-[#dde6ea] overflow-hidden">
       {/* Decorative gradient header */}
-      <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 px-8 py-12 text-center">
+      <div className="px-8 py-12 text-center" style={{ background: 'linear-gradient(135deg, #084c61 0%, #054166 100%)' }}>
         <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-white/10 backdrop-blur mb-4">
           <BarChart3 className="h-7 w-7 text-white" />
         </div>
-        <h2 className="text-xl font-bold text-white mb-1">No data yet</h2>
-        <p className="text-indigo-200 text-sm max-w-sm mx-auto">
+        <h2 className="text-xl font-bold text-white mb-1" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>No data yet</h2>
+        <p className="text-white/70 text-sm max-w-sm mx-auto">
           Upload your prompts spreadsheet and run it against 6 AI platforms to see your mention and citation performance.
         </p>
       </div>
 
       {/* Steps */}
       <div className="px-8 py-8">
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-5">Get started in 2 steps</p>
+        <p className="text-xs font-semibold text-[#8aadb8] uppercase tracking-wider mb-5">Get started in 2 steps</p>
         <div className="grid sm:grid-cols-2 gap-4">
           <StepCard
             step="1"
@@ -387,16 +387,16 @@ function StepCard({
   return (
     <a
       href={href}
-      className="group block p-5 rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-sm transition-all"
+      className="group block p-5 rounded-xl border border-[#dde6ea] hover:border-[#177e89] hover:shadow-sm transition-all"
     >
       <div className="flex items-center gap-3 mb-3">
-        <span className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-indigo-600 text-white text-xs font-bold flex-shrink-0">
+        <span className="inline-flex items-center justify-center h-7 w-7 rounded-full text-white text-xs font-bold flex-shrink-0" style={{ background: '#084c61' }}>
           {step}
         </span>
-        <h3 className="font-semibold text-slate-900 text-sm">{title}</h3>
+        <h3 className="font-semibold text-[#084c61] text-sm">{title}</h3>
       </div>
-      <p className="text-xs text-slate-500 leading-relaxed mb-4">{description}</p>
-      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 group-hover:gap-2.5 transition-all">
+      <p className="text-xs text-[#5a7a85] leading-relaxed mb-4">{description}</p>
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#177e89] group-hover:gap-2.5 transition-all">
         {cta} <ArrowRight className="h-3.5 w-3.5" />
       </span>
     </a>

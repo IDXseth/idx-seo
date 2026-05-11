@@ -1,22 +1,36 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: var(--font-nunito), 'Nunito', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-noto-serif), 'Noto Serif', ui-serif, Georgia, serif;
+}
+
 :root {
-  --background: #f4f6fb;
-  --foreground: #0f172a;
+  --background: #f0f4f7;
+  --foreground: #1a1a1a;
   --card: #ffffff;
-  --card-border: #e2e8f0;
-  --primary: #4f46e5;
-  --primary-hover: #4338ca;
-  --muted: #64748b;
-  --muted-bg: #f8fafc;
-  --ring: rgba(79, 70, 229, 0.15);
+  --card-border: #dde6ea;
+  --primary: #084c61;
+  --primary-hover: #054166;
+  --primary-light: #e6f2f5;
+  --secondary: #177e89;
+  --accent: #ffc857;
+  --muted: #5a7a85;
+  --muted-bg: #f5f8fa;
+  --ring: rgba(8, 76, 97, 0.18);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
+  font-family: 'Nunito', sans-serif;
   font-feature-settings: "rlig" 1, "calt" 1;
   -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Noto Serif', serif;
+  color: #084c61;
 }
 
 /* Smooth card elevation */
@@ -34,5 +48,5 @@ body {
 /* Thin scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+::-webkit-scrollbar-thumb { background: #b8cdd3; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #8aadb8; }

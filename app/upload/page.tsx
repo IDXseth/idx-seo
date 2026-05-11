@@ -140,23 +140,23 @@ export default function UploadPage() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Upload Prompts</h1>
-        <p className="text-slate-500 mt-1 text-sm">Upload a spreadsheet with your prompt data to get started</p>
+        <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Upload Prompts</h1>
+        <p className="text-[#5a7a85] mt-1 text-sm">Upload a spreadsheet with your prompt data to get started</p>
       </div>
 
       {/* Format guide */}
-      <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-6 flex gap-3">
-        <Info className="h-4 w-4 text-indigo-500 flex-shrink-0 mt-0.5" />
+      <div className="bg-[#e6f2f5] border border-[#b8d8e0] rounded-xl p-4 mb-6 flex gap-3">
+        <Info className="h-4 w-4 text-[#177e89] flex-shrink-0 mt-0.5" />
         <div>
-          <p className="text-sm font-semibold text-indigo-800 mb-2">Expected spreadsheet columns</p>
+          <p className="text-sm font-semibold text-[#084c61] mb-2">Expected spreadsheet columns</p>
           <div className="flex flex-wrap gap-1.5">
             {EXPECTED_COLUMNS.map((col) => (
-              <code key={col} className="text-xs bg-white border border-indigo-200 text-indigo-700 px-2 py-0.5 rounded-md font-mono">
+              <code key={col} className="text-xs bg-white border border-[#b8d8e0] text-[#084c61] px-2 py-0.5 rounded-md font-mono">
                 {col}
               </code>
             ))}
           </div>
-          <p className="text-xs text-indigo-600 mt-2">Column names are flexible — underscores, spaces, and camelCase are all recognized.</p>
+          <p className="text-xs text-[#177e89] mt-2">Column names are flexible — underscores, spaces, and camelCase are all recognized.</p>
         </div>
       </div>
 
@@ -164,9 +164,9 @@ export default function UploadPage() {
       <div
         className={cn(
           'border-2 border-dashed rounded-xl p-12 text-center transition-all mb-6',
-          isDragging ? 'border-indigo-400 bg-indigo-50' :
+          isDragging ? 'border-[#177e89] bg-[#e6f2f5]' :
           file ? 'border-emerald-400 bg-emerald-50' :
-          'border-slate-300 bg-white hover:border-slate-400 hover:bg-slate-50'
+          'border-[#dde6ea] bg-white hover:border-[#8aadb8] hover:bg-[#f5f8fa]'
         )}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
@@ -229,7 +229,7 @@ export default function UploadPage() {
                 value={batchName}
                 onChange={(e) => setBatchName(e.target.value)}
                 placeholder="Batch name"
-                className="px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent w-44"
+                className="px-3 py-1.5 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61] focus:border-transparent w-44"
               />
               <Button onClick={handleUpload} disabled={uploading}>
                 {uploading ? 'Uploading…' : 'Confirm Upload'}

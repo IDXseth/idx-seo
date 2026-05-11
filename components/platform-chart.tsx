@@ -19,10 +19,10 @@ export function PlatformMentionChart({ data }: { data: PlatformStat[] }) {
   return (
     <ResponsiveContainer width="100%" height={300}>
       <BarChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 64 }} barCategoryGap="30%">
-        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke="#dde6ea" vertical={false} />
         <XAxis
           dataKey="name"
-          tick={{ fontSize: 11, fill: '#64748b' }}
+          tick={{ fontSize: 11, fill: '#5a7a85' }}
           angle={-30}
           textAnchor="end"
           interval={0}
@@ -31,7 +31,7 @@ export function PlatformMentionChart({ data }: { data: PlatformStat[] }) {
         />
         <YAxis
           tickFormatter={(v) => `${v}%`}
-          tick={{ fontSize: 11, fill: '#94a3b8' }}
+          tick={{ fontSize: 11, fill: '#8aadb8' }}
           domain={[0, 100]}
           axisLine={false}
           tickLine={false}
@@ -41,18 +41,18 @@ export function PlatformMentionChart({ data }: { data: PlatformStat[] }) {
           contentStyle={{
             fontSize: 12,
             borderRadius: 8,
-            border: '1px solid #e2e8f0',
+            border: '1px solid #dde6ea',
             boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
           }}
-          cursor={{ fill: '#f8fafc' }}
+          cursor={{ fill: '#f0f4f7' }}
         />
         <Legend
           wrapperStyle={{ fontSize: 12, paddingTop: 20 }}
           iconType="circle"
           iconSize={8}
         />
-        <Bar dataKey="Mention Rate" fill="#4f46e5" radius={[4, 4, 0, 0]} />
-        <Bar dataKey="Citation Rate" fill="#10b981" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="Mention Rate" fill="#084c61" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="Citation Rate" fill="#177e89" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   )

@@ -23,22 +23,22 @@ export function Scorecard({ title, subtitle, mentionRate, citationRate, promptCo
 
   const inner = (
     <div className={cn(
-      'bg-white rounded-xl border border-slate-200 p-5 flex flex-col gap-4 transition-all',
-      href && 'hover:shadow-md hover:border-indigo-200 cursor-pointer group'
+      'bg-white rounded-xl border border-[#dde6ea] p-5 flex flex-col gap-4 transition-all',
+      href && 'hover:shadow-md hover:border-[#177e89] cursor-pointer group'
     )}>
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="font-semibold text-slate-900 leading-snug truncate">{title}</h3>
+          <h3 className="font-semibold text-[#084c61] leading-snug truncate" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>{title}</h3>
           {subtitle && (
             <div className="flex items-center gap-1 mt-0.5">
-              <MapPin className="h-3 w-3 text-slate-400 flex-shrink-0" />
-              <p className="text-xs text-slate-500 truncate">{subtitle}</p>
+              <MapPin className="h-3 w-3 text-[#8aadb8] flex-shrink-0" />
+              <p className="text-xs text-[#5a7a85] truncate">{subtitle}</p>
             </div>
           )}
         </div>
         {href && (
-          <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-indigo-500 flex-shrink-0 mt-0.5 transition-colors" />
+          <ChevronRight className="h-4 w-4 text-[#b8cdd3] group-hover:text-[#177e89] flex-shrink-0 mt-0.5 transition-colors" />
         )}
       </div>
 
@@ -63,7 +63,7 @@ export function Scorecard({ title, subtitle, mentionRate, citationRate, promptCo
       </div>
 
       {/* Footer */}
-      <p className="text-xs text-slate-400 pt-1 border-t border-slate-100">
+      <p className="text-xs text-[#8aadb8] pt-1 border-t border-[#eef3f5]">
         {promptCount} prompt{promptCount !== 1 ? 's' : ''} analyzed
       </p>
     </div>
@@ -91,7 +91,7 @@ function Metric({
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-xs font-medium text-slate-500">{label}</span>
+        <span className="text-xs font-medium text-[#5a7a85]">{label}</span>
         <div className="flex items-center gap-2">
           <span className={cn('text-xs font-semibold', textColor)}>{formatPercent(value)}</span>
           <span className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded-full border', labelCls)}>
@@ -99,7 +99,7 @@ function Metric({
           </span>
         </div>
       </div>
-      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+      <div className="h-1.5 bg-[#eef3f5] rounded-full overflow-hidden">
         <div
           className={cn('h-full rounded-full transition-all', barColor)}
           style={{ width: `${Math.round(value * 100)}%` }}

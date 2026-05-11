@@ -10,15 +10,15 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = 'default', size = 'default', ...props }, ref) => {
-    const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:pointer-events-none disabled:opacity-50'
+    const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#084c61] disabled:pointer-events-none disabled:opacity-50'
 
     const variantClasses = {
-      default: 'bg-indigo-600 text-white hover:bg-indigo-700',
-      outline: 'border border-slate-200 bg-white hover:bg-slate-50 text-slate-700',
-      ghost: 'hover:bg-slate-100 text-slate-700',
-      secondary: 'bg-slate-100 text-slate-900 hover:bg-slate-200',
+      default: 'bg-[#084c61] text-white hover:bg-[#054166]',
+      outline: 'border border-[#dde6ea] bg-white hover:bg-[#f5f8fa] text-[#084c61]',
+      ghost: 'hover:bg-[#f0f4f7] text-[#084c61]',
+      secondary: 'bg-[#eef3f5] text-[#084c61] hover:bg-[#dde6ea]',
       destructive: 'bg-red-600 text-white hover:bg-red-700',
-      link: 'text-indigo-600 underline-offset-4 hover:underline',
+      link: 'text-[#177e89] underline-offset-4 hover:underline',
     }
 
     const sizeClasses = {
