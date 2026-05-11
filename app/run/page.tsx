@@ -124,8 +124,8 @@ export default function RunPage() {
     <div className="max-w-4xl mx-auto">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Run Prompts</h1>
-          <p className="text-gray-500 mt-1">Send prompts to 6 AI platforms and capture responses</p>
+          <h1 className="text-2xl font-bold text-slate-900">Run Prompts</h1>
+          <p className="text-slate-500 mt-1 text-sm">Send prompts to 6 AI platforms and capture responses</p>
         </div>
         <div className="flex items-center gap-3">
           <Button variant="outline" onClick={fetchBatches} size="sm">
