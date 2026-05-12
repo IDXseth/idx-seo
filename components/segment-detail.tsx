@@ -1,9 +1,7 @@
 import Link from 'next/link'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { PlatformMentionChart } from '@/components/platform-chart'
-import { PLATFORM_LABELS, PLATFORM_COLORS, formatPercent } from '@/lib/utils'
+import { PLATFORM_LABELS, PLATFORM_COLORS, formatPercent, cn } from '@/lib/utils'
 import { ChevronLeft, Target, Quote, FileText } from 'lucide-react'
 
 interface Citation {
@@ -72,176 +70,143 @@ export function SegmentDetail({
   prompts,
 }: SegmentDetailProps) {
   const platforms = platformStats.map((p) => p.platform)
+  const maxDomainCount = topDomains[0]?.count ?? 1
 
   return (
-    <div>
+    <div className="space-y-6">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 mb-6">
-        <Link href={backHref} className="flex items-center gap-1 text-sm text-indigo-600 hover:text-indigo-700">
+      <div className="flex items-center gap-2">
+        <Link href={backHref} className="flex items-center gap-1 text-sm text-[#177e89] hover:text-[#084c61] font-medium transition-colors">
           <ChevronLeft className="h-4 w-4" />
           {backLabel}
         </Link>
-        <span className="text-gray-400">/</span>
-        <span className="text-sm text-gray-600">{title}</span>
+        <span className="text-[#b8cdd3]">/</span>
+        <span className="text-sm text-[#5a7a85]">{title}</span>
       </div>
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">{title}</h1>
+      {/* Page title */}
+      <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>{title}</h1>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-indigo-100 rounded-lg">
-                <FileText className="h-5 w-5 text-indigo-600" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Prompts</p>
-                <p className="text-2xl font-bold text-gray-900">{overview.promptCount}</p>
-              </div>
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { icon: <FileText className="h-5 w-5 text-[#084c61]" />, bg: 'bg-[#e6f2f5]', label: 'Prompts', value: overview.promptCount },
+          { icon: <Target className="h-5 w-5 text-emerald-600" />, bg: 'bg-emerald-50', label: 'Mention Rate', value: formatPercent(overview.mentionRate) },
+          { icon: <Quote className="h-5 w-5 text-[#177e89]" />, bg: 'bg-[#e6f2f5]', label: 'Citation Rate', value: formatPercent(overview.citationRate) },
+        ].map(({ icon, bg, label, value }) => (
+          <div key={label} className="bg-white rounded-xl border border-[#dde6ea] p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`p-2 rounded-lg ${bg}`}>{icon}</div>
+              <p className="text-xs font-medium text-[#5a7a85]">{label}</p>
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <Target className="h-5 w-5 text-green-600" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Mention Rate</p>
-                <p className="text-2xl font-bold text-gray-900">{formatPercent(overview.mentionRate)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Quote className="h-5 w-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Citation Rate</p>
-                <p className="text-2xl font-bold text-gray-900">{formatPercent(overview.citationRate)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            <p className="text-3xl font-bold text-[#084c61] leading-none">{value}</p>
+          </div>
+        ))}
       </div>
 
       {/* Platform Chart */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Performance by Platform</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PlatformMentionChart data={platformStats} />
-        </CardContent>
-      </Card>
+      <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
+        <h2 className="text-sm font-semibold text-[#084c61] mb-4">Performance by Platform</h2>
+        <PlatformMentionChart data={platformStats} />
+      </div>
 
       {/* Top Citation Sources */}
       {topDomains.length > 0 && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Top Citation Sources</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Domain</TableHead>
-                  <TableHead>Citation Count</TableHead>
-                  <TableHead>% of Results</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {topDomains.map((d) => (
-                  <TableRow key={d.domain}>
-                    <TableCell className="font-medium">{d.domain}</TableCell>
-                    <TableCell>{d.count}</TableCell>
-                    <TableCell>{formatPercent(d.percentage)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
+          <h2 className="text-sm font-semibold text-[#084c61] mb-5">Top Citation Sources</h2>
+          <div className="space-y-3">
+            {topDomains.map((d) => (
+              <div key={d.domain} className="flex items-center gap-4">
+                <span className="text-sm text-[#084c61] font-medium w-48 truncate flex-shrink-0">{d.domain}</span>
+                <div className="flex-1 h-2 bg-[#eef3f5] rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full"
+                    style={{ width: `${(d.count / maxDomainCount) * 100}%`, background: '#177e89' }}
+                  />
+                </div>
+                <span className="text-xs text-[#5a7a85] w-16 text-right flex-shrink-0">
+                  {d.count} · {formatPercent(d.percentage)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Prompts Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>All Prompts</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="text-left p-4 font-medium text-gray-500 min-w-[200px]">Prompt</th>
-                  <th className="text-left p-4 font-medium text-gray-500">Type</th>
-                  <th className="text-left p-4 font-medium text-gray-500">Category</th>
-                  <th className="text-left p-4 font-medium text-gray-500">Level of Care</th>
-                  {platforms.map((platform) => (
-                    <th
-                      key={platform}
-                      className="text-left p-4 font-medium text-gray-500 min-w-[90px]"
-                      style={{ color: PLATFORM_COLORS[platform] }}
-                    >
-                      {PLATFORM_LABELS[platform]}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {prompts.map((prompt) => (
-                  <tr
-                    key={prompt.id}
-                    className="border-b hover:bg-gray-50 cursor-pointer"
-                    onClick={() => window.location.href = `/results/${prompt.id}`}
+      <div className="bg-white rounded-xl border border-[#dde6ea] overflow-hidden">
+        <div className="px-6 py-4 border-b border-[#eef3f5]">
+          <h2 className="text-sm font-semibold text-[#084c61]">All Prompts</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[#eef3f5] bg-[#f5f8fa]">
+                <th className="text-left px-6 py-3 font-medium text-[#5a7a85] text-xs min-w-[220px]">Prompt</th>
+                <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Type</th>
+                <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Category</th>
+                <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Level of Care</th>
+                {platforms.map((platform) => (
+                  <th
+                    key={platform}
+                    className="text-left px-4 py-3 font-semibold text-xs min-w-[100px]"
+                    style={{ color: PLATFORM_COLORS[platform] }}
                   >
-                    <td className="p-4">
-                      <p className="line-clamp-2 text-gray-900">{prompt.promptText}</p>
-                    </td>
-                    <td className="p-4">
-                      <Badge variant={prompt.promptType === 'brand' ? 'default' : 'secondary'}>
-                        {prompt.promptType}
-                      </Badge>
-                    </td>
-                    <td className="p-4 text-gray-600">{prompt.category}</td>
-                    <td className="p-4 text-gray-600">{prompt.levelOfCare || '—'}</td>
-                    {platforms.map((platform) => {
-                      const result = prompt.results.find((r) => r.platform === platform)
-                      if (!result) return <td key={platform} className="p-4 text-gray-400">—</td>
-                      return (
-                        <td key={platform} className="p-4">
-                          <div className="flex flex-col gap-1">
-                            {result.isMentioned ? (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">
-                                Mentioned
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">
-                                Not Mentioned
-                              </span>
-                            )}
-                            {result.isCited && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
-                                Cited
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                      )
-                    })}
-                  </tr>
+                    {PLATFORM_LABELS[platform]}
+                  </th>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#f0f4f7]">
+              {prompts.map((prompt) => (
+                <tr
+                  key={prompt.id}
+                  className="hover:bg-[#f5f8fa] cursor-pointer transition-colors"
+                  onClick={() => { window.location.href = `/results/${prompt.id}` }}
+                >
+                  <td className="px-6 py-4">
+                    <p className="line-clamp-2 text-[#1a1a1a] text-xs leading-relaxed">{prompt.promptText}</p>
+                  </td>
+                  <td className="px-4 py-4">
+                    <Badge variant={prompt.promptType === 'brand' ? 'default' : 'secondary'}>
+                      {prompt.promptType}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-4 text-[#5a7a85] text-xs">{prompt.category || '—'}</td>
+                  <td className="px-4 py-4 text-[#5a7a85] text-xs">{prompt.levelOfCare || '—'}</td>
+                  {platforms.map((platform) => {
+                    const result = prompt.results.find((r) => r.platform === platform)
+                    if (!result) return <td key={platform} className="px-4 py-4 text-[#b8cdd3] text-xs">—</td>
+                    return (
+                      <td key={platform} className="px-4 py-4">
+                        <PlatformCell isMentioned={result.isMentioned} isCited={result.isCited} />
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PlatformCell({ isMentioned, isCited }: { isMentioned: boolean; isCited: boolean }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className={cn(
+        'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold w-fit',
+        isMentioned ? 'bg-emerald-50 text-emerald-700' : 'bg-[#f0f4f7] text-[#8aadb8]'
+      )}>
+        {isMentioned ? 'Mentioned' : 'Not Mentioned'}
+      </span>
+      {isCited && (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#e6f2f5] text-[#084c61] w-fit">
+          Cited
+        </span>
+      )}
     </div>
   )
 }
