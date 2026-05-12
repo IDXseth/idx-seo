@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { PLATFORMS, PLATFORM_LABELS, formatPercent } from '@/lib/utils'
+import { PLATFORMS, formatPercent } from '@/lib/utils'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Scorecard } from '@/components/scorecard'
 import { PlatformMentionChart } from '@/components/platform-chart'

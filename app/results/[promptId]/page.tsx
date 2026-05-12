@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import { Badge } from '@/components/ui/badge'
-import { PLATFORM_LABELS, PLATFORM_COLORS, cn } from '@/lib/utils'
+import { PLATFORM_LABELS, PLATFORM_COLORS } from '@/lib/utils'
 import { ChevronLeft, ExternalLink, MapPin, Building2, Tag, Heart } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'

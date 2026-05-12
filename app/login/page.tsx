@@ -2,10 +2,9 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { signIn, useSession } from 'next-auth/react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 
 function LoginForm() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const callbackUrl = searchParams.get('callbackUrl') ?? '/dashboard'
   const { status } = useSession()
