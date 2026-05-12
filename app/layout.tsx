@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Nunito, Noto_Serif } from 'next/font/google'
 import './globals.css'
 import { Nav } from '@/components/nav'
+import { SessionProviderWrapper } from '@/components/session-provider'
 
 const nunito = Nunito({ subsets: ['latin'], variable: '--font-nunito' })
 const notoSerif = Noto_Serif({ subsets: ['latin'], variable: '--font-noto-serif', weight: ['400', '700'] })
@@ -15,10 +16,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="h-full">
       <body className={`${nunito.variable} ${notoSerif.variable} font-sans min-h-full bg-[#f0f4f7]`}>
-        <Nav />
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {children}
-        </main>
+        <SessionProviderWrapper>
+          <Nav />
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            {children}
+          </main>
+        </SessionProviderWrapper>
       </body>
     </html>
   )
