@@ -1,18 +1,20 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { signIn, useSession } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter()
-  const { data: session, status } = useSession()
+  const searchParams = useSearchParams()
+  const callbackUrl = searchParams.get('callbackUrl') ?? '/dashboard'
+  const { status } = useSession()
 
   useEffect(() => {
     if (status === 'authenticated') {
-      window.location.href = '/dashboard'
+      window.location.href = callbackUrl
     }
-  }, [status])
+  }, [status, callbackUrl])
   const [tab, setTab] = useState<'signin' | 'register'>('signin')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -52,7 +54,7 @@ export default function LoginPage() {
         return
       }
 
-      window.location.href = '/dashboard'
+      window.location.href = callbackUrl
     } catch {
       setError('Something went wrong. Please try again.')
       setLoading(false)
@@ -60,7 +62,7 @@ export default function LoginPage() {
   }
 
   const handleGoogle = () => {
-    signIn('google', { callbackUrl: '/dashboard' })
+    signIn('google', { callbackUrl })
   }
 
   return (
@@ -202,5 +204,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   )
 }
