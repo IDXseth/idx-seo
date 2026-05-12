@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { Play, CheckCircle2, AlertCircle, RefreshCw, BarChart3, Circle } from 'lucide-react'
+import { Play, CheckCircle2, AlertCircle, RefreshCw, BarChart3, Circle, Mail } from 'lucide-react'
 import Link from 'next/link'
 import { PLATFORM_LABELS, PLATFORM_COLORS } from '@/lib/utils'
 
@@ -41,6 +41,8 @@ export default function RunPage() {
   const [progressLog, setProgressLog] = useState<ProgressEntry[]>([])
   const [done, setDone] = useState<{ processed: number; errors: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [notifyEmail, setNotifyEmail] = useState('')
+  const [emailError, setEmailError] = useState<string | null>(null)
   const logEndRef = useRef<HTMLDivElement>(null)
 
   const fetchBatches = async () => {
@@ -62,6 +64,12 @@ export default function RunPage() {
   }, [progressLog])
 
   const runPrompts = async (batchId?: string) => {
+    const trimmedEmail = notifyEmail.trim()
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setEmailError('Please enter a valid email address')
+      return
+    }
+    setEmailError(null)
     setRunning(batchId ?? 'all')
     setProgress(0)
     setProgressLog([])
@@ -72,7 +80,10 @@ export default function RunPage() {
       const res = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(batchId ? { batchId } : {}),
+        body: JSON.stringify({
+          ...(batchId ? { batchId } : {}),
+          ...(trimmedEmail ? { email: trimmedEmail } : {}),
+        }),
       })
 
       if (!res.ok || !res.body) {
@@ -141,29 +152,57 @@ export default function RunPage() {
         </div>
       </div>
 
+      {/* Email notification input */}
+      <div className="bg-white rounded-xl border border-[#dde6ea] p-5 mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Mail className="h-4 w-4 text-[#177e89]" />
+          <p className="text-sm font-semibold text-[#084c61]">Email notification (optional)</p>
+        </div>
+        <p className="text-xs text-[#5a7a85] mb-3">
+          Enter your email to receive a summary when the run completes — useful if you want to close this tab while prompts process in the background.
+        </p>
+        <input
+          type="email"
+          value={notifyEmail}
+          onChange={(e) => { setNotifyEmail(e.target.value); setEmailError(null) }}
+          placeholder="you@example.com"
+          disabled={running !== null}
+          className="w-full max-w-sm px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61] focus:border-transparent disabled:opacity-50 disabled:bg-[#f5f8fa]"
+        />
+        {emailError && (
+          <p className="text-xs text-rose-500 mt-1.5">{emailError}</p>
+        )}
+        {notifyEmail.trim() && !emailError && (
+          <p className="text-xs text-[#177e89] mt-1.5 flex items-center gap-1">
+            <CheckCircle2 className="h-3 w-3" />
+            A summary will be emailed to {notifyEmail.trim()} when the run finishes
+          </p>
+        )}
+      </div>
+
       {running !== null && (
         <Card className="mb-6">
           <CardContent className="p-5">
             <div className="flex items-center gap-3 mb-3">
               <RefreshCw className="h-5 w-5 text-[#177e89] animate-spin" />
-              <span className="text-sm font-medium text-gray-700">
+              <span className="text-sm font-medium text-[#084c61]">
                 Querying AI platforms in real time…
               </span>
-              <span className="ml-auto text-sm text-gray-500">{progress}%</span>
+              <span className="ml-auto text-sm text-[#5a7a85]">{progress}%</span>
             </div>
             <Progress value={progress} className="h-2 mb-4" />
 
             {progressLog.length > 0 && (
               <div className="space-y-2 max-h-64 overflow-y-auto text-xs">
                 {progressLog.map((entry, i) => (
-                  <div key={i} className="border rounded p-2 bg-gray-50">
+                  <div key={i} className="border border-[#eef3f5] rounded-lg p-2 bg-[#f5f8fa]">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-gray-800 truncate max-w-xs">
+                      <span className="font-medium text-[#084c61] truncate max-w-xs">
                         {entry.community}
                       </span>
-                      <span className="text-gray-400 ml-2">{entry.processed}/{entry.total}</span>
+                      <span className="text-[#8aadb8] ml-2">{entry.processed}/{entry.total}</span>
                     </div>
-                    <p className="text-gray-500 truncate mb-1.5">{entry.prompt}</p>
+                    <p className="text-[#5a7a85] truncate mb-1.5">{entry.prompt}</p>
                     <div className="flex flex-wrap gap-1">
                       {entry.platformResults.map(({ platform, isMentioned, isCited, error }) => (
                         <span
@@ -197,16 +236,19 @@ export default function RunPage() {
       )}
 
       {done && (
-        <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-lg mb-6">
-          <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
+        <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl mb-6">
+          <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
           <div>
-            <p className="text-sm font-medium text-green-800">
+            <p className="text-sm font-medium text-emerald-800">
               {done.processed > 0
                 ? `Ran ${done.processed} prompt${done.processed !== 1 ? 's' : ''} across all 6 platforms${done.errors > 0 ? ` (${done.errors} platform errors)` : ''}`
                 : 'No prompts to run'}
             </p>
+            {done.processed > 0 && notifyEmail.trim() && (
+              <p className="text-xs text-emerald-600 mt-0.5">Summary email sent to {notifyEmail.trim()}</p>
+            )}
             {done.processed > 0 && (
-              <Link href="/dashboard" className="text-sm text-green-700 underline">
+              <Link href="/dashboard" className="text-sm text-emerald-700 underline">
                 View Dashboard →
               </Link>
             )}
@@ -215,30 +257,30 @@ export default function RunPage() {
       )}
 
       {error && (
-        <div className="flex items-center gap-2 p-4 bg-red-50 border border-red-200 rounded-lg mb-6">
-          <AlertCircle className="h-5 w-5 text-red-500 shrink-0" />
-          <p className="text-sm text-red-700">{error}</p>
+        <div className="flex items-center gap-2 p-4 bg-rose-50 border border-rose-200 rounded-xl mb-6">
+          <AlertCircle className="h-5 w-5 text-rose-500 shrink-0" />
+          <p className="text-sm text-rose-700">{error}</p>
         </div>
       )}
 
       {/* Legend */}
-      <div className="flex items-center gap-4 text-xs text-gray-500 mb-4">
-        <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-green-500" /> Cited</span>
-        <span className="flex items-center gap-1"><Circle className="h-3 w-3 fill-gray-400 text-gray-400" /> Mentioned only</span>
-        <span className="flex items-center gap-1"><Circle className="h-3 w-3 text-gray-400" /> Not mentioned</span>
-        <span className="flex items-center gap-1"><AlertCircle className="h-3 w-3 text-red-400" /> Error</span>
+      <div className="flex items-center gap-4 text-xs text-[#5a7a85] mb-4">
+        <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-emerald-500" /> Cited</span>
+        <span className="flex items-center gap-1"><Circle className="h-3 w-3 fill-[#8aadb8] text-[#8aadb8]" /> Mentioned only</span>
+        <span className="flex items-center gap-1"><Circle className="h-3 w-3 text-[#8aadb8]" /> Not mentioned</span>
+        <span className="flex items-center gap-1"><AlertCircle className="h-3 w-3 text-rose-400" /> Error</span>
       </div>
 
       {loading ? (
         <Card>
-          <CardContent className="py-12 text-center text-gray-500">Loading batches…</CardContent>
+          <CardContent className="py-12 text-center text-[#5a7a85]">Loading batches…</CardContent>
         </Card>
       ) : batches.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
-            <BarChart3 className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-700 mb-2">No batches yet</h3>
-            <p className="text-gray-500 mb-4">Upload a spreadsheet first to create a batch of prompts.</p>
+            <BarChart3 className="h-12 w-12 text-[#b8cdd3] mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-[#084c61] mb-2">No batches yet</h3>
+            <p className="text-[#5a7a85] mb-4">Upload a spreadsheet first to create a batch of prompts.</p>
             <Link href="/upload"><Button>Upload Spreadsheet</Button></Link>
           </CardContent>
         </Card>
@@ -249,16 +291,16 @@ export default function RunPage() {
               <CardContent className="p-5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="font-semibold text-gray-900">{batch.name}</h3>
-                    <p className="text-sm text-gray-500 mt-0.5">{batch.fileName}</p>
+                    <h3 className="font-semibold text-[#084c61]">{batch.name}</h3>
+                    <p className="text-sm text-[#5a7a85] mt-0.5">{batch.fileName}</p>
                     <div className="flex items-center gap-3 mt-2">
-                      <span className="text-sm text-gray-600">{batch._count.prompts} prompts</span>
+                      <span className="text-sm text-[#5a7a85]">{batch._count.prompts} prompts</span>
                       {batch.unrunCount > 0 ? (
                         <Badge variant="warning">{batch.unrunCount} unrun</Badge>
                       ) : (
                         <Badge variant="success">All run</Badge>
                       )}
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-[#8aadb8]">
                         {new Date(batch.createdAt).toLocaleDateString()}
                       </span>
                     </div>
