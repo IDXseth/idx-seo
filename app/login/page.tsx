@@ -1,11 +1,18 @@
 'use client'
 
-import { useState } from 'react'
-import { signIn } from 'next-auth/react'
+import { useState, useEffect } from 'react'
+import { signIn, useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
   const router = useRouter()
+  const { data: session, status } = useSession()
+
+  useEffect(() => {
+    if (status === 'authenticated') {
+      window.location.href = '/dashboard'
+    }
+  }, [status])
   const [tab, setTab] = useState<'signin' | 'register'>('signin')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -45,7 +52,7 @@ export default function LoginPage() {
         return
       }
 
-      router.push('/dashboard')
+      window.location.href = '/dashboard'
     } catch {
       setError('Something went wrong. Please try again.')
       setLoading(false)
