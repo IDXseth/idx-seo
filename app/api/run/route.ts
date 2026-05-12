@@ -89,6 +89,11 @@ export async function POST(req: Request) {
             error: result.error ?? null,
           })),
         })
+
+        // Avoid rate limits — pause between prompts except after the last one
+        if (processed < total) {
+          await new Promise((r) => setTimeout(r, 1000))
+        }
       }
 
       send({ type: 'done', processed, errors })
