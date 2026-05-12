@@ -1,21 +1,26 @@
 import { prisma } from '@/lib/prisma'
 import { queryPlatform } from '@/lib/ai-clients'
 import { PLATFORMS } from '@/lib/utils'
+import { sendRunCompleteEmail } from '@/lib/email'
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const batchId = body.batchId as string | undefined
+  const notifyEmail = body.email as string | undefined
 
   const prompts = await prisma.prompt.findMany({
     where: {
       ...(batchId ? { batchId } : {}),
       results: { none: {} },
     },
+    include: { batch: { select: { name: true } } },
   })
 
   if (prompts.length === 0) {
     return Response.json({ success: true, processed: 0, message: 'No unrun prompts found' })
   }
+
+  const batchName = prompts[0]?.batch?.name
 
   const encoder = new TextEncoder()
 
@@ -27,12 +32,14 @@ export async function POST(req: Request) {
 
       let processed = 0
       let errors = 0
+      let mentionedCount = 0
+      let citedCount = 0
+      let totalResults = 0
       const total = prompts.length
 
       send({ type: 'start', total })
 
       for (const prompt of prompts) {
-        // Run all 6 platforms concurrently for this prompt
         const platformResults = await Promise.all(
           PLATFORMS.map(async (platform) => {
             const result = await queryPlatform(platform, prompt.promptText, prompt.communityName)
@@ -63,6 +70,9 @@ export async function POST(req: Request) {
           }
 
           if (result.error) errors++
+          if (result.isMentioned) mentionedCount++
+          if (result.isCited) citedCount++
+          totalResults++
         }
 
         processed++
@@ -83,6 +93,23 @@ export async function POST(req: Request) {
 
       send({ type: 'done', processed, errors })
       controller.close()
+
+      // Send email notification after stream closes
+      if (notifyEmail) {
+        try {
+          await sendRunCompleteEmail({
+            to: notifyEmail,
+            batchName,
+            processed,
+            errors,
+            mentionedCount,
+            citedCount,
+            totalResults,
+          })
+        } catch (err) {
+          console.error('Failed to send completion email:', err)
+        }
+      }
     },
   })
 
