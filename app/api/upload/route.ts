@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
 
@@ -43,7 +42,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No rows found in spreadsheet' }, { status: 400 })
     }
 
-    const session = await getServerSession(authOptions)
+    const session = await auth()
     const userId = session?.user?.id
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
