@@ -54,7 +54,13 @@ export default function RunPage() {
     }
   }
 
-  useEffect(() => { fetchBatches() }, [])
+  useEffect(() => {
+    fetch('/api/batches')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (data) setBatches(data) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
