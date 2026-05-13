@@ -76,7 +76,7 @@ async function queryGemini(
 ): Promise<PlatformResult> {
   const { GoogleGenerativeAI } = await import('@google/generative-ai')
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 
   const result = await model.generateContent(promptText)
   const text = result.response.text()
@@ -147,6 +147,41 @@ function parseSearchAPIResponse(data: any, communityName: string): PlatformResul
   return { responseText: text, isMentioned, isCited, citations }
 }
 
+async function queryPerplexity(
+  promptText: string,
+  communityName: string
+): Promise<PlatformResult> {
+  const response = await fetch('https://api.perplexity.ai/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'sonar',
+      messages: [{ role: 'user', content: promptText }],
+    }),
+    signal: AbortSignal.timeout(30_000),
+  })
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '')
+    throw new Error(`Perplexity ${response.status}: ${body.slice(0, 200)}`)
+  }
+
+  const data = await response.json()
+  const text = data.choices?.[0]?.message?.content ?? ''
+  const rawCitations: unknown[] = data.citations ?? []
+  const citations = (rawCitations as string[])
+    .filter((url) => typeof url === 'string' && url.startsWith('http'))
+    .map((url) => ({ url, title: extractDomain(url), domain: extractDomain(url) }))
+
+  const isMentioned = checkMention(text, communityName)
+  const isCited = isMentioned && checkCited(citations, communityName)
+
+  return { responseText: text, isMentioned, isCited, citations }
+}
+
 async function querySearchAPI(
   engine: string,
   promptText: string,
@@ -187,7 +222,7 @@ export async function queryPlatform(
       case 'gemini':
         return await queryGemini(promptText, communityName)
       case 'perplexity':
-        return await querySearchAPI('perplexity', promptText, communityName)
+        return await queryPerplexity(promptText, communityName)
       case 'google_aio':
         return await querySearchAPI('google', promptText, communityName)
       case 'google_ai_mode':
