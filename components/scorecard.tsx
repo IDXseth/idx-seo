@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
-import { formatPercent, getMentionBgColor } from '@/lib/utils'
+import { formatPercent } from '@/lib/utils'
 import { MapPin, TrendingUp, Quote } from 'lucide-react'
 
 interface ScorecardProps {

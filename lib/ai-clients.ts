@@ -51,6 +51,7 @@ async function queryChatGPT(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const annotations: any[] = (response.output ?? []).flatMap((item: any) =>
     item.type === 'message'
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ? (item.content ?? []).flatMap((c: any) =>
           c.type === 'output_text' ? (c.annotations ?? []) : []
         )
@@ -78,11 +79,10 @@ async function queryClaude(
   const { default: Anthropic } = await import('@anthropic-ai/sdk')
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
-    tools: [{ type: 'web_search_20250305' as 'web_search_20250305', name: 'web_search' }],
+    tools: [{ type: 'web_search_20250305' as const, name: 'web_search' }],
     messages: [{ role: 'user', content: promptText }],
   })
 
@@ -137,7 +137,6 @@ async function queryGemini(
 ): Promise<PlatformResult> {
   const { GoogleGenerativeAI } = await import('@google/generative-ai')
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const model = genAI.getGenerativeModel({
     model: 'gemini-1.5-flash',
     tools: [{ googleSearch: {} } as never],

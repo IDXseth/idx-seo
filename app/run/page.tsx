@@ -44,7 +44,6 @@ export default function RunPage() {
   const logEndRef = useRef<HTMLDivElement>(null)
 
   const fetchBatches = async () => {
-    setLoading(true)
     try {
       const res = await fetch('/api/batches')
       if (res.ok) setBatches(await res.json())

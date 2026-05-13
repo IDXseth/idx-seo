@@ -95,7 +95,7 @@ export default function UploadPage() {
     try {
       const rows = await parseSpreadsheet(f)
       setPreview(rows)
-    } catch (err) {
+    } catch {
       setError('Failed to parse file. Please check the format.')
     }
   }

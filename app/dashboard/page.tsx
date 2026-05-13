@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { PLATFORMS, PLATFORM_LABELS, formatPercent } from '@/lib/utils'
+import { PLATFORMS, formatPercent } from '@/lib/utils'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Scorecard } from '@/components/scorecard'
@@ -49,8 +49,6 @@ async function getDashboardData() {
       const total = results.length
       const mentioned = results.filter((r) => r.isMentioned).length
       const cited = results.filter((r) => r.isCited).length
-      // Get an ID to use for the community link
-      const prompt = await prisma.prompt.findFirst({ where: { communityName: c.communityName } })
       return {
         id: slugify(c.communityName),
         communityName: c.communityName,
