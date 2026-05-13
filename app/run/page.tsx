@@ -460,8 +460,13 @@ export default function RunPage() {
     }
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { fetchBatches() }, [fetchBatches])
+  useEffect(() => {
+    fetch('/api/batches')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (data) setBatches(data) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
