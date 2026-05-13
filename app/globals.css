@@ -1,11 +1,10 @@
 @import "tailwindcss";
 
-/* Explicitly declare all source trees so Tailwind v4 scans them in
-   production. Without these, the scanner may only see app/ (the CSS
-   file's own directory) and miss components/ and lib/ at the root. */
-@source "../components";
-@source "../app";
-@source "../lib";
+/* Tailwind v4 auto-detection starts from the CSS file's directory.
+   Extend it to cover components/ and lib/ at the project root so
+   utility classes used there are not purged in production builds. */
+@source "../components/**/*.{ts,tsx}";
+@source "../lib/**/*.{ts,tsx}";
 
 :root {
   --background: #f9fafb;
