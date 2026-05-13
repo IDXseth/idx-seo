@@ -9,7 +9,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: 'jwt' },
   trustHost: true,
-  pages: { signIn: '/login' },
+  pages: { signIn: '/login', error: '/login' },
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
