@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Skip type-checking and linting during next build — both run in CI
+  // separately, and re-running them here adds 2-4 minutes.
+  typescript: { ignoreBuildErrors: true },
+  eslint: { ignoreDuringBuilds: true },
+
   // Treat large server-only packages as Node externals so webpack skips
   // bundling them — the main driver of slow builds in this project.
   serverExternalPackages: [
