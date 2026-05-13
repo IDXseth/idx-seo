@@ -7,8 +7,13 @@ export interface PlatformResult {
 }
 
 function checkMention(text: string, communityName: string): boolean {
-  if (!text || !communityName) return false
-  return text.toLowerCase().includes(communityName.toLowerCase())
+  if (!text) return false
+  const lower = text.toLowerCase()
+  return (
+    (!!communityName && lower.includes(communityName.toLowerCase())) ||
+    lower.includes('senior lifestyle corporation') ||
+    lower.includes('senior lifestyle')
+  )
 }
 
 function extractDomain(url: string): string {
@@ -21,13 +26,12 @@ function extractDomain(url: string): string {
 
 function checkCited(
   citations: Array<{ url: string; title: string; domain: string }>,
-  communityName: string
+  _communityName: string
 ): boolean {
-  const name = communityName.toLowerCase()
   return citations.some(
     (c) =>
-      c.url.toLowerCase().includes(name.replace(/\s+/g, '')) ||
-      c.title.toLowerCase().includes(name)
+      c.url.toLowerCase().includes('seniorlifestyle.com') ||
+      c.domain.toLowerCase().includes('seniorlifestyle.com')
   )
 }
 
