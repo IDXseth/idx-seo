@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* Explicitly declare all source trees so Tailwind v4 scans them in
+   production. Without these, the scanner may only see app/ (the CSS
+   file's own directory) and miss components/ and lib/ at the root. */
+@source "../components";
+@source "../app";
+@source "../lib";
+
 :root {
   --background: #f9fafb;
   --foreground: #111827;
