@@ -1,4 +1,4 @@
 {
   "framework": "nextjs",
-  "buildCommand": "prisma db push --accept-data-loss && next build"
+  "buildCommand": "DATABASE_URL=\"$DIRECT_URL\" prisma db push --accept-data-loss && next build"
 }
