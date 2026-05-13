@@ -409,6 +409,9 @@ function BatchCard({
             <Link href="/dashboard">
               <Button variant="outline" size="sm">View Results</Button>
             </Link>
+            <Link href={`/data/${batch.id}`}>
+              <Button variant="outline" size="sm">View Data</Button>
+            </Link>
             <button
               onClick={() => onShare(batch)}
               className="p-1.5 text-[#b8cdd3] hover:text-[#177e89] transition-colors"
