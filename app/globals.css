@@ -5,6 +5,10 @@
   --font-serif: var(--font-noto-serif), 'Noto Serif', ui-serif, Georgia, serif;
 }
 
+/* Ensure Tailwind scans components/ and lib/ at the project root */
+@source "../components/**/*.{ts,tsx}";
+@source "../lib/**/*.{ts,tsx}";
+
 :root {
   --background: #f0f4f7;
   --foreground: #1a1a1a;

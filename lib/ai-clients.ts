@@ -42,16 +42,38 @@ async function queryChatGPT(
   const { default: OpenAI } = await import('openai')
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
-  const response = await client.chat.completions.create({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const response = await (client as any).responses.create({
     model: 'gpt-4o',
-    messages: [{ role: 'user', content: promptText }],
-    max_tokens: 800,
+    tools: [{ type: 'web_search_preview' }],
+    input: promptText,
   })
 
-  const text = response.choices[0]?.message?.content ?? ''
-  const isMentioned = checkMention(text, communityName)
+  const text: string = response.output_text ?? ''
 
-  return { responseText: text, isMentioned, isCited: false, citations: [] }
+  // Extract URL citations from output annotations
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const annotations: any[] = (response.output ?? []).flatMap((item: any) =>
+    item.type === 'message'
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? (item.content ?? []).flatMap((c: any) =>
+          c.type === 'output_text' ? (c.annotations ?? []) : []
+        )
+      : []
+  )
+  const citations = annotations
+    .filter((a) => a.type === 'url_citation')
+    .map((a) => ({
+      url: a.url ?? '',
+      title: a.title ?? '',
+      domain: extractDomain(a.url ?? ''),
+    }))
+    .filter((c) => c.url)
+
+  const isMentioned = checkMention(text, communityName)
+  const isCited = isMentioned && checkCited(citations, communityName)
+
+  return { responseText: text, isMentioned, isCited, citations }
 }
 
 async function queryClaude(
@@ -63,15 +85,54 @@ async function queryClaude(
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 800,
+    max_tokens: 1024,
+    tools: [{ type: 'web_search_20250305' as const, name: 'web_search' }],
     messages: [{ role: 'user', content: promptText }],
   })
 
-  const block = response.content[0]
-  const text = block?.type === 'text' ? block.text : ''
-  const isMentioned = checkMention(text, communityName)
+  // Collect final text and citations from search result blocks
+  let text = ''
+  const citations: Array<{ url: string; title: string; domain: string }> = []
 
-  return { responseText: text, isMentioned, isCited: false, citations: [] }
+  for (const block of response.content) {
+    if (block.type === 'text') {
+      text += block.text
+    } else if (block.type === 'tool_result') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const content: any[] = Array.isArray((block as any).content) ? (block as any).content : []
+      for (const item of content) {
+        if (item.type === 'web_search_result') {
+          const url: string = item.url ?? ''
+          if (url) {
+            citations.push({
+              url,
+              title: item.title ?? '',
+              domain: extractDomain(url),
+            })
+          }
+        }
+      }
+    }
+  }
+
+  // If no citations from tool results, scan tool_use result blocks (alternate shape)
+  if (citations.length === 0) {
+    for (const block of response.content) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const b = block as any
+      if (b.type === 'tool_use' && b.name === 'web_search' && Array.isArray(b.input?.results)) {
+        for (const r of b.input.results) {
+          const url: string = r.url ?? ''
+          if (url) citations.push({ url, title: r.title ?? '', domain: extractDomain(url) })
+        }
+      }
+    }
+  }
+
+  const isMentioned = checkMention(text, communityName)
+  const isCited = isMentioned && checkCited(citations, communityName)
+
+  return { responseText: text, isMentioned, isCited, citations }
 }
 
 async function queryGemini(
@@ -80,13 +141,32 @@ async function queryGemini(
 ): Promise<PlatformResult> {
   const { GoogleGenerativeAI } = await import('@google/generative-ai')
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    tools: [{ googleSearch: {} } as never],
+  })
 
   const result = await model.generateContent(promptText)
   const text = result.response.text()
-  const isMentioned = checkMention(text, communityName)
 
-  return { responseText: text, isMentioned, isCited: false, citations: [] }
+  // Extract citations from Google Search grounding metadata
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const groundingMeta: any =
+    result.response.candidates?.[0]?.groundingMetadata ?? {}
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const chunks: any[] = groundingMeta.groundingChunks ?? []
+  const citations = chunks
+    .filter((c) => c.web?.uri)
+    .map((c) => ({
+      url: c.web.uri as string,
+      title: (c.web.title as string) ?? '',
+      domain: extractDomain(c.web.uri as string),
+    }))
+
+  const isMentioned = checkMention(text, communityName)
+  const isCited = isMentioned && checkCited(citations, communityName)
+
+  return { responseText: text, isMentioned, isCited, citations }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
