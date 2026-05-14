@@ -6,8 +6,7 @@ import { sendRunCompleteEmail } from '@/lib/email'
 
 // Fan-out: one event per prompt
 export const batchFanOut = inngest.createFunction(
-  { id: 'batch-fan-out' },
-  { event: 'batch/run.requested' },
+  { id: 'batch-fan-out', triggers: [{ event: 'batch/run.requested' }] },
   async ({ event, step }) => {
     const { batchId, batchRunId } = event.data as { batchId?: string; batchRunId: string }
 
@@ -48,9 +47,9 @@ export const batchFanOut = inngest.createFunction(
 export const runSinglePrompt = inngest.createFunction(
   {
     id: 'run-single-prompt',
+    triggers: [{ event: 'prompt/run.requested' }],
     concurrency: { limit: 5 },
   },
-  { event: 'prompt/run.requested' },
   async ({ event, step }) => {
     const { promptId, batchRunId } = event.data as { promptId: string; batchRunId: string }
 
