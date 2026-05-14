@@ -64,7 +64,8 @@ export default async function CareLevelDetailPage({
   params: Promise<{ name: string }>
 }) {
   const { name } = await params
-  const data = await getCareLevelData(name)
+  let data: Awaited<ReturnType<typeof getCareLevelData>> = null
+  try { data = await getCareLevelData(name) } catch { /* DB not configured */ }
 
   if (!data) notFound()
 

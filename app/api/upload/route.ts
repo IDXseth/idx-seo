@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
 
@@ -41,10 +42,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No rows found in spreadsheet' }, { status: 400 })
     }
 
+    const session = await auth()
+    const userId = session?.user?.id
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const batch = await prisma.batch.create({
       data: {
         name: batchName,
         fileName: file.name,
+        userId,
       },
     })
 

@@ -64,7 +64,8 @@ export default async function CategoryDetailPage({
   params: Promise<{ name: string }>
 }) {
   const { name } = await params
-  const data = await getCategoryData(name)
+  let data: Awaited<ReturnType<typeof getCategoryData>> = null
+  try { data = await getCategoryData(name) } catch { /* DB not configured */ }
 
   if (!data) notFound()
 

@@ -2,13 +2,46 @@ export interface PlatformResult {
   responseText: string
   isMentioned: boolean
   isCited: boolean
+  sentiment: 'positive' | 'neutral' | 'negative'
   citations: Array<{ url: string; title: string; domain: string }>
   error?: string
 }
 
+async function analyzeSentiment(
+  responseText: string,
+  communityName: string
+): Promise<'positive' | 'neutral' | 'negative'> {
+  if (!responseText || responseText.startsWith('[Error]') || responseText.startsWith('[Timeout]')) {
+    return 'neutral'
+  }
+  try {
+    const { default: Anthropic } = await import('@anthropic-ai/sdk')
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 5,
+      messages: [{
+        role: 'user',
+        content: `How does this AI response portray "${communityName}"? Reply with exactly one word: positive, neutral, or negative.\n\n${responseText.slice(0, 1500)}`,
+      }],
+    })
+    const word = response.content[0]?.type === 'text' ? response.content[0].text.toLowerCase() : ''
+    if (word.includes('positive')) return 'positive'
+    if (word.includes('negative')) return 'negative'
+    return 'neutral'
+  } catch {
+    return 'neutral'
+  }
+}
+
 function checkMention(text: string, communityName: string): boolean {
-  if (!text || !communityName) return false
-  return text.toLowerCase().includes(communityName.toLowerCase())
+  if (!text) return false
+  const lower = text.toLowerCase()
+  return (
+    (!!communityName && lower.includes(communityName.toLowerCase())) ||
+    lower.includes('senior lifestyle corporation') ||
+    lower.includes('senior lifestyle')
+  )
 }
 
 function extractDomain(url: string): string {
@@ -21,13 +54,12 @@ function extractDomain(url: string): string {
 
 function checkCited(
   citations: Array<{ url: string; title: string; domain: string }>,
-  communityName: string
+  _communityName: string
 ): boolean {
-  const name = communityName.toLowerCase()
   return citations.some(
     (c) =>
-      c.url.toLowerCase().includes(name.replace(/\s+/g, '')) ||
-      c.title.toLowerCase().includes(name)
+      c.url.toLowerCase().includes('seniorlifestyle.com') ||
+      c.domain.toLowerCase().includes('seniorlifestyle.com')
   )
 }
 
@@ -38,16 +70,39 @@ async function queryChatGPT(
   const { default: OpenAI } = await import('openai')
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
-  const response = await client.chat.completions.create({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const response = await (client as any).responses.create({
     model: 'gpt-4o',
-    messages: [{ role: 'user', content: promptText }],
-    max_tokens: 800,
+    tools: [{ type: 'web_search_preview' }],
+    input: promptText,
   })
 
-  const text = response.choices[0]?.message?.content ?? ''
-  const isMentioned = checkMention(text, communityName)
+  const text: string = response.output_text ?? ''
 
-  return { responseText: text, isMentioned, isCited: false, citations: [] }
+  // Extract URL citations from output annotations
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const annotations: any[] = (response.output ?? []).flatMap((item: any) =>
+    item.type === 'message'
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? (item.content ?? []).flatMap((c: any) =>
+          c.type === 'output_text' ? (c.annotations ?? []) : []
+        )
+      : []
+  )
+  const citations = annotations
+    .filter((a) => a.type === 'url_citation')
+    .map((a) => ({
+      url: a.url ?? '',
+      title: a.title ?? '',
+      domain: extractDomain(a.url ?? ''),
+    }))
+    .filter((c) => c.url)
+
+  const isMentioned = checkMention(text, communityName)
+  const isCited = isMentioned && checkCited(citations, communityName)
+  const sentiment = await analyzeSentiment(text, communityName)
+
+  return { responseText: text, isMentioned, isCited, sentiment, citations }
 }
 
 async function queryClaude(
@@ -59,15 +114,55 @@ async function queryClaude(
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 800,
+    max_tokens: 1024,
+    tools: [{ type: 'web_search_20250305' as const, name: 'web_search' }],
     messages: [{ role: 'user', content: promptText }],
   })
 
-  const block = response.content[0]
-  const text = block?.type === 'text' ? block.text : ''
-  const isMentioned = checkMention(text, communityName)
+  // Collect final text and citations from search result blocks
+  let text = ''
+  const citations: Array<{ url: string; title: string; domain: string }> = []
 
-  return { responseText: text, isMentioned, isCited: false, citations: [] }
+  for (const block of response.content) {
+    if (block.type === 'text') {
+      text += block.text
+    } else if (block.type === 'tool_result') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const content: any[] = Array.isArray((block as any).content) ? (block as any).content : []
+      for (const item of content) {
+        if (item.type === 'web_search_result') {
+          const url: string = item.url ?? ''
+          if (url) {
+            citations.push({
+              url,
+              title: item.title ?? '',
+              domain: extractDomain(url),
+            })
+          }
+        }
+      }
+    }
+  }
+
+  // If no citations from tool results, scan tool_use result blocks (alternate shape)
+  if (citations.length === 0) {
+    for (const block of response.content) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const b = block as any
+      if (b.type === 'tool_use' && b.name === 'web_search' && Array.isArray(b.input?.results)) {
+        for (const r of b.input.results) {
+          const url: string = r.url ?? ''
+          if (url) citations.push({ url, title: r.title ?? '', domain: extractDomain(url) })
+        }
+      }
+    }
+  }
+
+  const isMentioned = checkMention(text, communityName)
+  const isCited = isMentioned && checkCited(citations, communityName)
+  const sentiment = await analyzeSentiment(text, communityName)
+
+  return { responseText: text, isMentioned, isCited, sentiment, citations }
 }
 
 async function queryGemini(
@@ -76,13 +171,33 @@ async function queryGemini(
 ): Promise<PlatformResult> {
   const { GoogleGenerativeAI } = await import('@google/generative-ai')
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    tools: [{ googleSearch: {} } as never],
+  })
 
   const result = await model.generateContent(promptText)
   const text = result.response.text()
-  const isMentioned = checkMention(text, communityName)
 
-  return { responseText: text, isMentioned, isCited: false, citations: [] }
+  // Extract citations from Google Search grounding metadata
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const groundingMeta: any =
+    result.response.candidates?.[0]?.groundingMetadata ?? {}
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const chunks: any[] = groundingMeta.groundingChunks ?? []
+  const citations = chunks
+    .filter((c) => c.web?.uri)
+    .map((c) => ({
+      url: c.web.uri as string,
+      title: (c.web.title as string) ?? '',
+      domain: extractDomain(c.web.uri as string),
+    }))
+
+  const isMentioned = checkMention(text, communityName)
+  const isCited = isMentioned && checkCited(citations, communityName)
+  const sentiment = await analyzeSentiment(text, communityName)
+
+  return { responseText: text, isMentioned, isCited, sentiment, citations }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -143,8 +258,45 @@ function parseSearchAPIResponse(data: any, communityName: string): PlatformResul
 
   const isMentioned = checkMention(text, communityName)
   const isCited = isMentioned && checkCited(citations, communityName)
+  const sentiment = await analyzeSentiment(text, communityName)
 
-  return { responseText: text, isMentioned, isCited, citations }
+  return { responseText: text, isMentioned, isCited, sentiment, citations }
+}
+
+async function queryPerplexity(
+  promptText: string,
+  communityName: string
+): Promise<PlatformResult> {
+  const response = await fetch('https://api.perplexity.ai/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'sonar',
+      messages: [{ role: 'user', content: promptText }],
+    }),
+    signal: AbortSignal.timeout(30_000),
+  })
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '')
+    throw new Error(`Perplexity ${response.status}: ${body.slice(0, 200)}`)
+  }
+
+  const data = await response.json()
+  const text = data.choices?.[0]?.message?.content ?? ''
+  const rawCitations: unknown[] = data.citations ?? []
+  const citations = (rawCitations as string[])
+    .filter((url) => typeof url === 'string' && url.startsWith('http'))
+    .map((url) => ({ url, title: extractDomain(url), domain: extractDomain(url) }))
+
+  const isMentioned = checkMention(text, communityName)
+  const isCited = isMentioned && checkCited(citations, communityName)
+  const sentiment = await analyzeSentiment(text, communityName)
+
+  return { responseText: text, isMentioned, isCited, sentiment, citations }
 }
 
 async function querySearchAPI(
@@ -187,7 +339,7 @@ export async function queryPlatform(
       case 'gemini':
         return await queryGemini(promptText, communityName)
       case 'perplexity':
-        return await querySearchAPI('perplexity', promptText, communityName)
+        return await queryPerplexity(promptText, communityName)
       case 'google_aio':
         return await querySearchAPI('google', promptText, communityName)
       case 'google_ai_mode':
@@ -201,6 +353,7 @@ export async function queryPlatform(
       responseText: `[Error] ${message}`,
       isMentioned: false,
       isCited: false,
+      sentiment: 'neutral' as const,
       citations: [],
       error: message,
     }

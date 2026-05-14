@@ -1,21 +1,61 @@
 import { prisma } from '@/lib/prisma'
-import { queryPlatform } from '@/lib/ai-clients'
+import { queryPlatform, PlatformResult } from '@/lib/ai-clients'
 import { PLATFORMS } from '@/lib/utils'
+import { sendRunCompleteEmail } from '@/lib/email'
+
+export const maxDuration = 300
+
+const PLATFORM_TIMEOUT_MS = 28_000
+
+function withTimeout(promise: Promise<PlatformResult>): Promise<PlatformResult> {
+  return Promise.race([
+    promise,
+    new Promise<PlatformResult>((resolve) =>
+      setTimeout(
+        () => resolve({ responseText: '[Timeout]', isMentioned: false, isCited: false, citations: [], sentiment: 'neutral', error: 'Platform timed out' }),
+        PLATFORM_TIMEOUT_MS
+      )
+    ),
+  ])
+}
+
+// Returns unrun prompts for a batch (or all batches). Used by the client loop.
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url)
+  const batchId = searchParams.get('batchId') ?? undefined
+
+  const prompts = await prisma.prompt.findMany({
+    where: { ...(batchId ? { batchId } : {}), results: { none: {} } },
+    select: {
+      id: true,
+      promptText: true,
+      communityName: true,
+      batch: { select: { name: true } },
+    },
+    orderBy: { createdAt: 'asc' },
+  })
+
+  return Response.json(prompts)
+}
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const batchId = body.batchId as string | undefined
+  const notifyEmail = body.email as string | undefined
 
   const prompts = await prisma.prompt.findMany({
     where: {
       ...(batchId ? { batchId } : {}),
       results: { none: {} },
     },
+    include: { batch: { select: { name: true } } },
   })
 
   if (prompts.length === 0) {
     return Response.json({ success: true, processed: 0, message: 'No unrun prompts found' })
   }
+
+  const batchName = prompts[0]?.batch?.name
 
   const encoder = new TextEncoder()
 
@@ -27,15 +67,17 @@ export async function POST(req: Request) {
 
       let processed = 0
       let errors = 0
+      let mentionedCount = 0
+      let citedCount = 0
+      let totalResults = 0
       const total = prompts.length
 
       send({ type: 'start', total })
 
       for (const prompt of prompts) {
-        // Run all 6 platforms concurrently for this prompt
         const platformResults = await Promise.all(
           PLATFORMS.map(async (platform) => {
-            const result = await queryPlatform(platform, prompt.promptText, prompt.communityName)
+            const result = await withTimeout(queryPlatform(platform, prompt.promptText, prompt.communityName))
             return { platform, result }
           })
         )
@@ -63,6 +105,9 @@ export async function POST(req: Request) {
           }
 
           if (result.error) errors++
+          if (result.isMentioned) mentionedCount++
+          if (result.isCited) citedCount++
+          totalResults++
         }
 
         processed++
@@ -79,10 +124,32 @@ export async function POST(req: Request) {
             error: result.error ?? null,
           })),
         })
+
+        // Brief pause between prompts to respect API rate limits
+        if (processed < total) {
+          await new Promise((r) => setTimeout(r, 500))
+        }
       }
 
       send({ type: 'done', processed, errors })
       controller.close()
+
+      // Send email notification after stream closes
+      if (notifyEmail) {
+        try {
+          await sendRunCompleteEmail({
+            to: notifyEmail,
+            batchName,
+            processed,
+            errors,
+            mentionedCount,
+            citedCount,
+            totalResults,
+          })
+        } catch (err) {
+          console.error('Failed to send completion email:', err)
+        }
+      }
     },
   })
 

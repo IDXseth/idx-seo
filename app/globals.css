@@ -1,11 +1,56 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: var(--font-nunito), 'Nunito', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-noto-serif), 'Noto Serif', ui-serif, Georgia, serif;
+}
+
+/* Ensure Tailwind scans components/ and lib/ at the project root */
+@source "../components/**/*.{ts,tsx}";
+@source "../lib/**/*.{ts,tsx}";
+
 :root {
-  --background: #f9fafb;
-  --foreground: #111827;
+  --background: #f0f4f7;
+  --foreground: #1a1a1a;
+  --card: #ffffff;
+  --card-border: #dde6ea;
+  --primary: #084c61;
+  --primary-hover: #054166;
+  --primary-light: #e6f2f5;
+  --secondary: #177e89;
+  --accent: #ffc857;
+  --muted: #5a7a85;
+  --muted-bg: #f5f8fa;
+  --ring: rgba(8, 76, 97, 0.18);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
+  font-family: 'Nunito', sans-serif;
+  font-feature-settings: "rlig" 1, "calt" 1;
+  -webkit-font-smoothing: antialiased;
 }
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Noto Serif', serif;
+  color: #084c61;
+}
+
+/* Smooth card elevation */
+.card-elevated {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.04);
+  border: 1px solid var(--card-border);
+}
+
+/* Focus ring */
+*:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Thin scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #b8cdd3; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #8aadb8; }
