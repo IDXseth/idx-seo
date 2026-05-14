@@ -1,7 +1,23 @@
 import { prisma } from '@/lib/prisma'
-import { queryPlatform } from '@/lib/ai-clients'
+import { queryPlatform, PlatformResult } from '@/lib/ai-clients'
 import { PLATFORMS } from '@/lib/utils'
 import { sendRunCompleteEmail } from '@/lib/email'
+
+export const maxDuration = 300
+
+const PLATFORM_TIMEOUT_MS = 28_000
+
+function withTimeout(promise: Promise<PlatformResult>): Promise<PlatformResult> {
+  return Promise.race([
+    promise,
+    new Promise<PlatformResult>((resolve) =>
+      setTimeout(
+        () => resolve({ responseText: '[Timeout]', isMentioned: false, isCited: false, citations: [], error: 'Platform timed out' }),
+        PLATFORM_TIMEOUT_MS
+      )
+    ),
+  ])
+}
 
 // Returns unrun prompts for a batch (or all batches). Used by the client loop.
 export async function GET(req: Request) {
@@ -61,7 +77,7 @@ export async function POST(req: Request) {
       for (const prompt of prompts) {
         const platformResults = await Promise.all(
           PLATFORMS.map(async (platform) => {
-            const result = await queryPlatform(platform, prompt.promptText, prompt.communityName)
+            const result = await withTimeout(queryPlatform(platform, prompt.promptText, prompt.communityName))
             return { platform, result }
           })
         )
@@ -109,9 +125,9 @@ export async function POST(req: Request) {
           })),
         })
 
-        // Avoid rate limits — pause between prompts except after the last one
+        // Brief pause between prompts to respect API rate limits
         if (processed < total) {
-          await new Promise((r) => setTimeout(r, 1000))
+          await new Promise((r) => setTimeout(r, 500))
         }
       }
 
