@@ -74,6 +74,7 @@ export default async function CareLevelDetailPage({
       title={data.name}
       backHref="/dashboard"
       backLabel="Dashboard"
+      segmentType="careLevel"
       overview={data.overview}
       platformStats={data.platformStats}
       topDomains={data.topDomains}

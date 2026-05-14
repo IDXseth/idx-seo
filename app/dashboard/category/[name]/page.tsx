@@ -74,6 +74,7 @@ export default async function CategoryDetailPage({
       title={data.name}
       backHref="/dashboard"
       backLabel="Dashboard"
+      segmentType="category"
       overview={data.overview}
       platformStats={data.platformStats}
       topDomains={data.topDomains}

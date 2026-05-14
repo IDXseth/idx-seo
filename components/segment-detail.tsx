@@ -1,10 +1,11 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { PlatformMentionChart } from '@/components/platform-chart'
 import { PLATFORM_LABELS, PLATFORM_COLORS, formatPercent, cn } from '@/lib/utils'
-import { ChevronLeft, Target, Quote, FileText } from 'lucide-react'
+import { ChevronLeft, Target, Quote, FileText, Sparkles, X } from 'lucide-react'
 
 interface Citation {
   id: string
@@ -56,6 +57,7 @@ interface SegmentDetailProps {
   title: string
   backHref: string
   backLabel: string
+  segmentType: 'category' | 'community' | 'careLevel' | 'market'
   overview: Overview
   platformStats: PlatformStat[]
   topDomains: TopDomain[]
@@ -66,6 +68,7 @@ export function SegmentDetail({
   title,
   backHref,
   backLabel,
+  segmentType,
   overview,
   platformStats,
   topDomains,
@@ -73,6 +76,41 @@ export function SegmentDetail({
 }: SegmentDetailProps) {
   const platforms = platformStats.map((p) => p.platform)
   const maxDomainCount = topDomains[0]?.count ?? 1
+  const [analysis, setAnalysis] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(false)
+
+  async function runAnalysis() {
+    setAnalysis('')
+    setLoading(true)
+    setPanelOpen(true)
+    try {
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          segmentType,
+          segmentValue: title,
+          overview,
+          platformStats,
+          topDomains,
+          samplePrompts: prompts.slice(0, 10).map((p) => p.promptText),
+        }),
+      })
+      if (!res.ok || !res.body) throw new Error('Analysis failed')
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        setAnalysis((prev) => prev + decoder.decode(value, { stream: true }))
+      }
+    } catch {
+      setAnalysis('Unable to generate analysis. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -86,8 +124,47 @@ export function SegmentDetail({
         <span className="text-sm text-[#5a7a85]">{title}</span>
       </div>
 
-      {/* Page title */}
-      <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>{title}</h1>
+      {/* Page title + Ask Agent button */}
+      <div className="flex items-start justify-between gap-4">
+        <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>{title}</h1>
+        <button
+          onClick={runAnalysis}
+          disabled={loading}
+          className="flex-shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-[#084c61] hover:bg-[#054166] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+        >
+          <Sparkles className="h-4 w-4" />
+          {loading ? 'Analyzing…' : 'Ask Agent'}
+        </button>
+      </div>
+
+      {/* Analysis Panel */}
+      {panelOpen && (
+        <div className="rounded-xl border border-[#b8d8e0] bg-[#f0f8fa] p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-[#177e89]" />
+              <h2 className="text-sm font-semibold text-[#084c61]">AI Visibility Analysis</h2>
+            </div>
+            <button
+              onClick={() => setPanelOpen(false)}
+              className="text-[#8aadb8] hover:text-[#084c61] transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          {analysis ? (
+            <p className="text-sm text-[#1a1a1a] leading-relaxed whitespace-pre-wrap">
+              {analysis}
+              {loading && <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-[#177e89] animate-pulse rounded-sm align-text-bottom" />}
+            </p>
+          ) : (
+            <div className="flex items-center gap-3 text-sm text-[#5a7a85]">
+              <div className="h-4 w-4 rounded-full border-2 border-[#177e89] border-t-transparent animate-spin" />
+              Analyzing visibility data…
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Summary Stats */}
       <div className="grid grid-cols-3 gap-4">
