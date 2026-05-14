@@ -217,7 +217,22 @@ async function parseSearchAPIResponse(data: any, communityName: string): Promise
   let text = ''
   let citations: Array<{ url: string; title: string; domain: string }> = []
 
-  if (data.ai_overview) {
+  // AI Mode response shape
+  if (data.ai_mode) {
+    const am = data.ai_mode
+    text = am.text ?? am.answer ?? am.snippet ?? ''
+    const sources: unknown[] = am.sources ?? am.references ?? am.links ?? []
+    citations = (sources as Array<Record<string, string>>)
+      .map((s) => ({
+        url: s.link ?? s.url ?? '',
+        title: s.title ?? s.name ?? '',
+        domain: extractDomain(s.link ?? s.url ?? ''),
+      }))
+      .filter((c) => c.url)
+  }
+
+  // AI Overviews response shape
+  if (!text && data.ai_overview) {
     const aio = data.ai_overview
     text = aio.answer ?? aio.text ?? aio.snippet ?? ''
     const sources: unknown[] = aio.sources ?? aio.references ?? aio.links ?? []
@@ -228,7 +243,9 @@ async function parseSearchAPIResponse(data: any, communityName: string): Promise
         domain: extractDomain(s.link ?? s.url ?? ''),
       }))
       .filter((c) => c.url)
-  } else if (data.answer) {
+  }
+
+  if (!text && data.answer) {
     text = data.answer
     const refs: unknown[] = data.citations ?? data.references ?? data.sources ?? []
     citations = (refs as Array<Record<string, string>>)
@@ -238,7 +255,9 @@ async function parseSearchAPIResponse(data: any, communityName: string): Promise
         domain: extractDomain(r.url ?? r.link ?? ''),
       }))
       .filter((c) => c.url)
-  } else if (data.answer_box) {
+  }
+
+  if (!text && data.answer_box) {
     const box = data.answer_box
     text = box.answer ?? box.snippet ?? box.result ?? ''
     const sources: unknown[] = box.sources ?? box.links ?? []
@@ -251,21 +270,26 @@ async function parseSearchAPIResponse(data: any, communityName: string): Promise
       .filter((c) => c.url)
   }
 
-  if (!text && Array.isArray(data.organic_results)) {
-    text = data.organic_results
-      .slice(0, 3)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((r: any) => r.snippet ?? '')
-      .join(' ')
-    citations = data.organic_results
-      .slice(0, 5)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((r: any) => ({
-        url: r.link ?? '',
-        title: r.title ?? '',
-        domain: extractDomain(r.link ?? ''),
-      }))
-      .filter((c: { url: string }) => c.url)
+  // Always fall back to organic results for both text snippet and citations
+  if (Array.isArray(data.organic_results) && data.organic_results.length > 0) {
+    if (!text) {
+      text = data.organic_results
+        .slice(0, 3)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((r: any) => r.snippet ?? '')
+        .join(' ')
+    }
+    if (citations.length === 0) {
+      citations = data.organic_results
+        .slice(0, 5)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((r: any) => ({
+          url: r.link ?? '',
+          title: r.title ?? '',
+          domain: extractDomain(r.link ?? ''),
+        }))
+        .filter((c: { url: string }) => c.url)
+    }
   }
 
   const isMentioned = checkMention(text, communityName)
@@ -311,6 +335,35 @@ async function queryPerplexity(
   return { responseText: text, isMentioned, isCited, sentiment, citations }
 }
 
+async function fetchFallbackCitations(
+  promptText: string
+): Promise<Array<{ url: string; title: string; domain: string }>> {
+  const apiKey = process.env.SEARCHAPI_KEY
+  if (!apiKey) return []
+  try {
+    const url = new URL('https://www.searchapi.io/api/v1/search')
+    url.searchParams.set('api_key', apiKey)
+    url.searchParams.set('engine', 'google')
+    url.searchParams.set('q', promptText)
+    url.searchParams.set('gl', 'us')
+    url.searchParams.set('num', '5')
+    const response = await fetch(url.toString(), {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(15_000),
+    })
+    if (!response.ok) return []
+    const data = await response.json()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (data.organic_results ?? []).slice(0, 5).map((r: any) => ({
+      url: r.link ?? '',
+      title: r.title ?? '',
+      domain: extractDomain(r.link ?? ''),
+    })).filter((c: { url: string }) => c.url)
+  } catch {
+    return []
+  }
+}
+
 async function querySearchAPI(
   engine: string,
   promptText: string,
@@ -322,6 +375,7 @@ async function querySearchAPI(
   url.searchParams.set('engine', engine)
   url.searchParams.set('q', promptText)
   url.searchParams.set('gl', 'us')
+  url.searchParams.set('hl', 'en')
 
   const response = await fetch(url.toString(), {
     headers: { Accept: 'application/json' },
@@ -343,15 +397,16 @@ export async function queryPlatform(
   communityName: string
 ): Promise<PlatformResult> {
   try {
+    let result: PlatformResult
     switch (platform) {
       case 'chatgpt':
-        return await queryChatGPT(promptText, communityName)
+        result = await queryChatGPT(promptText, communityName); break
       case 'claude':
-        return await queryClaude(promptText, communityName)
+        result = await queryClaude(promptText, communityName); break
       case 'gemini':
-        return await queryGemini(promptText, communityName)
+        result = await queryGemini(promptText, communityName); break
       case 'perplexity':
-        return await queryPerplexity(promptText, communityName)
+        result = await queryPerplexity(promptText, communityName); break
       case 'google_aio':
         return await querySearchAPI('google', promptText, communityName)
       case 'google_ai_mode':
@@ -359,6 +414,11 @@ export async function queryPlatform(
       default:
         throw new Error(`Unknown platform: ${platform}`)
     }
+    // For platforms that query AI directly, fall back to organic search citations when none returned
+    if (result.citations.length === 0 && !result.error) {
+      result.citations = await fetchFallbackCitations(promptText)
+    }
+    return result
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return {
