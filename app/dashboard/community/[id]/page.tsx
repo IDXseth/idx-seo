@@ -103,7 +103,6 @@ export default async function CommunityDetailPage({
       title={data.communityName}
       backHref="/dashboard"
       backLabel="Dashboard"
-      segmentType="community"
       overview={data.overview}
       platformStats={data.platformStats}
       topDomains={data.topDomains}
