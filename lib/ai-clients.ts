@@ -201,7 +201,7 @@ async function queryGemini(
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseSearchAPIResponse(data: any, communityName: string): PlatformResult {
+async function parseSearchAPIResponse(data: any, communityName: string): Promise<PlatformResult> {
   let text = ''
   let citations: Array<{ url: string; title: string; domain: string }> = []
 
@@ -322,7 +322,7 @@ async function querySearchAPI(
   }
 
   const data = await response.json()
-  return parseSearchAPIResponse(data, communityName)
+  return await parseSearchAPIResponse(data, communityName)
 }
 
 export async function queryPlatform(
