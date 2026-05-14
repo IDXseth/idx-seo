@@ -1,3 +1,13 @@
+async function resolveRedirect(url: string): Promise<string> {
+  if (!url.includes('vertexaisearch.cloud.google.com')) return url
+  try {
+    const res = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(5000) })
+    return res.url || url
+  } catch {
+    return url
+  }
+}
+
 export interface PlatformResult {
   responseText: string
   isMentioned: boolean
@@ -185,13 +195,15 @@ async function queryGemini(
     result.response.candidates?.[0]?.groundingMetadata ?? {}
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chunks: any[] = groundingMeta.groundingChunks ?? []
-  const citations = chunks
-    .filter((c) => c.web?.uri)
-    .map((c) => ({
-      url: c.web.uri as string,
-      title: (c.web.title as string) ?? '',
-      domain: extractDomain(c.web.uri as string),
-    }))
+  const citations = await Promise.all(
+    chunks
+      .filter((c) => c.web?.uri)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map(async (c: any) => {
+        const url = await resolveRedirect(c.web.uri as string)
+        return { url, title: (c.web.title as string) ?? '', domain: extractDomain(url) }
+      })
+  )
 
   const isMentioned = checkMention(text, communityName)
   const isCited = isMentioned && checkCited(citations, communityName)
