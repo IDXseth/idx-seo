@@ -6,11 +6,10 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import {
-  Play, CheckCircle2, AlertCircle, RefreshCw, BarChart3, Circle,
+  Play, CheckCircle2, AlertCircle, RefreshCw, BarChart3,
   Mail, Pencil, Trash2, Share2, X, Check, Link2, UserPlus,
 } from 'lucide-react'
 import Link from 'next/link'
-import { PLATFORM_LABELS, PLATFORM_COLORS } from '@/lib/utils'
 
 interface BatchInfo {
   id: string
@@ -22,21 +21,6 @@ interface BatchInfo {
   shareToken?: string | null
   _count: { prompts: number }
   unrunCount: number
-}
-
-interface PlatformStatus {
-  platform: string
-  isMentioned: boolean
-  isCited: boolean
-  error: string | null
-}
-
-interface ProgressEntry {
-  processed: number
-  total: number
-  prompt: string
-  community: string
-  platformResults: PlatformStatus[]
 }
 
 interface ShareEntry {
@@ -433,20 +417,35 @@ function BatchCard({
   )
 }
 
+interface RunStatus {
+  batchRunId: string
+  totalPrompts: number
+  doneCount: number
+  failCount: number
+  status: string
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 export default function RunPage() {
   const [batches, setBatches] = useState<BatchInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
-  const [progressLog, setProgressLog] = useState<ProgressEntry[]>([])
+  const [runStatus, setRunStatus] = useState<RunStatus | null>(null)
   const [done, setDone] = useState<{ processed: number; errors: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notifyEmail, setNotifyEmail] = useState('')
   const [emailError, setEmailError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<BatchInfo | null>(null)
   const [shareTarget, setShareTarget] = useState<BatchInfo | null>(null)
-  const logEndRef = useRef<HTMLDivElement>(null)
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const stopPolling = () => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current)
+      pollingRef.current = null
+    }
+  }
 
   const fetchBatches = useCallback(async () => {
     setLoading(true)
@@ -468,9 +467,32 @@ export default function RunPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [progressLog])
+  // Cleanup polling on unmount
+  useEffect(() => () => stopPolling(), [])
+
+  const startPolling = useCallback((batchRunId: string, runningKey: string) => {
+    stopPolling()
+    pollingRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/run/status?batchRunId=${batchRunId}`)
+        if (!res.ok) return
+        const status: RunStatus = await res.json()
+        const completed = status.doneCount + status.failCount
+        setRunStatus(status)
+        setProgress(status.totalPrompts > 0 ? Math.round((completed / status.totalPrompts) * 100) : 0)
+
+        if (status.status === 'done') {
+          stopPolling()
+          setDone({ processed: status.doneCount, errors: status.failCount })
+          setRunning(null)
+          setRunStatus(null)
+          fetchBatches()
+        }
+      } catch {
+        // network hiccup — keep polling
+      }
+    }, 3000)
+  }, [fetchBatches])
 
   const runPrompts = async (batchId?: string) => {
     const trimmedEmail = notifyEmail.trim()
@@ -481,91 +503,29 @@ export default function RunPage() {
     setEmailError(null)
     setRunning(batchId ?? 'all')
     setProgress(0)
-    setProgressLog([])
+    setRunStatus(null)
     setDone(null)
     setError(null)
 
     try {
-      // Fetch the list of unrun prompts up front
-      const listUrl = batchId ? `/api/run?batchId=${batchId}` : '/api/run'
-      const listRes = await fetch(listUrl)
-      if (!listRes.ok) throw new Error('Failed to load prompts')
-      const prompts: Array<{ id: string; promptText: string; communityName: string; batch: { name: string } }> =
-        await listRes.json()
+      const res = await fetch('/api/run/queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batchId, email: trimmedEmail || undefined }),
+      })
+      const data = await res.json()
 
-      if (prompts.length === 0) {
+      if (!res.ok) throw new Error(data.error || 'Failed to queue run')
+
+      if (data.processed === 0 || !data.batchRunId) {
         setDone({ processed: 0, errors: 0 })
+        setRunning(null)
         return
       }
 
-      const total = prompts.length
-      let processed = 0
-      let errors = 0
-      let mentionedCount = 0
-      let citedCount = 0
-      let totalResults = 0
-      const batchName = prompts[0]?.batch?.name
-
-      // Run one prompt at a time — each call is ~30s, well within Vercel limits.
-      // Results are saved server-side so closing the tab doesn't lose work;
-      // clicking Run again resumes from the next unrun prompt.
-      for (const prompt of prompts) {
-        try {
-          const res = await fetch('/api/run/prompt', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ promptId: prompt.id }),
-          })
-          const data = await res.json()
-
-          if (!data.skipped) {
-            const platformResults: Array<{ platform: string; isMentioned: boolean; isCited: boolean; error: string | null }> =
-              data.platformResults ?? []
-            for (const pr of platformResults) {
-              if (pr.error) errors++
-              if (pr.isMentioned) mentionedCount++
-              if (pr.isCited) citedCount++
-              totalResults++
-            }
-            processed++
-            setProgress(Math.round((processed / total) * 100))
-            setProgressLog((prev) => [
-              ...prev,
-              {
-                processed,
-                total,
-                prompt: prompt.promptText.slice(0, 80),
-                community: prompt.communityName,
-                platformResults: data.platformResults,
-              },
-            ])
-          }
-        } catch {
-          // Network error on one prompt — count as errors and continue
-          errors++
-          processed++
-          setProgress(Math.round((processed / total) * 100))
-        }
-
-        // Brief pause between prompts to respect rate limits
-        if (processed < total) await new Promise((r) => setTimeout(r, 500))
-      }
-
-      setProgress(100)
-      setDone({ processed, errors })
-      await fetchBatches()
-
-      // Send completion email
-      if (trimmedEmail) {
-        fetch('/api/run/notify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to: trimmedEmail, batchName, processed, errors, mentionedCount, citedCount, totalResults }),
-        }).catch(() => {})
-      }
+      startPolling(data.batchRunId, batchId ?? 'all')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Run failed')
-    } finally {
       setRunning(null)
     }
   }
@@ -622,7 +582,7 @@ export default function RunPage() {
           <p className="text-sm font-semibold text-[#084c61]">Email notification (optional)</p>
         </div>
         <p className="text-xs text-[#5a7a85] mb-3">
-          Enter your email to receive a summary when the run completes — useful if you want to close this tab while prompts process in the background.
+          Prompts run in the background — you can close this tab. Enter your email to get notified when complete.
         </p>
         <input
           type="email"
@@ -649,50 +609,16 @@ export default function RunPage() {
             <div className="flex items-center gap-3 mb-3">
               <RefreshCw className="h-5 w-5 text-[#177e89] animate-spin" />
               <span className="text-sm font-medium text-[#084c61]">
-                Querying AI platforms in real time…
+                Processing in background — you can close this tab
               </span>
               <span className="ml-auto text-sm text-[#5a7a85]">{progress}%</span>
             </div>
-            <Progress value={progress} className="h-2 mb-4" />
-
-            {progressLog.length > 0 && (
-              <div className="space-y-2 max-h-64 overflow-y-auto text-xs">
-                {progressLog.map((entry, i) => (
-                  <div key={i} className="border border-[#eef3f5] rounded-lg p-2 bg-[#f5f8fa]">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-[#084c61] truncate max-w-xs">
-                        {entry.community}
-                      </span>
-                      <span className="text-[#8aadb8] ml-2">{entry.processed}/{entry.total}</span>
-                    </div>
-                    <p className="text-[#5a7a85] truncate mb-1.5">{entry.prompt}</p>
-                    <div className="flex flex-wrap gap-1">
-                      {entry.platformResults.map(({ platform, isMentioned, isCited, error: pErr }) => (
-                        <span
-                          key={platform}
-                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium"
-                          style={{
-                            backgroundColor: `${PLATFORM_COLORS[platform]}22`,
-                            color: PLATFORM_COLORS[platform],
-                          }}
-                        >
-                          {pErr ? (
-                            <AlertCircle className="h-2.5 w-2.5" />
-                          ) : isCited ? (
-                            <CheckCircle2 className="h-2.5 w-2.5" />
-                          ) : isMentioned ? (
-                            <Circle className="h-2.5 w-2.5 fill-current" />
-                          ) : (
-                            <Circle className="h-2.5 w-2.5" />
-                          )}
-                          {PLATFORM_LABELS[platform]}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-                <div ref={logEndRef} />
-              </div>
+            <Progress value={progress} className="h-2 mb-3" />
+            {runStatus && (
+              <p className="text-xs text-[#5a7a85]">
+                {runStatus.doneCount + runStatus.failCount} / {runStatus.totalPrompts} prompts complete
+                {runStatus.failCount > 0 && ` (${runStatus.failCount} errors)`}
+              </p>
             )}
           </CardContent>
         </Card>
@@ -725,14 +651,6 @@ export default function RunPage() {
           <p className="text-sm text-rose-700">{error}</p>
         </div>
       )}
-
-      {/* Legend */}
-      <div className="flex items-center gap-4 text-xs text-[#5a7a85] mb-4">
-        <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-emerald-500" /> Cited</span>
-        <span className="flex items-center gap-1"><Circle className="h-3 w-3 fill-[#8aadb8] text-[#8aadb8]" /> Mentioned only</span>
-        <span className="flex items-center gap-1"><Circle className="h-3 w-3 text-[#8aadb8]" /> Not mentioned</span>
-        <span className="flex items-center gap-1"><AlertCircle className="h-3 w-3 text-rose-400" /> Error</span>
-      </div>
 
       {loading ? (
         <Card>

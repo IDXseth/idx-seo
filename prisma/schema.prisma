@@ -79,7 +79,21 @@ model Batch {
   shareToken String?        @unique @default(cuid())
   prompts    Prompt[]
   shares     ProjectShare[]
+  runs       BatchRun[]
   createdAt  DateTime       @default(now())
+}
+
+model BatchRun {
+  id           String    @id @default(cuid())
+  batchId      String?
+  batch        Batch?    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  totalPrompts Int
+  doneCount    Int       @default(0)
+  failCount    Int       @default(0)
+  notifyEmail  String?
+  status       String    @default("running")  // "running" | "done"
+  startedAt    DateTime  @default(now())
+  finishedAt   DateTime?
 }
 
 model Prompt {
@@ -93,6 +107,8 @@ model Prompt {
   market        String
   levelOfCare   String   // "Assisted Living" | "Independent Living" | "Memory Care" | "Skilled Nursing" | "Short Term Care" | ""
   promptText    String
+  jobStatus     String   @default("pending")  // "pending" | "running" | "done" | "failed"
+  jobError      String?
   results       Result[]
   createdAt     DateTime @default(now())
 }
