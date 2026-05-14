@@ -3,6 +3,25 @@ import { queryPlatform } from '@/lib/ai-clients'
 import { PLATFORMS } from '@/lib/utils'
 import { sendRunCompleteEmail } from '@/lib/email'
 
+// Returns unrun prompts for a batch (or all batches). Used by the client loop.
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url)
+  const batchId = searchParams.get('batchId') ?? undefined
+
+  const prompts = await prisma.prompt.findMany({
+    where: { ...(batchId ? { batchId } : {}), results: { none: {} } },
+    select: {
+      id: true,
+      promptText: true,
+      communityName: true,
+      batch: { select: { name: true } },
+    },
+    orderBy: { createdAt: 'asc' },
+  })
+
+  return Response.json(prompts)
+}
+
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const batchId = body.batchId as string | undefined
