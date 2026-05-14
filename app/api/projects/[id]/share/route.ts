@@ -65,15 +65,12 @@ export async function POST(
     // Find if this user already exists
     const invitedUser = await prisma.user.findUnique({ where: { email: normalizedEmail } })
 
-    const { share, created } = await prisma.$transaction(async (tx) => {
-      const existing = await tx.projectShare.findUnique({
-        where: { batchId_email: { batchId: id, email: normalizedEmail } },
-      })
-      if (existing) return { share: existing, created: false }
-      const s = await tx.projectShare.create({
-        data: { batchId: id, email: normalizedEmail, userId: invitedUser?.id ?? null },
-      })
-      return { share: s, created: true }
+    const existing = await prisma.projectShare.findUnique({
+      where: { batchId_email: { batchId: id, email: normalizedEmail } },
+    })
+    const created = !existing
+    const share = existing ?? await prisma.projectShare.create({
+      data: { batchId: id, email: normalizedEmail, userId: invitedUser?.id ?? null },
     })
 
     // Send invite email only on first share (not re-invites)
