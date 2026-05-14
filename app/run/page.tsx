@@ -486,50 +486,82 @@ export default function RunPage() {
     setError(null)
 
     try {
-      const res = await fetch('/api/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...(batchId ? { batchId } : {}),
-          ...(trimmedEmail ? { email: trimmedEmail } : {}),
-        }),
-      })
+      // Fetch the list of unrun prompts up front
+      const listUrl = batchId ? `/api/run?batchId=${batchId}` : '/api/run'
+      const listRes = await fetch(listUrl)
+      if (!listRes.ok) throw new Error('Failed to load prompts')
+      const prompts: Array<{ id: string; promptText: string; communityName: string; batch: { name: string } }> =
+        await listRes.json()
 
-      if (!res.ok || !res.body) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error ?? 'Run failed')
+      if (prompts.length === 0) {
+        setDone({ processed: 0, errors: 0 })
+        return
       }
 
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
+      const total = prompts.length
+      let processed = 0
+      let errors = 0
+      let mentionedCount = 0
+      let citedCount = 0
+      let totalResults = 0
+      const batchName = prompts[0]?.batch?.name
 
-      while (true) {
-        const { done: streamDone, value } = await reader.read()
-        if (streamDone) break
+      // Run one prompt at a time — each call is ~30s, well within Vercel limits.
+      // Results are saved server-side so closing the tab doesn't lose work;
+      // clicking Run again resumes from the next unrun prompt.
+      for (const prompt of prompts) {
+        try {
+          const res = await fetch('/api/run/prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ promptId: prompt.id }),
+          })
+          const data = await res.json()
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          try {
-            const event = JSON.parse(line.slice(6))
-            if (event.type === 'start') {
-              setProgress(0)
-            } else if (event.type === 'progress') {
-              setProgress(Math.round((event.processed / event.total) * 100))
-              setProgressLog((prev) => [...prev, event as ProgressEntry])
-            } else if (event.type === 'done') {
-              setProgress(100)
-              setDone({ processed: event.processed, errors: event.errors })
-              await fetchBatches()
+          if (!data.skipped) {
+            const platformResults: Array<{ platform: string; isMentioned: boolean; isCited: boolean; error: string | null }> =
+              data.platformResults ?? []
+            for (const pr of platformResults) {
+              if (pr.error) errors++
+              if (pr.isMentioned) mentionedCount++
+              if (pr.isCited) citedCount++
+              totalResults++
             }
-          } catch {
-            // malformed event
+            processed++
+            setProgress(Math.round((processed / total) * 100))
+            setProgressLog((prev) => [
+              ...prev,
+              {
+                processed,
+                total,
+                prompt: prompt.promptText.slice(0, 80),
+                community: prompt.communityName,
+                platformResults: data.platformResults,
+              },
+            ])
           }
+        } catch {
+          // Network error on one prompt — count as errors and continue
+          errors++
+          processed++
+          setProgress(Math.round((processed / total) * 100))
         }
+
+        // Brief pause between prompts to respect rate limits
+        if (processed < total) await new Promise((r) => setTimeout(r, 500))
+      }
+
+      setProgress(100)
+      setDone({ processed, errors })
+      await fetchBatches()
+
+      // Send completion email
+      if (trimmedEmail) {
+        fetch('/api/run/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: trimmedEmail, batchName, processed, errors, mentionedCount, citedCount, totalResults }),
+        }).catch(() => {})
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Run failed')
