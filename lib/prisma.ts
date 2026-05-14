@@ -5,10 +5,13 @@ import { Pool } from 'pg'
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined }
 
 function createClient() {
-  // Prefer direct connection — Supabase transaction pooler (PgBouncer)
-  // is incompatible with Prisma's driver adapter at runtime.
-  const connectionString = process.env.DIRECT_URL ?? process.env.DATABASE_URL
-  const pool = new Pool({ connectionString })
+  // Use the transaction pooler (DATABASE_URL, port 6543) — the direct
+  // connection (DIRECT_URL, port 5432) is unreachable from Vercel runtime.
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    // Disable prepared statements — required for PgBouncer transaction mode.
+    statement_timeout: 30000,
+  })
   const adapter = new PrismaPg(pool)
   return new PrismaClient({ adapter })
 }
