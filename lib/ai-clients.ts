@@ -82,7 +82,7 @@ async function queryChatGPT(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const response = await (client as any).responses.create({
-    model: 'gpt-4o-search-preview',
+    model: 'gpt-4o',
     tools: [{ type: 'web_search_preview' }],
     input: promptText || ' ',
   })
@@ -213,15 +213,21 @@ async function queryGemini(
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function parseSearchAPIResponse(data: any, communityName: string): Promise<PlatformResult> {
+async function parseSearchAPIResponse(data: any, communityName: string, engine?: string): Promise<PlatformResult> {
   let text = ''
   let citations: Array<{ url: string; title: string; domain: string }> = []
+
+  // Debug: log top-level keys for AI Mode to diagnose missing data
+  if (engine === 'google_ai_mode') {
+    console.log('[AI Mode] top-level keys:', Object.keys(data))
+    if (data.ai_mode) console.log('[AI Mode] ai_mode keys:', Object.keys(data.ai_mode))
+  }
 
   // AI Mode response shape
   if (data.ai_mode) {
     const am = data.ai_mode
-    text = am.text ?? am.answer ?? am.snippet ?? ''
-    const sources: unknown[] = am.sources ?? am.references ?? am.links ?? []
+    text = am.text ?? am.answer ?? am.snippet ?? am.summary ?? ''
+    const sources: unknown[] = am.sources ?? am.references ?? am.links ?? am.citations ?? []
     citations = (sources as Array<Record<string, string>>)
       .map((s) => ({
         url: s.link ?? s.url ?? '',
@@ -388,7 +394,7 @@ async function querySearchAPI(
   }
 
   const data = await response.json()
-  return await parseSearchAPIResponse(data, communityName)
+  return await parseSearchAPIResponse(data, communityName, engine)
 }
 
 export async function queryPlatform(
