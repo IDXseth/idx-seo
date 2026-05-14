@@ -12,7 +12,7 @@ function withTimeout(promise: Promise<PlatformResult>): Promise<PlatformResult> 
     promise,
     new Promise<PlatformResult>((resolve) =>
       setTimeout(
-        () => resolve({ responseText: '[Timeout]', isMentioned: false, isCited: false, citations: [], error: 'Platform timed out' }),
+        () => resolve({ responseText: '[Timeout]', isMentioned: false, isCited: false, citations: [], sentiment: 'neutral', error: 'Platform timed out' }),
         PLATFORM_TIMEOUT_MS
       )
     ),

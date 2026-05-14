@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
 }
 
 model User {
@@ -70,30 +70,65 @@ model ProjectShare {
 }
 
 model Batch {
-  id         String         @id @default(cuid())
-  name       String
-  fileName   String
-  userId     String
-  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  isPrivate  Boolean        @default(true)
-  shareToken String?        @unique @default(cuid())
-  prompts    Prompt[]
-  shares     ProjectShare[]
-  runs       BatchRun[]
-  createdAt  DateTime       @default(now())
+  id          String         @id @default(cuid())
+  name        String
+  fileName    String
+  userId      String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isPrivate   Boolean        @default(true)
+  shareToken  String?        @unique @default(cuid())
+  prompts     Prompt[]
+  shares      ProjectShare[]
+  runs        BatchRun[]
+  runSessions RunSession[]
+  schedules   Schedule[]
+  createdAt   DateTime       @default(now())
 }
 
 model BatchRun {
-  id           String    @id @default(cuid())
+  id           String      @id @default(cuid())
   batchId      String?
-  batch        Batch?    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  batch        Batch?      @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  runSessionId String?
+  runSession   RunSession? @relation(fields: [runSessionId], references: [id])
   totalPrompts Int
-  doneCount    Int       @default(0)
-  failCount    Int       @default(0)
+  doneCount    Int         @default(0)
+  failCount    Int         @default(0)
   notifyEmail  String?
-  status       String    @default("running")  // "running" | "done"
-  startedAt    DateTime  @default(now())
+  status       String      @default("running")  // "running" | "done"
+  startedAt    DateTime    @default(now())
   finishedAt   DateTime?
+}
+
+model RunSession {
+  id          String     @id @default(cuid())
+  batchId     String?
+  batch       Batch?     @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  triggeredBy String     @default("manual")  // "manual" | "scheduled"
+  scheduleId  String?
+  schedule    Schedule?  @relation(fields: [scheduleId], references: [id])
+  status      String     @default("running")  // "running" | "done"
+  batchRuns   BatchRun[]
+  results     Result[]
+  startedAt   DateTime   @default(now())
+  finishedAt  DateTime?
+}
+
+model Schedule {
+  id          String       @id @default(cuid())
+  batchId     String
+  batch       Batch        @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  frequency   String       // "daily" | "weekly" | "monthly" | "custom"
+  customDays  Int?         // days between runs, for "custom"
+  dayOfWeek   Int?         // 0–6 (Sun=0), for "weekly"
+  dayOfMonth  Int?         // 1–31, for "monthly"
+  hour        Int          @default(9)
+  timezone    String       @default("America/Chicago")
+  enabled     Boolean      @default(true)
+  nextRunAt   DateTime
+  lastRunAt   DateTime?
+  runSessions RunSession[]
+  createdAt   DateTime     @default(now())
 }
 
 model Prompt {
@@ -114,15 +149,18 @@ model Prompt {
 }
 
 model Result {
-  id           String     @id @default(cuid())
+  id           String      @id @default(cuid())
   promptId     String
-  prompt       Prompt     @relation(fields: [promptId], references: [id], onDelete: Cascade)
-  platform     String     // "chatgpt" | "claude" | "perplexity" | "gemini" | "google_aio" | "google_ai_mode"
+  prompt       Prompt      @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  runSessionId String?
+  runSession   RunSession? @relation(fields: [runSessionId], references: [id])
+  platform     String      // "chatgpt" | "claude" | "perplexity" | "gemini" | "google_aio" | "google_ai_mode"
   responseText String
-  isMentioned  Boolean    @default(false)
-  isCited      Boolean    @default(false)
+  isMentioned  Boolean     @default(false)
+  isCited      Boolean     @default(false)
+  sentiment    String      @default("neutral")  // "positive" | "neutral" | "negative"
   citations    Citation[]
-  runAt        DateTime   @default(now())
+  runAt        DateTime    @default(now())
 }
 
 model Citation {
