@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
     '@prisma/client',
     '@prisma/adapter-pg',
     'pg',
+    'inngest',
   ],
   experimental: {
     // Tree-shake icon imports so webpack only compiles icons actually used.
