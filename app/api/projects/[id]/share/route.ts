@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { sendShareInviteEmail } from '@/lib/email'
 
 async function getAuthorizedBatch(batchId: string, userId: string) {
   const batch = await prisma.batch.findUnique({ where: { id: batchId } })
@@ -64,15 +65,31 @@ export async function POST(
     // Find if this user already exists
     const invitedUser = await prisma.user.findUnique({ where: { email: normalizedEmail } })
 
-    const share = await prisma.projectShare.upsert({
-      where: { batchId_email: { batchId: id, email: normalizedEmail } },
-      create: {
-        batchId: id,
-        email: normalizedEmail,
-        userId: invitedUser?.id ?? null,
-      },
-      update: {},
+    const { share, created } = await prisma.$transaction(async (tx) => {
+      const existing = await tx.projectShare.findUnique({
+        where: { batchId_email: { batchId: id, email: normalizedEmail } },
+      })
+      if (existing) return { share: existing, created: false }
+      const s = await tx.projectShare.create({
+        data: { batchId: id, email: normalizedEmail, userId: invitedUser?.id ?? null },
+      })
+      return { share: s, created: true }
     })
+
+    // Send invite email only on first share (not re-invites)
+    if (created) {
+      const batchWithToken = await prisma.batch.findUnique({
+        where: { id },
+        select: { name: true, shareToken: true },
+      })
+      sendShareInviteEmail({
+        to: normalizedEmail,
+        batchName: batchWithToken?.name ?? 'AI Visibility Project',
+        invitedByName: session.user.name,
+        invitedByEmail: session.user.email,
+        shareToken: batchWithToken?.shareToken,
+      }).catch((err) => console.error('Share invite email failed:', err))
+    }
 
     return NextResponse.json(share)
   } catch (error) {
