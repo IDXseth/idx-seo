@@ -74,6 +74,7 @@ export default async function MarketDetailPage({
       title={data.name}
       backHref="/dashboard"
       backLabel="Dashboard"
+      segmentType="market"
       overview={data.overview}
       platformStats={data.platformStats}
       topDomains={data.topDomains}
