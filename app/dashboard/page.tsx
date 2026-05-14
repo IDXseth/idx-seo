@@ -82,7 +82,7 @@ async function getDashboardData() {
 
   const communityGroups = await prisma.prompt.groupBy({ by: ['communityName', 'city'], _count: { id: true } })
   const communityStats = await Promise.all(
-    communityGroups.map(async (c) => {
+    communityGroups.filter((c) => c.communityName).map(async (c) => {
       const results = await prisma.result.findMany({
         where: { prompt: { communityName: c.communityName } },
         select: { isMentioned: true, isCited: true },

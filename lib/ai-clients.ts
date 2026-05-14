@@ -82,9 +82,9 @@ async function queryChatGPT(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const response = await (client as any).responses.create({
-    model: 'gpt-4o',
+    model: 'gpt-4o-search-preview',
     tools: [{ type: 'web_search_preview' }],
-    input: promptText,
+    input: promptText || ' ',
   })
 
   const text: string = response.output_text ?? ''

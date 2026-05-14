@@ -13,6 +13,7 @@ async function getCommunityData(id: string) {
     where: {
       communityName: {
         contains: decodedId.replace(/-/g, ' '),
+        mode: 'insensitive',
       },
     },
     include: {
