@@ -3,10 +3,56 @@ import { PLATFORMS, formatPercent } from '@/lib/utils'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Scorecard } from '@/components/scorecard'
 import { PlatformMentionChart } from '@/components/platform-chart'
+import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { slugify } from '@/lib/utils'
 import { BarChart3, Target, Quote, Layers, ArrowRight } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
+
+async function getTrendData(): Promise<TrendPoint[]> {
+  const sessions = await prisma.runSession.findMany({
+    where: { status: 'done' },
+    orderBy: { startedAt: 'asc' },
+    select: {
+      id: true,
+      startedAt: true,
+      triggeredBy: true,
+      results: {
+        select: { platform: true, isMentioned: true, isCited: true, sentiment: true },
+      },
+    },
+  })
+
+  return sessions.map((rs) => {
+    const results = rs.results
+    const total = results.length
+    const mentioned = results.filter((r) => r.isMentioned).length
+    const cited = results.filter((r) => r.isCited).length
+    const positive = results.filter((r) => r.sentiment === 'positive').length
+    const negative = results.filter((r) => r.sentiment === 'negative').length
+
+    const byPlatform: Record<string, { mentionRate: number; citationRate: number }> = {}
+    for (const platform of PLATFORMS) {
+      const pr = results.filter((r) => r.platform === platform)
+      byPlatform[platform] = {
+        mentionRate: pr.length > 0 ? pr.filter((r) => r.isMentioned).length / pr.length : 0,
+        citationRate: pr.length > 0 ? pr.filter((r) => r.isCited).length / pr.length : 0,
+      }
+    }
+
+    return {
+      runSessionId: rs.id,
+      startedAt: rs.startedAt.toISOString(),
+      triggeredBy: rs.triggeredBy,
+      total,
+      mentionRate: total > 0 ? mentioned / total : 0,
+      citationRate: total > 0 ? cited / total : 0,
+      positiveRate: total > 0 ? positive / total : 0,
+      negativeRate: total > 0 ? negative / total : 0,
+      byPlatform,
+    }
+  })
+}
 
 async function getDashboardData() {
   const [totalPrompts, totalResults, mentionedResults, citedResults] = await Promise.all([
@@ -120,8 +166,9 @@ async function getDashboardData() {
 
 export default async function DashboardPage() {
   let data: Awaited<ReturnType<typeof getDashboardData>> | null = null
+  let trendData: TrendPoint[] = []
   try {
-    data = await getDashboardData()
+    ;[data, trendData] = await Promise.all([getDashboardData(), getTrendData()])
   } catch {
     // DB not configured — show empty state
   }
@@ -184,6 +231,7 @@ export default async function DashboardPage() {
           <Tabs defaultValue="overview">
             <TabsList className="mb-6">
               <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="trends">Trends</TabsTrigger>
               <TabsTrigger value="community">By Community</TabsTrigger>
               <TabsTrigger value="category">By Category</TabsTrigger>
               <TabsTrigger value="careLevel">By Level of Care</TabsTrigger>
@@ -194,6 +242,10 @@ export default async function DashboardPage() {
               <SectionCard title="Mention & Citation Rate by Platform">
                 <PlatformMentionChart data={data.platformStats} />
               </SectionCard>
+            </TabsContent>
+
+            <TabsContent value="trends">
+              <TrendCharts data={trendData} />
             </TabsContent>
 
             <TabsContent value="community">

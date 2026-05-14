@@ -2,8 +2,36 @@ export interface PlatformResult {
   responseText: string
   isMentioned: boolean
   isCited: boolean
+  sentiment: 'positive' | 'neutral' | 'negative'
   citations: Array<{ url: string; title: string; domain: string }>
   error?: string
+}
+
+async function analyzeSentiment(
+  responseText: string,
+  communityName: string
+): Promise<'positive' | 'neutral' | 'negative'> {
+  if (!responseText || responseText.startsWith('[Error]') || responseText.startsWith('[Timeout]')) {
+    return 'neutral'
+  }
+  try {
+    const { default: Anthropic } = await import('@anthropic-ai/sdk')
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 5,
+      messages: [{
+        role: 'user',
+        content: `How does this AI response portray "${communityName}"? Reply with exactly one word: positive, neutral, or negative.\n\n${responseText.slice(0, 1500)}`,
+      }],
+    })
+    const word = response.content[0]?.type === 'text' ? response.content[0].text.toLowerCase() : ''
+    if (word.includes('positive')) return 'positive'
+    if (word.includes('negative')) return 'negative'
+    return 'neutral'
+  } catch {
+    return 'neutral'
+  }
 }
 
 function checkMention(text: string, communityName: string): boolean {
@@ -72,8 +100,9 @@ async function queryChatGPT(
 
   const isMentioned = checkMention(text, communityName)
   const isCited = isMentioned && checkCited(citations, communityName)
+  const sentiment = await analyzeSentiment(text, communityName)
 
-  return { responseText: text, isMentioned, isCited, citations }
+  return { responseText: text, isMentioned, isCited, sentiment, citations }
 }
 
 async function queryClaude(
@@ -131,8 +160,9 @@ async function queryClaude(
 
   const isMentioned = checkMention(text, communityName)
   const isCited = isMentioned && checkCited(citations, communityName)
+  const sentiment = await analyzeSentiment(text, communityName)
 
-  return { responseText: text, isMentioned, isCited, citations }
+  return { responseText: text, isMentioned, isCited, sentiment, citations }
 }
 
 async function queryGemini(
@@ -165,12 +195,13 @@ async function queryGemini(
 
   const isMentioned = checkMention(text, communityName)
   const isCited = isMentioned && checkCited(citations, communityName)
+  const sentiment = await analyzeSentiment(text, communityName)
 
-  return { responseText: text, isMentioned, isCited, citations }
+  return { responseText: text, isMentioned, isCited, sentiment, citations }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseSearchAPIResponse(data: any, communityName: string): PlatformResult {
+async function parseSearchAPIResponse(data: any, communityName: string): Promise<PlatformResult> {
   let text = ''
   let citations: Array<{ url: string; title: string; domain: string }> = []
 
@@ -227,8 +258,9 @@ function parseSearchAPIResponse(data: any, communityName: string): PlatformResul
 
   const isMentioned = checkMention(text, communityName)
   const isCited = isMentioned && checkCited(citations, communityName)
+  const sentiment = await analyzeSentiment(text, communityName)
 
-  return { responseText: text, isMentioned, isCited, citations }
+  return { responseText: text, isMentioned, isCited, sentiment, citations }
 }
 
 async function queryPerplexity(
@@ -262,8 +294,9 @@ async function queryPerplexity(
 
   const isMentioned = checkMention(text, communityName)
   const isCited = isMentioned && checkCited(citations, communityName)
+  const sentiment = await analyzeSentiment(text, communityName)
 
-  return { responseText: text, isMentioned, isCited, citations }
+  return { responseText: text, isMentioned, isCited, sentiment, citations }
 }
 
 async function querySearchAPI(
@@ -289,7 +322,7 @@ async function querySearchAPI(
   }
 
   const data = await response.json()
-  return parseSearchAPIResponse(data, communityName)
+  return await parseSearchAPIResponse(data, communityName)
 }
 
 export async function queryPlatform(
@@ -320,6 +353,7 @@ export async function queryPlatform(
       responseText: `[Error] ${message}`,
       isMentioned: false,
       isCited: false,
+      sentiment: 'neutral' as const,
       citations: [],
       error: message,
     }
