@@ -70,6 +70,7 @@ export default async function CategoryDetailPage({
       topDomains={data.topDomains}
       prompts={data.prompts}
       sessionId={sessionId}
+      showCommunity
     />
   )
 }

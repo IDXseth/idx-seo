@@ -61,6 +61,7 @@ interface SegmentDetailProps {
   topDomains: TopDomain[]
   prompts: Prompt[]
   sessionId?: string
+  showCommunity?: boolean
 }
 
 export function SegmentDetail({
@@ -72,6 +73,7 @@ export function SegmentDetail({
   topDomains,
   prompts,
   sessionId,
+  showCommunity = false,
 }: SegmentDetailProps) {
   const platforms = platformStats.map((p) => p.platform)
   const maxDomainCount = topDomains[0]?.count ?? 1
@@ -153,6 +155,9 @@ export function SegmentDetail({
               <tr className="border-b border-[#eef3f5] bg-[#f5f8fa]">
                 <th className="text-left px-6 py-3 font-medium text-[#5a7a85] text-xs min-w-[220px]">Prompt</th>
                 <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Type</th>
+                {showCommunity && (
+                  <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs min-w-[160px]">Community</th>
+                )}
                 <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Category</th>
                 <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Level of Care</th>
                 {platforms.map((platform) => (
@@ -181,6 +186,12 @@ export function SegmentDetail({
                       {prompt.promptType}
                     </Badge>
                   </td>
+                  {showCommunity && (
+                    <td className="px-4 py-4">
+                      <p className="text-[#084c61] text-xs font-medium">{prompt.communityName || '—'}</p>
+                      {prompt.city && <p className="text-[#8aadb8] text-[10px] mt-0.5">{prompt.city}</p>}
+                    </td>
+                  )}
                   <td className="px-4 py-4 text-[#5a7a85] text-xs">{prompt.category || '—'}</td>
                   <td className="px-4 py-4 text-[#5a7a85] text-xs">{prompt.levelOfCare || '—'}</td>
                   {platforms.map((platform) => {
