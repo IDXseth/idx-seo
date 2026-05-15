@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
+import { normalizeRow } from '@/lib/normalize'
 
 function normalizeKey(key: string): string {
   return key.toLowerCase().replace(/[\s_-]+/g, '_')
@@ -55,7 +56,7 @@ export async function POST(req: Request) {
     })
     const existingTexts = new Set(existingPrompts.map((p) => p.promptText))
 
-    const parsedRows = rows.map((row) => ({
+    const parsedRows = rows.map((row) => normalizeRow({
       promptType: getField(row, 'prompt_type', 'type', 'promptType') || 'nonbrand',
       category: getField(row, 'category'),
       communityName: getField(row, 'community_name', 'community', 'communityName'),
@@ -65,7 +66,8 @@ export async function POST(req: Request) {
       promptText: getField(row, 'prompt', 'prompt_text', 'promptText'),
     }))
 
-    const uniqueRows = parsedRows.filter((r) => r.promptText && !existingTexts.has(r.promptText))
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const uniqueRows = parsedRows.filter((r) => r.promptText && !existingTexts.has(r.promptText)).map(({ isUnknownCare: _u, ...r }) => r)
     const skippedCount = parsedRows.length - uniqueRows.length
 
     const batch = await prisma.batch.create({
