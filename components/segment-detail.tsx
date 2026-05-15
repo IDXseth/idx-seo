@@ -60,6 +60,7 @@ interface SegmentDetailProps {
   platformStats: PlatformStat[]
   topDomains: TopDomain[]
   prompts: Prompt[]
+  sessionId?: string
 }
 
 export function SegmentDetail({
@@ -70,6 +71,7 @@ export function SegmentDetail({
   platformStats,
   topDomains,
   prompts,
+  sessionId,
 }: SegmentDetailProps) {
   const platforms = platformStats.map((p) => p.platform)
   const maxDomainCount = topDomains[0]?.count ?? 1
@@ -87,7 +89,12 @@ export function SegmentDetail({
       </div>
 
       {/* Page title */}
-      <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>{title}</h1>
+      <div>
+        <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>{title}</h1>
+        {sessionId && (
+          <p className="text-xs text-[#8aadb8] mt-1">Filtered to a single run snapshot — <Link href={backHref.replace(/\?.*/, '')} className="underline hover:text-[#084c61]">view all runs</Link></p>
+        )}
+      </div>
 
       {/* Summary Stats */}
       <div className="grid grid-cols-3 gap-4">
