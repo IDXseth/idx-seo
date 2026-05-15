@@ -62,6 +62,16 @@ function extractDomain(url: string): string {
   }
 }
 
+async function resolveRedirect(url: string): Promise<string> {
+  if (!url.includes('vertexaisearch.cloud.google.com')) return url
+  try {
+    const res = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(5000) })
+    return res.url || url
+  } catch {
+    return url
+  }
+}
+
 function checkCited(
   citations: Array<{ url: string; title: string; domain: string }>,
   _communityName: string
