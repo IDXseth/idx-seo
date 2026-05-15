@@ -97,14 +97,9 @@ export function Nav() {
           <Link href="/dashboard" className="flex items-center gap-3 group">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/sl-logo.png" alt="Senior Lifestyle" className="h-9 w-auto object-contain flex-shrink-0" />
-            <div>
-              <p className="text-sm font-bold text-white leading-none" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>
-                Senior Lifestyle
-              </p>
-              <p className="text-[11px] text-white/65 leading-none mt-0.5 font-medium tracking-wide">
-                AI Visibility Dashboard
-              </p>
-            </div>
+            <p className="text-[11px] text-white/65 leading-none font-medium tracking-wide">
+              AI Visibility Dashboard
+            </p>
           </Link>
 
           {/* Nav links + user menu */}
