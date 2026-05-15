@@ -68,13 +68,10 @@ function LoginForm() {
     <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
         {/* Logo / brand header */}
-        <div className="text-center mb-8">
+        <div className="flex flex-col items-center mb-8">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/sl-logo.png" alt="Senior Lifestyle" className="h-16 w-auto object-contain mb-4" />
-          <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>
-            Senior Lifestyle
-          </h1>
-          <p className="text-sm text-[#5a7a85] mt-1">AI Visibility Dashboard</p>
+          <img src="/sl-logo.png" alt="Senior Lifestyle" className="w-64 h-auto object-contain mb-3" />
+          <p className="text-sm text-[#5a7a85] font-medium">AI Visibility Dashboard</p>
         </div>
 
         <div className="bg-white rounded-2xl border border-[#dde6ea] shadow-sm overflow-hidden">
