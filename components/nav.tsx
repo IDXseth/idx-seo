@@ -95,8 +95,9 @@ export function Nav() {
         <div className="flex h-16 items-center justify-between">
           {/* Brand */}
           <Link href="/dashboard" className="flex items-center gap-3 group">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/sl-logo.png" alt="Senior Lifestyle" className="h-8 w-auto object-contain" />
+            <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-white/15 group-hover:bg-white/25 transition-colors flex-shrink-0">
+              <span className="text-white font-bold text-sm tracking-tight select-none">SL</span>
+            </div>
             <div>
               <p className="text-sm font-bold text-white leading-none" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>
                 Senior Lifestyle
