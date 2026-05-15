@@ -70,7 +70,7 @@ function LoginForm() {
         {/* Logo / brand header */}
         <div className="flex flex-col items-center mb-8">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/sl-logo.png" alt="Senior Lifestyle" className="w-64 h-auto object-contain mb-3" />
+          <img src="/sl-logo.png" alt="Senior Lifestyle" className="w-64 h-auto object-contain mb-3 rounded-xl p-4" style={{ backgroundColor: '#084c61' }} />
           <p className="text-sm text-[#5a7a85] font-medium">AI Visibility Dashboard</p>
         </div>
 
