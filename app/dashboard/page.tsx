@@ -70,17 +70,27 @@ async function getTrendData(): Promise<TrendPoint[]> {
 }
 
 async function getDashboardData(sessionId?: string) {
-  // When a session is specified, filter all result queries to that session
-  const rf = sessionId ? { runSessionId: sessionId } : {}
+  // One canonical prompt per unique promptText (first created wins) — prevents cross-batch double-counting
+  const canonicalRows = await prisma.prompt.findMany({
+    distinct: ['promptText'],
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  })
+  const canonicalIds = canonicalRows.map((r) => r.id)
 
-  const [totalPrompts, totalResults, mentionedResults, citedResults] = await Promise.all([
-    sessionId
-      ? prisma.prompt.count({ where: { results: { some: { runSessionId: sessionId } } } })
-      : prisma.prompt.count(),
+  const rf = {
+    promptId: { in: canonicalIds },
+    ...(sessionId ? { runSessionId: sessionId } : {}),
+  }
+
+  const [totalResults, mentionedResults, citedResults] = await Promise.all([
     prisma.result.count({ where: rf }),
     prisma.result.count({ where: { ...rf, isMentioned: true } }),
     prisma.result.count({ where: { ...rf, isCited: true } }),
   ])
+  const totalPrompts = sessionId
+    ? await prisma.prompt.count({ where: { id: { in: canonicalIds }, results: { some: { runSessionId: sessionId } } } })
+    : canonicalIds.length
 
   const platformStats = await Promise.all(
     PLATFORMS.map(async (platform) => {
@@ -100,7 +110,7 @@ async function getDashboardData(sessionId?: string) {
     })
   )
 
-  const communityGroups = await prisma.prompt.groupBy({ by: ['communityName', 'city'], _count: { id: true } })
+  const communityGroups = await prisma.prompt.groupBy({ by: ['communityName', 'city'], where: { id: { in: canonicalIds } }, _count: { id: true } })
   const communityStats = (await Promise.all(
     communityGroups.filter((c) => c.communityName).map(async (c) => {
       const results = await prisma.result.findMany({
@@ -119,7 +129,7 @@ async function getDashboardData(sessionId?: string) {
     })
   )).filter(Boolean) as Array<{ communityName: string; city: string; promptCount: number; mentionRate: number; citationRate: number }>
 
-  const categoryGroups = await prisma.prompt.groupBy({ by: ['category'], _count: { id: true } })
+  const categoryGroups = await prisma.prompt.groupBy({ by: ['category'], where: { id: { in: canonicalIds } }, _count: { id: true } })
   const categoryStats = (await Promise.all(
     categoryGroups.filter((c) => c.category).map(async (c) => {
       const results = await prisma.result.findMany({
@@ -137,7 +147,7 @@ async function getDashboardData(sessionId?: string) {
     })
   )).filter(Boolean) as Array<{ category: string; promptCount: number; mentionRate: number; citationRate: number }>
 
-  const careLevelGroups = await prisma.prompt.groupBy({ by: ['levelOfCare'], _count: { id: true } })
+  const careLevelGroups = await prisma.prompt.groupBy({ by: ['levelOfCare'], where: { id: { in: canonicalIds } }, _count: { id: true } })
   const careLevelStats = (await Promise.all(
     careLevelGroups.filter((c) => c.levelOfCare).map(async (c) => {
       const results = await prisma.result.findMany({
@@ -155,7 +165,7 @@ async function getDashboardData(sessionId?: string) {
     })
   )).filter(Boolean) as Array<{ levelOfCare: string; promptCount: number; mentionRate: number; citationRate: number }>
 
-  const marketGroups = await prisma.prompt.groupBy({ by: ['market'], _count: { id: true } })
+  const marketGroups = await prisma.prompt.groupBy({ by: ['market'], where: { id: { in: canonicalIds } }, _count: { id: true } })
   const marketStats = (await Promise.all(
     marketGroups.filter((m) => m.market).map(async (m) => {
       const results = await prisma.result.findMany({

@@ -72,6 +72,7 @@ export default function UploadPage() {
   const [uploadProgress, setUploadProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [skippedCount, setSkippedCount] = useState(0)
 
   const handleFile = async (f: File) => {
     if (!f.name.match(/\.(xlsx|csv|xls)$/i)) {
@@ -115,12 +116,11 @@ export default function UploadPage() {
       const res = await fetch('/api/upload', { method: 'POST', body: formData })
       clearInterval(progressInterval)
       setUploadProgress(100)
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Upload failed')
-      }
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Upload failed')
+      setSkippedCount(data.skippedCount ?? 0)
       setSuccess(true)
-      setTimeout(() => router.push('/run'), 1500)
+      setTimeout(() => router.push('/run'), 2500)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Upload failed')
       setUploading(false)
@@ -134,6 +134,7 @@ export default function UploadPage() {
     setBatchName('')
     setError(null)
     setSuccess(false)
+    setSkippedCount(0)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -210,9 +211,19 @@ export default function UploadPage() {
       )}
 
       {success && (
-        <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl mb-6">
-          <CheckCircle2 className="h-5 w-5 text-emerald-500 flex-shrink-0" />
-          <p className="text-sm text-emerald-700 font-medium">Upload successful! Redirecting to Run Prompts…</p>
+        <div className="space-y-3 mb-6">
+          <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+            <CheckCircle2 className="h-5 w-5 text-emerald-500 flex-shrink-0" />
+            <p className="text-sm text-emerald-700 font-medium">Upload successful! Redirecting to Run Prompts…</p>
+          </div>
+          {skippedCount > 0 && (
+            <div className="flex items-center gap-3 p-4 bg-[#e6f2f5] border border-[#b8d8e0] rounded-xl">
+              <Info className="h-5 w-5 text-[#177e89] flex-shrink-0" />
+              <p className="text-sm text-[#084c61]">
+                <span className="font-semibold">{skippedCount} prompt{skippedCount !== 1 ? 's' : ''}</span> already exist in your account and were not added again.
+              </p>
+            </div>
+          )}
         </div>
       )}
 

@@ -48,6 +48,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Fetch all prompt texts already owned by this user to prevent cross-batch duplication
+    const existingPrompts = await prisma.prompt.findMany({
+      where: { batch: { userId } },
+      select: { promptText: true },
+    })
+    const existingTexts = new Set(existingPrompts.map((p) => p.promptText))
+
+    const parsedRows = rows.map((row) => ({
+      promptType: getField(row, 'prompt_type', 'type', 'promptType') || 'nonbrand',
+      category: getField(row, 'category'),
+      communityName: getField(row, 'community_name', 'community', 'communityName'),
+      city: getField(row, 'city'),
+      market: getField(row, 'market'),
+      levelOfCare: getField(row, 'level_of_care', 'care_level', 'levelOfCare'),
+      promptText: getField(row, 'prompt', 'prompt_text', 'promptText'),
+    }))
+
+    const uniqueRows = parsedRows.filter((r) => r.promptText && !existingTexts.has(r.promptText))
+    const skippedCount = parsedRows.length - uniqueRows.length
+
     const batch = await prisma.batch.create({
       data: {
         name: batchName,
@@ -56,27 +76,17 @@ export async function POST(req: Request) {
       },
     })
 
-    const prompts = await Promise.all(
-      rows.map((row) =>
-        prisma.prompt.create({
-          data: {
-            batchId: batch.id,
-            promptType: getField(row, 'prompt_type', 'type', 'promptType') || 'nonbrand',
-            category: getField(row, 'category'),
-            communityName: getField(row, 'community_name', 'community', 'communityName'),
-            city: getField(row, 'city'),
-            market: getField(row, 'market'),
-            levelOfCare: getField(row, 'level_of_care', 'care_level', 'levelOfCare'),
-            promptText: getField(row, 'prompt', 'prompt_text', 'promptText'),
-          },
-        })
-      )
-    )
+    if (uniqueRows.length > 0) {
+      await prisma.prompt.createMany({
+        data: uniqueRows.map((r) => ({ batchId: batch.id, ...r })),
+      })
+    }
 
     return NextResponse.json({
       success: true,
       batchId: batch.id,
-      promptCount: prompts.length,
+      promptCount: uniqueRows.length,
+      skippedCount,
     })
   } catch (error) {
     console.error('Upload error:', error)
