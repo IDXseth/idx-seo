@@ -69,8 +69,9 @@ function LoginForm() {
       <div className="w-full max-w-md">
         {/* Logo / brand header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-[#084c61] mb-4 shadow-lg">
-            <span className="text-white font-bold text-lg tracking-tight select-none">SL</span>
+          <div className="inline-flex items-center justify-center mb-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/sl-logo.png" alt="Senior Lifestyle" className="h-16 w-auto object-contain" style={{ filter: 'brightness(0) saturate(100%) invert(22%) sepia(55%) saturate(500%) hue-rotate(170deg) brightness(90%)' }} />
           </div>
           <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>
             Senior Lifestyle

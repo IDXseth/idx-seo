@@ -24,6 +24,7 @@ interface BatchInfo {
   shareToken?: string | null
   _count: { prompts: number }
   unrunCount: number
+  lastRunAt?: string | null
 }
 
 interface ShareEntry {
@@ -619,6 +620,12 @@ function BatchCard({
               )}
               <span className="text-xs text-[#8aadb8]">{new Date(batch.createdAt).toLocaleDateString()}</span>
             </div>
+            {batch.lastRunAt && (() => {
+              const d = new Date(batch.lastRunAt)
+              const pad = (n: number) => String(n).padStart(2, '0')
+              const label = `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+              return <p className="text-xs text-[#8aadb8] mt-1">Last run: {label}</p>
+            })()}
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">

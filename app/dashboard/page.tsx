@@ -6,7 +6,7 @@ import { PlatformMentionChart } from '@/components/platform-chart'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { slugify } from '@/lib/utils'
-import { BarChart3, Target, Quote, Layers, ArrowRight } from 'lucide-react'
+import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -173,6 +173,21 @@ async function getDashboardData(sessionId?: string) {
     })
   )).filter(Boolean) as Array<{ market: string; promptCount: number; mentionRate: number; citationRate: number }>
 
+  const rawCitations = await prisma.citation.findMany({
+    where: { ...(sessionId ? { result: { runSessionId: sessionId } } : {}), url: { not: '' } },
+    select: { url: true, title: true },
+  })
+  const urlMap = new Map<string, { title: string; count: number }>()
+  for (const c of rawCitations) {
+    const existing = urlMap.get(c.url)
+    if (existing) existing.count++
+    else urlMap.set(c.url, { title: c.title || c.url, count: 1 })
+  }
+  const topCitationUrls = [...urlMap.entries()]
+    .map(([url, { title, count }]) => ({ url, title, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10)
+
   return {
     overview: {
       totalPrompts,
@@ -185,6 +200,7 @@ async function getDashboardData(sessionId?: string) {
     categoryStats,
     careLevelStats,
     marketStats,
+    topCitationUrls,
   }
 }
 
@@ -283,9 +299,41 @@ export default async function DashboardPage({
           </TabsList>
 
           <TabsContent value="overview">
-            <SectionCard title="Mention & Citation Rate by Platform">
-              <PlatformMentionChart data={data.platformStats} />
-            </SectionCard>
+            <div className="space-y-6">
+              <SectionCard title="Mention & Citation Rate by Platform">
+                <PlatformMentionChart data={data.platformStats} />
+              </SectionCard>
+              <SectionCard title="Top Citation URLs">
+                {data.topCitationUrls.length === 0 ? (
+                  <p className="text-sm text-[#8aadb8]">No citations recorded yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {data.topCitationUrls.map(({ url, title, count }) => {
+                      let domain = ''
+                      try { domain = new URL(url).hostname } catch {}
+                      return (
+                        <a
+                          key={url}
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 p-2.5 rounded-lg bg-[#f5f8fa] hover:bg-[#e6f2f5] transition-colors group"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5 text-[#8aadb8] flex-shrink-0 group-hover:text-[#177e89] transition-colors" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-[#084c61] truncate">{title}</p>
+                            {domain && <p className="text-[10px] text-[#8aadb8]">{domain}</p>}
+                          </div>
+                          <span className="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#e6f2f5] text-[#084c61]">
+                            {count}
+                          </span>
+                        </a>
+                      )
+                    })}
+                  </div>
+                )}
+              </SectionCard>
+            </div>
           </TabsContent>
 
           <TabsContent value="trends">

@@ -100,6 +100,19 @@ export default async function ResultsDetailPage({
                         Cited
                       </span>
                     )}
+                    {result.sentiment === 'positive' ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        Positive
+                      </span>
+                    ) : result.sentiment === 'negative' ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                        Negative
+                      </span>
+                    ) : result.sentiment ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#f0f4f7] text-[#8aadb8]">
+                        Neutral
+                      </span>
+                    ) : null}
                   </div>
                 </div>
 

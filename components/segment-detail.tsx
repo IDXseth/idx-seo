@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { PlatformMentionChart } from '@/components/platform-chart'
 import { PLATFORM_LABELS, PLATFORM_COLORS, formatPercent, cn } from '@/lib/utils'
-import { ChevronLeft, Target, Quote, FileText } from 'lucide-react'
+import { ChevronLeft, Target, Quote, FileText, ExternalLink } from 'lucide-react'
 
 interface Citation {
   id: string
@@ -18,6 +18,7 @@ interface Result {
   platform: string
   isMentioned: boolean
   isCited: boolean
+  sentiment: string
   citations: Citation[]
 }
 
@@ -144,6 +145,48 @@ export function SegmentDetail({
         </div>
       )}
 
+      {/* Top Citation Pages */}
+      {(() => {
+        const allCitations = prompts.flatMap((p) => p.results.flatMap((r) => r.citations))
+        const urlMap = new Map<string, { title: string; domain: string; count: number }>()
+        for (const c of allCitations) {
+          if (!c.url) continue
+          const existing = urlMap.get(c.url)
+          if (existing) existing.count++
+          else urlMap.set(c.url, { title: c.title || c.url, domain: c.domain, count: 1 })
+        }
+        const topUrls = [...urlMap.entries()]
+          .map(([url, { title, domain, count }]) => ({ url, title, domain, count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 10)
+        if (topUrls.length === 0) return null
+        return (
+          <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
+            <h2 className="text-sm font-semibold text-[#084c61] mb-5">Top Citation Pages</h2>
+            <div className="space-y-2">
+              {topUrls.map(({ url, title, domain, count }) => (
+                <a
+                  key={url}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 p-2.5 rounded-lg bg-[#f5f8fa] hover:bg-[#e6f2f5] transition-colors group"
+                >
+                  <ExternalLink className="h-3.5 w-3.5 text-[#8aadb8] flex-shrink-0 group-hover:text-[#177e89] transition-colors" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-[#084c61] truncate">{title}</p>
+                    <p className="text-[10px] text-[#8aadb8]">{domain}</p>
+                  </div>
+                  <span className="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#e6f2f5] text-[#084c61]">
+                    {count}
+                  </span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Prompts Table */}
       <div className="bg-white rounded-xl border border-[#dde6ea] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#eef3f5]">
@@ -160,6 +203,7 @@ export function SegmentDetail({
                 )}
                 <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Category</th>
                 <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Level of Care</th>
+                <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Sentiment</th>
                 {platforms.map((platform) => (
                   <th
                     key={platform}
@@ -194,6 +238,17 @@ export function SegmentDetail({
                   )}
                   <td className="px-4 py-4 text-[#5a7a85] text-xs">{prompt.category || '—'}</td>
                   <td className="px-4 py-4 text-[#5a7a85] text-xs">{prompt.levelOfCare || '—'}</td>
+                  <td className="px-4 py-4">
+                    {(() => {
+                      const pos = prompt.results.filter((r) => r.sentiment === 'positive').length
+                      const neg = prompt.results.filter((r) => r.sentiment === 'negative').length
+                      const neu = prompt.results.filter((r) => r.sentiment === 'neutral').length
+                      const majority = pos >= neg && pos >= neu ? 'positive' : neg >= pos && neg >= neu ? 'negative' : 'neutral'
+                      if (majority === 'positive') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 w-fit">Positive</span>
+                      if (majority === 'negative') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-50 text-rose-700 w-fit">Negative</span>
+                      return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#f0f4f7] text-[#8aadb8] w-fit">Neutral</span>
+                    })()}
+                  </td>
                   {platforms.map((platform) => {
                     const result = prompt.results.find((r) => r.platform === platform)
                     if (!result) return <td key={platform} className="px-4 py-4 text-[#b8cdd3] text-xs">—</td>
