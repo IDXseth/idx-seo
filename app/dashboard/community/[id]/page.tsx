@@ -2,30 +2,39 @@ import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { PLATFORMS } from '@/lib/utils'
 import { SegmentDetail } from '@/components/segment-detail'
+import { SessionOption } from '@/components/run-session-picker'
+import { getSegmentTrendData } from '@/lib/segment-trend'
+
+async function getSessionList(): Promise<SessionOption[]> {
+  const sessions = await prisma.runSession.findMany({
+    where: { status: 'done' },
+    orderBy: { startedAt: 'asc' },
+    select: { id: true, startedAt: true, triggeredBy: true, _count: { select: { results: true } } },
+  })
+  return sessions.map((s) => ({ id: s.id, startedAt: s.startedAt.toISOString(), triggeredBy: s.triggeredBy, resultCount: s._count.results }))
+}
 
 export const dynamic = 'force-dynamic'
 
-async function getCommunityData(id: string) {
-  // Decode the slug and find matching community
+async function getCommunityData(id: string, sessionId?: string) {
   const decodedId = decodeURIComponent(id)
+  const resultsFilter = sessionId ? { where: { runSessionId: sessionId } } : {}
 
   const prompts = await prisma.prompt.findMany({
     where: {
       communityName: {
         contains: decodedId.replace(/-/g, ' '),
+        mode: 'insensitive',
       },
     },
     include: {
-      results: {
-        include: { citations: true },
-      },
+      results: { ...resultsFilter, include: { citations: true } },
     },
   })
 
   // Try exact slug match if no results
   let finalPrompts = prompts
   if (prompts.length === 0) {
-    // Try finding by looking at all communities and matching slug
     const allCommunities = await prisma.prompt.groupBy({ by: ['communityName'] })
     const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
     const matched = allCommunities.find((c) => slugify(c.communityName) === decodedId)
@@ -33,7 +42,7 @@ async function getCommunityData(id: string) {
 
     finalPrompts = await prisma.prompt.findMany({
       where: { communityName: matched.communityName },
-      include: { results: { include: { citations: true } } },
+      include: { results: { ...resultsFilter, include: { citations: true } } },
     })
   }
 
@@ -51,10 +60,8 @@ async function getCommunityData(id: string) {
     const pMentioned = platformResults.filter((r) => r.isMentioned).length
     const pCited = platformResults.filter((r) => r.isCited).length
     return {
-      platform,
-      total,
-      mentioned: pMentioned,
-      cited: pCited,
+      platform, total,
+      mentioned: pMentioned, cited: pCited,
       mentionRate: total > 0 ? pMentioned / total : 0,
       citationRate: total > 0 ? pCited / total : 0,
     }
@@ -62,51 +69,46 @@ async function getCommunityData(id: string) {
 
   const allCitations = finalPrompts.flatMap((p) => p.results.flatMap((r) => r.citations))
   const domainCounts: Record<string, number> = {}
-  for (const c of allCitations) {
-    domainCounts[c.domain] = (domainCounts[c.domain] || 0) + 1
-  }
+  for (const c of allCitations) domainCounts[c.domain] = (domainCounts[c.domain] || 0) + 1
   const topDomains = Object.entries(domainCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([domain, count]) => ({
-      domain,
-      count,
-      percentage: totalResults > 0 ? count / totalResults : 0,
-    }))
+    .sort((a, b) => b[1] - a[1]).slice(0, 10)
+    .map(([domain, count]) => ({ domain, count, percentage: totalResults > 0 ? count / totalResults : 0 }))
+
+  const trendData = sessionId ? [] : await getSegmentTrendData({ communityName })
 
   return {
-    communityName,
-    prompts: finalPrompts,
-    overview: {
-      promptCount: finalPrompts.length,
-      mentionRate: totalResults > 0 ? mentioned / totalResults : 0,
-      citationRate: totalResults > 0 ? cited / totalResults : 0,
-    },
-    platformStats,
-    topDomains,
+    communityName, prompts: finalPrompts,
+    overview: { promptCount: finalPrompts.length, mentionRate: totalResults > 0 ? mentioned / totalResults : 0, citationRate: totalResults > 0 ? cited / totalResults : 0 },
+    platformStats, topDomains, trendData,
   }
 }
 
 export default async function CommunityDetailPage({
-  params,
+  params, searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ session?: string }>
 }) {
-  const { id } = await params
+  const [{ id }, { session: sessionId }] = await Promise.all([params, searchParams])
   let data: Awaited<ReturnType<typeof getCommunityData>> = null
-  try { data = await getCommunityData(id) } catch { /* DB not configured */ }
+  let sessions: SessionOption[] = []
+  try { ;[data, sessions] = await Promise.all([getCommunityData(id, sessionId), getSessionList()]) } catch { /* DB not configured */ }
 
   if (!data) notFound()
 
   return (
     <SegmentDetail
       title={data.communityName}
-      backHref="/dashboard"
+      backHref={`/dashboard${sessionId ? `?session=${sessionId}` : ''}`}
       backLabel="Dashboard"
       overview={data.overview}
       platformStats={data.platformStats}
       topDomains={data.topDomains}
       prompts={data.prompts}
+      sessionId={sessionId}
+      sessions={sessions}
+      basePath={`/dashboard/community/${id}`}
+      trendData={data.trendData}
     />
   )
 }

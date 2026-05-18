@@ -37,7 +37,12 @@ export async function GET() {
             results: { none: {} },
           },
         })
-        return { ...batch, unrunCount }
+        const lastRun = await prisma.batchRun.findFirst({
+          where: { batchId: batch.id, status: 'done' },
+          orderBy: { finishedAt: 'desc' },
+          select: { finishedAt: true },
+        })
+        return { ...batch, unrunCount, lastRunAt: lastRun?.finishedAt?.toISOString() ?? null }
       })
     )
 

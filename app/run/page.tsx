@@ -24,6 +24,7 @@ interface BatchInfo {
   shareToken?: string | null
   _count: { prompts: number }
   unrunCount: number
+  lastRunAt?: string | null
 }
 
 interface ShareEntry {
@@ -416,6 +417,7 @@ function ShareModal({
   const [shares, setShares] = useState<ShareEntry[]>([])
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteError, setInviteError] = useState<string | null>(null)
+  const [lastInvited, setLastInvited] = useState<string | null>(null)
   const [inviting, setInviting] = useState(false)
   const [shareToken, setShareToken] = useState<string | null>(batch.shareToken ?? null)
   const [togglingLink, setTogglingLink] = useState(false)
@@ -448,6 +450,7 @@ function ShareModal({
       const data = await res.json()
       if (!res.ok) { setInviteError(data.error || 'Failed to invite'); return }
       setShares((prev) => prev.find((s) => s.email === data.email) ? prev : [...prev, data])
+      setLastInvited(inviteEmail.trim().toLowerCase())
       setInviteEmail('')
     } catch { setInviteError('Failed to invite') } finally { setInviting(false) }
   }
@@ -493,6 +496,12 @@ function ShareModal({
               <Button size="sm" onClick={handleInvite} disabled={inviting || !inviteEmail}>{inviting ? '…' : 'Add'}</Button>
             </div>
             {inviteError && <p className="text-xs text-rose-500 mt-1.5">{inviteError}</p>}
+            {lastInvited && !inviteError && (
+              <div className="mt-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 space-y-1">
+                <p className="font-semibold">Invite sent to {lastInvited}</p>
+                <p>They need to <strong>sign in or create an account</strong> at this app using that exact email address. Ask them to check their spam folder for the invitation email.</p>
+              </div>
+            )}
             {!loadingShares && shares.length > 0 && (
               <ul className="mt-3 space-y-2">
                 {shares.map((share) => (
@@ -611,6 +620,12 @@ function BatchCard({
               )}
               <span className="text-xs text-[#8aadb8]">{new Date(batch.createdAt).toLocaleDateString()}</span>
             </div>
+            {batch.lastRunAt && (() => {
+              const d = new Date(batch.lastRunAt)
+              const pad = (n: number) => String(n).padStart(2, '0')
+              const label = `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+              return <p className="text-xs text-[#8aadb8] mt-1">Last run: {label}</p>
+            })()}
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">

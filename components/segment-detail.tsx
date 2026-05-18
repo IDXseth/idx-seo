@@ -3,8 +3,10 @@
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { PlatformMentionChart } from '@/components/platform-chart'
+import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
+import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { PLATFORM_LABELS, PLATFORM_COLORS, formatPercent, cn } from '@/lib/utils'
-import { ChevronLeft, Target, Quote, FileText } from 'lucide-react'
+import { ChevronLeft, Target, Quote, FileText, ExternalLink } from 'lucide-react'
 
 interface Citation {
   id: string
@@ -18,6 +20,7 @@ interface Result {
   platform: string
   isMentioned: boolean
   isCited: boolean
+  sentiment: string
   citations: Citation[]
 }
 
@@ -60,6 +63,11 @@ interface SegmentDetailProps {
   platformStats: PlatformStat[]
   topDomains: TopDomain[]
   prompts: Prompt[]
+  sessionId?: string
+  showCommunity?: boolean
+  sessions?: SessionOption[]
+  basePath?: string
+  trendData?: TrendPoint[]
 }
 
 export function SegmentDetail({
@@ -70,6 +78,11 @@ export function SegmentDetail({
   platformStats,
   topDomains,
   prompts,
+  sessionId,
+  showCommunity = false,
+  sessions,
+  basePath,
+  trendData,
 }: SegmentDetailProps) {
   const platforms = platformStats.map((p) => p.platform)
   const maxDomainCount = topDomains[0]?.count ?? 1
@@ -86,8 +99,16 @@ export function SegmentDetail({
         <span className="text-sm text-[#5a7a85]">{title}</span>
       </div>
 
-      {/* Page title */}
-      <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>{title}</h1>
+      {/* Page title + session picker */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>{title}</h1>
+          {sessionId && (
+            <p className="text-xs text-[#8aadb8] mt-1">Filtered to a single run snapshot — <Link href={backHref.replace(/\?.*/, '')} className="underline hover:text-[#084c61]">view all runs</Link></p>
+          )}
+        </div>
+        {sessions && <RunSessionPicker sessions={sessions} currentSessionId={sessionId} basePath={basePath} />}
+      </div>
 
       {/* Summary Stats */}
       <div className="grid grid-cols-3 gap-4">
@@ -105,6 +126,14 @@ export function SegmentDetail({
           </div>
         ))}
       </div>
+
+      {/* Trend charts — aggregate view only */}
+      {!sessionId && trendData && trendData.length >= 2 && (
+        <div>
+          <h2 className="text-sm font-semibold text-[#084c61] mb-4">Performance Over Time</h2>
+          <TrendCharts data={trendData} />
+        </div>
+      )}
 
       {/* Platform Chart */}
       <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
@@ -135,6 +164,48 @@ export function SegmentDetail({
         </div>
       )}
 
+      {/* Top Citation Pages */}
+      {(() => {
+        const allCitations = prompts.flatMap((p) => p.results.flatMap((r) => r.citations))
+        const urlMap = new Map<string, { title: string; domain: string; count: number }>()
+        for (const c of allCitations) {
+          if (!c.url) continue
+          const existing = urlMap.get(c.url)
+          if (existing) existing.count++
+          else urlMap.set(c.url, { title: c.title || c.url, domain: c.domain, count: 1 })
+        }
+        const topUrls = [...urlMap.entries()]
+          .map(([url, { title, domain, count }]) => ({ url, title, domain, count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 10)
+        if (topUrls.length === 0) return null
+        return (
+          <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
+            <h2 className="text-sm font-semibold text-[#084c61] mb-5">Top Citation Pages</h2>
+            <div className="space-y-2">
+              {topUrls.map(({ url, title, domain, count }) => (
+                <a
+                  key={url}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 p-2.5 rounded-lg bg-[#f5f8fa] hover:bg-[#e6f2f5] transition-colors group"
+                >
+                  <ExternalLink className="h-3.5 w-3.5 text-[#8aadb8] flex-shrink-0 group-hover:text-[#177e89] transition-colors" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-[#084c61] truncate">{title}</p>
+                    <p className="text-[10px] text-[#8aadb8]">{domain}</p>
+                  </div>
+                  <span className="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#e6f2f5] text-[#084c61]">
+                    {count}
+                  </span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Prompts Table */}
       <div className="bg-white rounded-xl border border-[#dde6ea] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#eef3f5]">
@@ -146,8 +217,12 @@ export function SegmentDetail({
               <tr className="border-b border-[#eef3f5] bg-[#f5f8fa]">
                 <th className="text-left px-6 py-3 font-medium text-[#5a7a85] text-xs min-w-[220px]">Prompt</th>
                 <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Type</th>
+                {showCommunity && (
+                  <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs min-w-[160px]">Community</th>
+                )}
                 <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Category</th>
                 <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Level of Care</th>
+                <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Sentiment</th>
                 {platforms.map((platform) => (
                   <th
                     key={platform}
@@ -174,8 +249,25 @@ export function SegmentDetail({
                       {prompt.promptType}
                     </Badge>
                   </td>
+                  {showCommunity && (
+                    <td className="px-4 py-4">
+                      <p className="text-[#084c61] text-xs font-medium">{prompt.communityName || '—'}</p>
+                      {prompt.city && <p className="text-[#8aadb8] text-[10px] mt-0.5">{prompt.city}</p>}
+                    </td>
+                  )}
                   <td className="px-4 py-4 text-[#5a7a85] text-xs">{prompt.category || '—'}</td>
                   <td className="px-4 py-4 text-[#5a7a85] text-xs">{prompt.levelOfCare || '—'}</td>
+                  <td className="px-4 py-4">
+                    {(() => {
+                      const pos = prompt.results.filter((r) => r.sentiment === 'positive').length
+                      const neg = prompt.results.filter((r) => r.sentiment === 'negative').length
+                      const neu = prompt.results.filter((r) => r.sentiment === 'neutral').length
+                      const majority = pos >= neg && pos >= neu ? 'positive' : neg >= pos && neg >= neu ? 'negative' : 'neutral'
+                      if (majority === 'positive') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 w-fit">Positive</span>
+                      if (majority === 'negative') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-50 text-rose-700 w-fit">Negative</span>
+                      return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#f0f4f7] text-[#8aadb8] w-fit">Neutral</span>
+                    })()}
+                  </td>
                   {platforms.map((platform) => {
                     const result = prompt.results.find((r) => r.platform === platform)
                     if (!result) return <td key={platform} className="px-4 py-4 text-[#b8cdd3] text-xs">—</td>
