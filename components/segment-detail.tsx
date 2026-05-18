@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { PlatformMentionChart } from '@/components/platform-chart'
@@ -7,6 +8,8 @@ import { RunSessionPicker, SessionOption } from '@/components/run-session-picker
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { PLATFORM_LABELS, PLATFORM_COLORS, formatPercent, cn } from '@/lib/utils'
 import { ChevronLeft, Target, Quote, FileText, ExternalLink } from 'lucide-react'
+
+type PromptTypeFilter = 'all' | 'brand' | 'nonbrand'
 
 interface Citation {
   id: string
@@ -84,8 +87,44 @@ export function SegmentDetail({
   basePath,
   trendData,
 }: SegmentDetailProps) {
+  const [promptTypeFilter, setPromptTypeFilter] = useState<PromptTypeFilter>('all')
+
   const platforms = platformStats.map((p) => p.platform)
-  const maxDomainCount = topDomains[0]?.count ?? 1
+
+  // Derive filtered stats from the prompts array so all sections stay in sync
+  const filteredPrompts = promptTypeFilter === 'all'
+    ? prompts
+    : prompts.filter((p) => p.promptType === promptTypeFilter)
+
+  const allFilteredResults = filteredPrompts.flatMap((p) => p.results)
+  const totalFilteredResults = allFilteredResults.length
+
+  const filteredOverview = {
+    promptCount: filteredPrompts.length,
+    mentionRate: totalFilteredResults > 0 ? allFilteredResults.filter((r) => r.isMentioned).length / totalFilteredResults : 0,
+    citationRate: totalFilteredResults > 0 ? allFilteredResults.filter((r) => r.isCited).length / totalFilteredResults : 0,
+  }
+
+  const filteredPlatformStats: PlatformStat[] = platforms.map((platform) => {
+    const pr = allFilteredResults.filter((r) => r.platform === platform)
+    const total = pr.length
+    return {
+      platform,
+      total,
+      mentionRate: total > 0 ? pr.filter((r) => r.isMentioned).length / total : 0,
+      citationRate: total > 0 ? pr.filter((r) => r.isCited).length / total : 0,
+    }
+  })
+
+  const filteredDomainCounts: Record<string, number> = {}
+  for (const c of filteredPrompts.flatMap((p) => p.results.flatMap((r) => r.citations))) {
+    filteredDomainCounts[c.domain] = (filteredDomainCounts[c.domain] || 0) + 1
+  }
+  const filteredTopDomains = Object.entries(filteredDomainCounts)
+    .sort((a, b) => b[1] - a[1]).slice(0, 10)
+    .map(([domain, count]) => ({ domain, count, percentage: totalFilteredResults > 0 ? count / totalFilteredResults : 0 }))
+
+  const maxDomainCount = filteredTopDomains[0]?.count ?? 1
 
   return (
     <div className="space-y-6">
@@ -99,7 +138,7 @@ export function SegmentDetail({
         <span className="text-sm text-[#5a7a85]">{title}</span>
       </div>
 
-      {/* Page title + session picker */}
+      {/* Page title + controls */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>{title}</h1>
@@ -107,15 +146,34 @@ export function SegmentDetail({
             <p className="text-xs text-[#8aadb8] mt-1">Filtered to a single run snapshot — <Link href={backHref.replace(/\?.*/, '')} className="underline hover:text-[#084c61]">view all runs</Link></p>
           )}
         </div>
-        {sessions && <RunSessionPicker sessions={sessions} currentSessionId={sessionId} basePath={basePath} />}
+        <div className="flex items-center gap-3">
+          {/* Brand / Non-brand toggle */}
+          <div className="flex items-center gap-0.5 bg-[#f0f4f7] rounded-lg p-1">
+            {([['all', 'All'], ['brand', 'Brand'], ['nonbrand', 'Non-brand']] as [PromptTypeFilter, string][]).map(([type, label]) => (
+              <button
+                key={type}
+                onClick={() => setPromptTypeFilter(type)}
+                className={cn(
+                  'px-3 py-1 text-xs font-medium rounded-md transition-colors',
+                  promptTypeFilter === type
+                    ? 'bg-white text-[#084c61] shadow-sm'
+                    : 'text-[#5a7a85] hover:text-[#084c61]'
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {sessions && <RunSessionPicker sessions={sessions} currentSessionId={sessionId} basePath={basePath} />}
+        </div>
       </div>
 
       {/* Summary Stats */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { icon: <FileText className="h-5 w-5 text-[#084c61]" />, bg: 'bg-[#e6f2f5]', label: 'Prompts', value: overview.promptCount },
-          { icon: <Target className="h-5 w-5 text-emerald-600" />, bg: 'bg-emerald-50', label: 'Mention Rate', value: formatPercent(overview.mentionRate) },
-          { icon: <Quote className="h-5 w-5 text-[#177e89]" />, bg: 'bg-[#e6f2f5]', label: 'Citation Rate', value: formatPercent(overview.citationRate) },
+          { icon: <FileText className="h-5 w-5 text-[#084c61]" />, bg: 'bg-[#e6f2f5]', label: 'Prompts', value: filteredOverview.promptCount },
+          { icon: <Target className="h-5 w-5 text-emerald-600" />, bg: 'bg-emerald-50', label: 'Mention Rate', value: formatPercent(filteredOverview.mentionRate) },
+          { icon: <Quote className="h-5 w-5 text-[#177e89]" />, bg: 'bg-[#e6f2f5]', label: 'Citation Rate', value: formatPercent(filteredOverview.citationRate) },
         ].map(({ icon, bg, label, value }) => (
           <div key={label} className="bg-white rounded-xl border border-[#dde6ea] p-5">
             <div className="flex items-center gap-3 mb-3">
@@ -138,15 +196,15 @@ export function SegmentDetail({
       {/* Platform Chart */}
       <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
         <h2 className="text-sm font-semibold text-[#084c61] mb-4">Performance by Platform</h2>
-        <PlatformMentionChart data={platformStats} />
+        <PlatformMentionChart data={filteredPlatformStats} />
       </div>
 
       {/* Top Citation Sources */}
-      {topDomains.length > 0 && (
+      {filteredTopDomains.length > 0 && (
         <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
           <h2 className="text-sm font-semibold text-[#084c61] mb-5">Top Citation Sources</h2>
           <div className="space-y-3">
-            {topDomains.map((d) => (
+            {filteredTopDomains.map((d) => (
               <div key={d.domain} className="flex items-center gap-4">
                 <span className="text-sm text-[#084c61] font-medium w-48 truncate flex-shrink-0">{d.domain}</span>
                 <div className="flex-1 h-2 bg-[#eef3f5] rounded-full overflow-hidden">
@@ -166,7 +224,7 @@ export function SegmentDetail({
 
       {/* Top Citation Pages */}
       {(() => {
-        const allCitations = prompts.flatMap((p) => p.results.flatMap((r) => r.citations))
+        const allCitations = filteredPrompts.flatMap((p) => p.results.flatMap((r) => r.citations))
         const urlMap = new Map<string, { title: string; domain: string; count: number }>()
         for (const c of allCitations) {
           if (!c.url) continue
@@ -209,7 +267,9 @@ export function SegmentDetail({
       {/* Prompts Table */}
       <div className="bg-white rounded-xl border border-[#dde6ea] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#eef3f5]">
-          <h2 className="text-sm font-semibold text-[#084c61]">All Prompts</h2>
+          <h2 className="text-sm font-semibold text-[#084c61]">
+            {promptTypeFilter === 'all' ? 'All Prompts' : promptTypeFilter === 'brand' ? 'Brand Prompts' : 'Non-brand Prompts'}
+          </h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -235,7 +295,7 @@ export function SegmentDetail({
               </tr>
             </thead>
             <tbody className="divide-y divide-[#f0f4f7]">
-              {prompts.map((prompt) => (
+              {filteredPrompts.map((prompt) => (
                 <tr
                   key={prompt.id}
                   className="hover:bg-[#f5f8fa] cursor-pointer transition-colors"
