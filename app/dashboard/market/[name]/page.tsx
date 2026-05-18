@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { PLATFORMS } from '@/lib/utils'
 import { SegmentDetail } from '@/components/segment-detail'
 import { SessionOption } from '@/components/run-session-picker'
+import { getSegmentTrendData } from '@/lib/segment-trend'
 
 async function getSessionList(): Promise<SessionOption[]> {
   const sessions = await prisma.runSession.findMany({
@@ -51,10 +52,12 @@ async function getMarketData(name: string, sessionId?: string) {
     .sort((a, b) => b[1] - a[1]).slice(0, 10)
     .map(([domain, count]) => ({ domain, count, percentage: totalResults > 0 ? count / totalResults : 0 }))
 
+  const trendData = sessionId ? [] : await getSegmentTrendData({ market: decodedName })
+
   return {
     name: decodedName, prompts,
     overview: { promptCount: prompts.length, mentionRate: totalResults > 0 ? mentioned / totalResults : 0, citationRate: totalResults > 0 ? cited / totalResults : 0 },
-    platformStats, topDomains,
+    platformStats, topDomains, trendData,
   }
 }
 
@@ -84,6 +87,7 @@ export default async function MarketDetailPage({
       showCommunity
       sessions={sessions}
       basePath={`/dashboard/market/${encodeURIComponent(name)}`}
+      trendData={data.trendData}
     />
   )
 }

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { PlatformMentionChart } from '@/components/platform-chart'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
+import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { PLATFORM_LABELS, PLATFORM_COLORS, formatPercent, cn } from '@/lib/utils'
 import { ChevronLeft, Target, Quote, FileText, ExternalLink } from 'lucide-react'
 
@@ -66,6 +67,7 @@ interface SegmentDetailProps {
   showCommunity?: boolean
   sessions?: SessionOption[]
   basePath?: string
+  trendData?: TrendPoint[]
 }
 
 export function SegmentDetail({
@@ -80,6 +82,7 @@ export function SegmentDetail({
   showCommunity = false,
   sessions,
   basePath,
+  trendData,
 }: SegmentDetailProps) {
   const platforms = platformStats.map((p) => p.platform)
   const maxDomainCount = topDomains[0]?.count ?? 1
@@ -123,6 +126,14 @@ export function SegmentDetail({
           </div>
         ))}
       </div>
+
+      {/* Trend charts — aggregate view only */}
+      {!sessionId && trendData && trendData.length >= 2 && (
+        <div>
+          <h2 className="text-sm font-semibold text-[#084c61] mb-4">Performance Over Time</h2>
+          <TrendCharts data={trendData} />
+        </div>
+      )}
 
       {/* Platform Chart */}
       <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
