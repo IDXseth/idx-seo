@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { PlatformMentionChart } from '@/components/platform-chart'
+import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PLATFORM_LABELS, PLATFORM_COLORS, formatPercent, cn } from '@/lib/utils'
 import { ChevronLeft, Target, Quote, FileText, ExternalLink } from 'lucide-react'
 
@@ -63,6 +64,8 @@ interface SegmentDetailProps {
   prompts: Prompt[]
   sessionId?: string
   showCommunity?: boolean
+  sessions?: SessionOption[]
+  basePath?: string
 }
 
 export function SegmentDetail({
@@ -75,6 +78,8 @@ export function SegmentDetail({
   prompts,
   sessionId,
   showCommunity = false,
+  sessions,
+  basePath,
 }: SegmentDetailProps) {
   const platforms = platformStats.map((p) => p.platform)
   const maxDomainCount = topDomains[0]?.count ?? 1
@@ -91,12 +96,15 @@ export function SegmentDetail({
         <span className="text-sm text-[#5a7a85]">{title}</span>
       </div>
 
-      {/* Page title */}
-      <div>
-        <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>{title}</h1>
-        {sessionId && (
-          <p className="text-xs text-[#8aadb8] mt-1">Filtered to a single run snapshot — <Link href={backHref.replace(/\?.*/, '')} className="underline hover:text-[#084c61]">view all runs</Link></p>
-        )}
+      {/* Page title + session picker */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>{title}</h1>
+          {sessionId && (
+            <p className="text-xs text-[#8aadb8] mt-1">Filtered to a single run snapshot — <Link href={backHref.replace(/\?.*/, '')} className="underline hover:text-[#084c61]">view all runs</Link></p>
+          )}
+        </div>
+        {sessions && <RunSessionPicker sessions={sessions} currentSessionId={sessionId} basePath={basePath} />}
       </div>
 
       {/* Summary Stats */}

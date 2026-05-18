@@ -21,14 +21,16 @@ function formatSessionLabel(s: SessionOption): string {
 export function RunSessionPicker({
   sessions,
   currentSessionId,
+  basePath = '/dashboard',
 }: {
   sessions: SessionOption[]
   currentSessionId?: string
+  basePath?: string
 }) {
   const router = useRouter()
 
   function handleChange(id: string) {
-    router.push(id ? `/dashboard?session=${id}` : '/dashboard')
+    router.push(id ? `${basePath}?session=${id}` : basePath)
   }
 
   if (sessions.length < 2) return null

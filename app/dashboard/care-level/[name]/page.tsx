@@ -2,6 +2,16 @@ import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { PLATFORMS } from '@/lib/utils'
 import { SegmentDetail } from '@/components/segment-detail'
+import { SessionOption } from '@/components/run-session-picker'
+
+async function getSessionList(): Promise<SessionOption[]> {
+  const sessions = await prisma.runSession.findMany({
+    where: { status: 'done' },
+    orderBy: { startedAt: 'asc' },
+    select: { id: true, startedAt: true, triggeredBy: true, _count: { select: { results: true } } },
+  })
+  return sessions.map((s) => ({ id: s.id, startedAt: s.startedAt.toISOString(), triggeredBy: s.triggeredBy, resultCount: s._count.results }))
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -56,7 +66,8 @@ export default async function CareLevelDetailPage({
 }) {
   const [{ name }, { session: sessionId }] = await Promise.all([params, searchParams])
   let data: Awaited<ReturnType<typeof getCareLevelData>> = null
-  try { data = await getCareLevelData(name, sessionId) } catch { /* DB not configured */ }
+  let sessions: SessionOption[] = []
+  try { ;[data, sessions] = await Promise.all([getCareLevelData(name, sessionId), getSessionList()]) } catch { /* DB not configured */ }
 
   if (!data) notFound()
 
@@ -71,6 +82,8 @@ export default async function CareLevelDetailPage({
       prompts={data.prompts}
       sessionId={sessionId}
       showCommunity
+      sessions={sessions}
+      basePath={`/dashboard/care-level/${encodeURIComponent(name)}`}
     />
   )
 }
