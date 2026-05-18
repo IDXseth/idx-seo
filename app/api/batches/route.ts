@@ -42,7 +42,30 @@ export async function GET() {
           orderBy: { finishedAt: 'desc' },
           select: { finishedAt: true },
         })
-        return { ...batch, unrunCount, lastRunAt: lastRun?.finishedAt?.toISOString() ?? null }
+        const recentSessions = await prisma.runSession.findMany({
+          where: { batchId: batch.id },
+          orderBy: { startedAt: 'desc' },
+          take: 20,
+          select: {
+            id: true,
+            startedAt: true,
+            triggeredBy: true,
+            status: true,
+            _count: { select: { results: true } },
+          },
+        })
+        return {
+          ...batch,
+          unrunCount,
+          lastRunAt: lastRun?.finishedAt?.toISOString() ?? null,
+          recentSessions: recentSessions.map((s) => ({
+            id: s.id,
+            startedAt: s.startedAt.toISOString(),
+            triggeredBy: s.triggeredBy,
+            status: s.status,
+            resultCount: s._count.results,
+          })),
+        }
       })
     )
 

@@ -128,7 +128,7 @@ export function SegmentDetail({
       </div>
 
       {/* Trend charts — aggregate view only */}
-      {!sessionId && trendData && trendData.length >= 2 && (
+      {!sessionId && trendData && trendData.length > 0 && (
         <div>
           <h2 className="text-sm font-semibold text-[#084c61] mb-4">Performance Over Time</h2>
           <TrendCharts data={trendData} />
