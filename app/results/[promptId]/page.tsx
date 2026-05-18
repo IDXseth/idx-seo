@@ -2,17 +2,19 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import { Badge } from '@/components/ui/badge'
+import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PLATFORM_LABELS, PLATFORM_COLORS } from '@/lib/utils'
-import { ChevronLeft, ExternalLink, MapPin, Building2, Tag, Heart } from 'lucide-react'
+import { ChevronLeft, ExternalLink, MapPin, Building2, Tag, Heart, Info } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
-async function getPromptData(promptId: string) {
+async function getPromptData(promptId: string, sessionId: string | null) {
   return prisma.prompt.findUnique({
     where: { id: promptId },
     include: {
       batch: true,
       results: {
+        where: sessionId ? { runSessionId: sessionId } : undefined,
         include: { citations: true },
         orderBy: { platform: 'asc' },
       },
@@ -20,21 +22,49 @@ async function getPromptData(promptId: string) {
   })
 }
 
+async function getSessionsForPrompt(promptId: string): Promise<SessionOption[]> {
+  const sessions = await prisma.runSession.findMany({
+    where: { results: { some: { promptId } } },
+    orderBy: { startedAt: 'desc' },
+    select: { id: true, startedAt: true, triggeredBy: true, _count: { select: { results: true } } },
+  })
+  return sessions.map((s) => ({
+    id: s.id,
+    startedAt: s.startedAt.toISOString(),
+    triggeredBy: s.triggeredBy,
+    resultCount: s._count.results,
+  }))
+}
+
 const PLATFORM_ORDER = ['chatgpt', 'claude', 'perplexity', 'gemini', 'google_aio', 'google_ai_mode']
 
 export default async function ResultsDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ promptId: string }>
+  searchParams: Promise<{ session?: string }>
 }) {
-  const { promptId } = await params
+  const [{ promptId }, { session: sessionParam }] = await Promise.all([params, searchParams])
+
+  let sessions: SessionOption[] = []
+  try { sessions = await getSessionsForPrompt(promptId) } catch { /* DB not configured */ }
+
+  // Default to the most recent session; honour explicit ?session= param if valid
+  const activeSessionId =
+    sessionParam && sessions.find((s) => s.id === sessionParam)
+      ? sessionParam
+      : sessions[0]?.id ?? null
+
   let prompt: Awaited<ReturnType<typeof getPromptData>> = null
-  try { prompt = await getPromptData(promptId) } catch { /* DB not configured */ }
+  try { prompt = await getPromptData(promptId, activeSessionId) } catch { /* DB not configured */ }
   if (!prompt) notFound()
 
   const sortedResults = [...prompt.results].sort(
     (a, b) => PLATFORM_ORDER.indexOf(a.platform) - PLATFORM_ORDER.indexOf(b.platform)
   )
+
+  const activeSession = sessions.find((s) => s.id === activeSessionId)
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -46,6 +76,15 @@ export default async function ResultsDetailPage({
         </Link>
         <span className="text-[#b8cdd3]">/</span>
         <span className="text-sm text-[#5a7a85]">Prompt Results</span>
+      </div>
+
+      {/* Description */}
+      <div className="flex gap-3 p-4 bg-[#e6f2f5] border border-[#b8d8e0] rounded-xl">
+        <Info className="h-4 w-4 text-[#177e89] flex-shrink-0 mt-0.5" />
+        <div className="text-sm text-[#084c61] leading-relaxed">
+          <span className="font-semibold">AI Visibility Results — </span>
+          This report shows how each AI platform responded to the prompt below. For each platform we record whether Senior Lifestyle was <span className="font-semibold">mentioned</span> by name, whether a <span className="font-semibold">seniorlifestyle.com link was cited</span> in the response, the overall <span className="font-semibold">sentiment</span> of the response, and any <span className="font-semibold">source URLs</span> the platform referenced.
+        </div>
       </div>
 
       {/* Prompt metadata card */}
@@ -63,6 +102,31 @@ export default async function ResultsDetailPage({
           <MetaItem icon={<Heart className="h-4 w-4 text-[#8aadb8]" />} label="Level of Care" value={prompt.levelOfCare} />
         </div>
       </div>
+
+      {/* Run session picker + date label */}
+      {sessions.length > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <RunSessionPicker
+            sessions={sessions}
+            currentSessionId={activeSessionId ?? undefined}
+            basePath={`/results/${promptId}`}
+          />
+          {activeSession && (
+            <p className="text-xs text-[#8aadb8]">
+              Showing results from{' '}
+              <span className="font-medium text-[#5a7a85]">
+                {new Date(activeSession.startedAt).toLocaleDateString('en-US', {
+                  month: 'long', day: 'numeric', year: 'numeric',
+                })}{' '}
+                at{' '}
+                {new Date(activeSession.startedAt).toLocaleTimeString('en-US', {
+                  hour: 'numeric', minute: '2-digit',
+                })}
+              </span>
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Platform results */}
       {sortedResults.length === 0 ? (
