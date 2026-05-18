@@ -397,6 +397,42 @@ async function querySearchAPI(
   return await parseSearchAPIResponse(data, communityName, engine)
 }
 
+async function queryGoogleAIMode(
+  promptText: string,
+  communityName: string
+): Promise<PlatformResult> {
+  const { GoogleGenerativeAI } = await import('@google/generative-ai')
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    systemInstruction: 'You are Google AI Mode, Google\'s AI-powered search assistant. Answer the following search query as a helpful, concise AI overview as it would appear at the top of Google Search results. Include relevant facts and cite your sources.',
+    tools: [{ googleSearch: {} } as never],
+  })
+
+  const result = await model.generateContent(promptText)
+  const text = result.response.text()
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const groundingMeta: any = result.response.candidates?.[0]?.groundingMetadata ?? {}
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const chunks: any[] = groundingMeta.groundingChunks ?? []
+  const citations = await Promise.all(
+    chunks
+      .filter((c) => c.web?.uri)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map(async (c: any) => {
+        const url = await resolveRedirect(c.web.uri as string)
+        return { url, title: (c.web.title as string) ?? '', domain: extractDomain(url) }
+      })
+  )
+
+  const isMentioned = checkMention(text, communityName)
+  const isCited = isMentioned && checkCited(citations, communityName)
+  const sentiment = await analyzeSentiment(text, communityName)
+
+  return { responseText: text, isMentioned, isCited, sentiment, citations }
+}
+
 export async function queryPlatform(
   platform: string,
   promptText: string,
@@ -416,7 +452,7 @@ export async function queryPlatform(
       case 'google_aio':
         return await querySearchAPI('google', promptText, communityName)
       case 'google_ai_mode':
-        return await querySearchAPI('google_ai_mode', promptText, communityName)
+        result = await queryGoogleAIMode(promptText, communityName); break
       default:
         throw new Error(`Unknown platform: ${platform}`)
     }
