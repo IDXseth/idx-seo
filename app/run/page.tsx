@@ -629,7 +629,7 @@ function RunHistoryPanel({
               ) : (
                 <button
                   onClick={() => setConfirmId(s.id)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity text-[#b8cdd3] hover:text-rose-500"
+                  className="text-[#8aadb8] hover:text-rose-500 transition-colors"
                   title="Delete this run"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
