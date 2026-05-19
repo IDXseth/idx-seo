@@ -10,6 +10,7 @@ interface Props {
   summary: SitemapAnalysis['summary']
   fetchedAt: string
   error: string | null
+  gscEnabled: boolean
 }
 
 type FilterTab = 'all' | 'has_page' | 'no_page' | 'not_tracked'
@@ -84,8 +85,29 @@ function ActionItemsPanel({ items }: { items: ActionItem[] }) {
   )
 }
 
-function CommunityRow({ c, rank }: { c: CommunityWithSitemapStatus; rank?: number }) {
+function GscIndexBadge({ isIndexed }: { isIndexed: boolean }) {
+  return isIndexed ? (
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700">
+      Indexed
+    </span>
+  ) : (
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-rose-100 text-rose-700">
+      Not indexed
+    </span>
+  )
+}
+
+function CommunityRow({
+  c,
+  rank,
+  gscEnabled,
+}: {
+  c: CommunityWithSitemapStatus
+  rank?: number
+  gscEnabled: boolean
+}) {
   const [open, setOpen] = useState(false)
+  const colSpan = gscEnabled ? 12 : 9
   return (
     <>
       <tr className="border-b border-[#f0f5f7] hover:bg-[#f9fbfc] transition-colors">
@@ -128,6 +150,23 @@ function CommunityRow({ c, rank }: { c: CommunityWithSitemapStatus; rank?: numbe
             <span className="text-[#c0d5dc]">—</span>
           )}
         </td>
+        {gscEnabled && (
+          <>
+            <td className="px-4 py-3 text-center">
+              {c.gsc ? (
+                <GscIndexBadge isIndexed={c.gsc.isIndexed} />
+              ) : (
+                <span className="text-[#c0d5dc] text-xs">—</span>
+              )}
+            </td>
+            <td className="px-4 py-3 text-center text-sm text-[#5a7a85]">
+              {c.gsc ? c.gsc.impressions.toLocaleString() : '—'}
+            </td>
+            <td className="px-4 py-3 text-center text-sm text-[#5a7a85]">
+              {c.gsc?.position != null ? c.gsc.position.toFixed(1) : '—'}
+            </td>
+          </>
+        )}
         <td className="px-4 py-3 text-center">
           {c.actionItems.length > 0 && (
             <button
@@ -142,7 +181,7 @@ function CommunityRow({ c, rank }: { c: CommunityWithSitemapStatus; rank?: numbe
       </tr>
       {open && (
         <tr className="bg-[#f9fbfc]">
-          <td colSpan={9} className="px-8 pb-4">
+          <td colSpan={colSpan} className="px-8 pb-4">
             <ActionItemsPanel items={c.actionItems} />
           </td>
         </tr>
@@ -151,7 +190,7 @@ function CommunityRow({ c, rank }: { c: CommunityWithSitemapStatus; rank?: numbe
   )
 }
 
-export function OptimizationPriorityTable({ communities, untrackedPages, summary, fetchedAt, error }: Props) {
+export function OptimizationPriorityTable({ communities, untrackedPages, summary, fetchedAt, error, gscEnabled }: Props) {
   const [filter, setFilter] = useState<FilterTab>('all')
   const [sort, setSort] = useState<SortKey>('priority')
 
@@ -182,6 +221,21 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
 
   return (
     <div className="space-y-6">
+      {/* GSC not connected notice */}
+      {!gscEnabled && (
+        <div className="flex items-start gap-3 bg-[#f0f5f7] border border-[#dde6ea] rounded-xl p-4">
+          <AlertTriangle className="h-4 w-4 text-[#5a7a85] flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-[#5a7a85]">
+            <span className="font-semibold text-[#084c61]">Google Search Console not connected.</span>{' '}
+            Sign in with Google to unlock index status, organic impressions, and position data per community.
+            Once connected, scores use the enhanced formula:{' '}
+            <span className="font-mono text-xs text-[#084c61]">
+              mention×0.35 + citation×0.35 + impressions×0.15 + indexed×0.15
+            </span>
+          </p>
+        </div>
+      )}
+
       {/* Error banner */}
       {error && (
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
@@ -252,22 +306,34 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
           <table className="w-full min-w-[720px]">
             <thead>
               <tr className="border-b border-[#f0f5f7]">
-                {['Rank', 'Community', 'City', 'Score', 'Mention %', 'Citation %', 'Status', 'Page', 'Actions'].map(
-                  (h) => (
-                    <th
-                      key={h}
-                      className="px-4 py-3 text-xs font-semibold text-[#8aadb8] uppercase tracking-wider text-center first:text-center"
-                    >
-                      {h}
-                    </th>
-                  )
-                )}
+                {[
+                  'Rank',
+                  'Community',
+                  'City',
+                  'Score',
+                  'Mention %',
+                  'Citation %',
+                  'Status',
+                  'Page',
+                  ...(gscEnabled ? ['Indexed', 'Impressions', 'Position'] : []),
+                  'Actions',
+                ].map((h) => (
+                  <th
+                    key={h}
+                    className="px-4 py-3 text-xs font-semibold text-[#8aadb8] uppercase tracking-wider text-center"
+                  >
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {sorted.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-sm text-[#8aadb8]">
+                  <td
+                    colSpan={gscEnabled ? 12 : 9}
+                    className="px-4 py-10 text-center text-sm text-[#8aadb8]"
+                  >
                     No communities match this filter.
                   </td>
                 </tr>
@@ -277,6 +343,7 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
                     key={c.communityName}
                     c={c}
                     rank={c.optimizationPriority ?? undefined}
+                    gscEnabled={gscEnabled}
                   />
                 ))
               )}

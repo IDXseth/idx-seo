@@ -6,6 +6,7 @@ import { PlatformMentionChart } from '@/components/platform-chart'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { OptimizationPriorityTable } from '@/components/optimization-priority-table'
 import { getSitemapAnalysis, SitemapAnalysis } from '@/lib/sitemap'
+import { getGscMetrics } from '@/lib/gsc'
 import { slugify } from '@/lib/utils'
 import { BarChart3, Target, Quote, Layers, ArrowRight } from 'lucide-react'
 
@@ -177,7 +178,8 @@ export default async function DashboardPage() {
   }
   if (data) {
     try {
-      sitemapAnalysis = await getSitemapAnalysis(data.communityStats)
+      const gscMetrics = await getGscMetrics().catch(() => undefined)
+      sitemapAnalysis = await getSitemapAnalysis(data.communityStats, gscMetrics)
     } catch {
       // Tab shows empty state
     }

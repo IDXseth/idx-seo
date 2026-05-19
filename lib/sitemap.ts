@@ -1,4 +1,15 @@
 import { XMLParser } from 'fast-xml-parser'
+import type { GscData } from './gsc'
+
+export type { GscData }
+
+export interface GscSnapshot {
+  isIndexed: boolean
+  impressions: number
+  clicks: number
+  position: number | null
+  fetchedAt: string
+}
 
 export interface SitemapEntry {
   url: string
@@ -25,6 +36,7 @@ export interface CommunityWithSitemapStatus {
   sitemapUrl: string | null
   optimizationPriority: number | null
   actionItems: ActionItem[]
+  gsc: GscSnapshot | null
 }
 
 export interface SitemapAnalysis {
@@ -39,6 +51,7 @@ export interface SitemapAnalysis {
   }
   fetchedAt: string
   error: string | null
+  gscEnabled: boolean
 }
 
 const SITEMAP_URL = 'https://www.seniorlifestyle.com/community-sitemap.xml'
@@ -84,7 +97,26 @@ function parseSitemapEntries(xml: string): SitemapEntry[] {
   })
 }
 
-function getActionItems(c: Omit<CommunityWithSitemapStatus, 'actionItems'>): ActionItem[] {
+function computeScore(
+  mentionRate: number,
+  citationRate: number,
+  gsc: GscData | null
+): number {
+  if (gsc) {
+    // Enhanced formula when GSC data is available
+    // Normalise impressions to 0–1 using a soft cap of 1000 impressions/28d
+    const normImpressions = Math.min(gsc.impressions / 1000, 1)
+    const isIndexedScore = gsc.isIndexed ? 1 : 0
+    return Math.round(
+      (mentionRate * 0.35 + citationRate * 0.35 + normImpressions * 0.15 + isIndexedScore * 0.15) * 100
+    )
+  }
+  return Math.round((mentionRate * 0.5 + citationRate * 0.5) * 100)
+}
+
+type CommunityBase = Omit<CommunityWithSitemapStatus, 'actionItems'>
+
+function getActionItems(c: CommunityBase): ActionItem[] {
   const items: ActionItem[] = []
 
   if (c.sitemapStatus === 'no_page') {
@@ -96,6 +128,17 @@ function getActionItems(c: Omit<CommunityWithSitemapStatus, 'actionItems'>): Act
         .toLowerCase()
         .replace(/\s+/g, '-')
         .replace(/[^a-z0-9-]/g, '')}/`,
+    })
+  }
+
+  // GSC: not indexed
+  if (c.gsc && !c.gsc.isIndexed && c.sitemapStatus === 'has_page') {
+    items.push({
+      priority: 'high',
+      category: 'technical',
+      label: 'Page not indexed by Google',
+      detail:
+        "Google has no record of this page in its search index. Check for noindex meta tags, crawl blocks in robots.txt, redirect chains, or canonical tag mismatches. Pages not indexed are invisible to LLMs that draw from Google's corpus.",
     })
   }
 
@@ -150,6 +193,17 @@ function getActionItems(c: Omit<CommunityWithSitemapStatus, 'actionItems'>): Act
     })
   }
 
+  // GSC: high impressions but low citation — page ranks but LLMs ignore it
+  if (c.gsc && c.gsc.impressions > 200 && c.citationRate < 0.3) {
+    items.push({
+      priority: 'medium',
+      category: 'content',
+      label: 'High Google traffic, low LLM citation — add citable content',
+      detail:
+        `This page gets ${c.gsc.impressions} organic impressions/month but LLMs aren't citing it. Add statistics, named experts, or a unique data point — LLMs prefer citable, quotable content over general descriptions.`,
+    })
+  }
+
   if (c.visibilityScore >= 60) {
     items.push({
       priority: 'low',
@@ -170,7 +224,8 @@ export async function getSitemapAnalysis(
     mentionRate: number
     citationRate: number
     promptCount: number
-  }>
+  }>,
+  gscMetrics?: Map<string, GscData>
 ): Promise<SitemapAnalysis> {
   const fetchedAt = new Date().toISOString()
   let sitemapEntries: SitemapEntry[] = []
@@ -185,14 +240,12 @@ export async function getSitemapAnalysis(
     fetchError = err instanceof Error ? err.message : String(err)
   }
 
-  // Match each community to a sitemap entry
   const matched = new Set<number>()
 
-  const communitiesBase = communityStats.map((c) => {
+  const communitiesBase: CommunityBase[] = communityStats.map((c) => {
     const normalizedName = normalizeForMatch(c.communityName)
-    const visibilityScore = Math.round((c.mentionRate * 0.5 + c.citationRate * 0.5) * 100)
 
-    // Exact match
+    // Exact match first
     let matchedEntry: SitemapEntry | null = null
     for (let i = 0; i < sitemapEntries.length; i++) {
       if (sitemapEntries[i].slug === normalizedName) {
@@ -220,6 +273,19 @@ export async function getSitemapAnalysis(
       }
     }
 
+    const gscRaw = matchedEntry ? (gscMetrics?.get(matchedEntry.url) ?? null) : null
+    const gsc: CommunityBase['gsc'] = gscRaw
+      ? {
+          isIndexed: gscRaw.isIndexed,
+          impressions: gscRaw.impressions,
+          clicks: gscRaw.clicks,
+          position: gscRaw.position,
+          fetchedAt: gscRaw.fetchedAt instanceof Date ? gscRaw.fetchedAt.toISOString() : String(gscRaw.fetchedAt),
+        }
+      : null
+
+    const visibilityScore = computeScore(c.mentionRate, c.citationRate, gscRaw)
+
     return {
       communityName: c.communityName,
       city: c.city,
@@ -230,6 +296,7 @@ export async function getSitemapAnalysis(
       sitemapStatus: (matchedEntry ? 'has_page' : 'no_page') as 'has_page' | 'no_page',
       sitemapUrl: matchedEntry?.url ?? null,
       optimizationPriority: null as number | null,
+      gsc,
     }
   })
 
@@ -256,6 +323,8 @@ export async function getSitemapAnalysis(
         )
       : 0
 
+  const gscEnabled = !!(gscMetrics && gscMetrics.size > 0)
+
   return {
     communities,
     untrackedPages,
@@ -268,5 +337,6 @@ export async function getSitemapAnalysis(
     },
     fetchedAt,
     error: fetchError,
+    gscEnabled,
   }
 }
