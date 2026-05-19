@@ -8,11 +8,19 @@ import { Progress } from '@/components/ui/progress'
 import {
   Play, CheckCircle2, AlertCircle, RefreshCw, BarChart3,
   Mail, Pencil, Trash2, Share2, X, Check, Link2, UserPlus,
-  Calendar, Plus, Clock, RotateCcw,
+  Calendar, Plus, Clock, RotateCcw, ChevronDown, ChevronUp, History,
 } from 'lucide-react'
 import Link from 'next/link'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+interface RunSessionInfo {
+  id: string
+  startedAt: string
+  triggeredBy: string
+  status: string
+  resultCount: number
+}
 
 interface BatchInfo {
   id: string
@@ -24,6 +32,8 @@ interface BatchInfo {
   shareToken?: string | null
   _count: { prompts: number }
   unrunCount: number
+  lastRunAt?: string | null
+  recentSessions?: RunSessionInfo[]
 }
 
 interface ShareEntry {
@@ -416,6 +426,7 @@ function ShareModal({
   const [shares, setShares] = useState<ShareEntry[]>([])
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteError, setInviteError] = useState<string | null>(null)
+  const [lastInvited, setLastInvited] = useState<string | null>(null)
   const [inviting, setInviting] = useState(false)
   const [shareToken, setShareToken] = useState<string | null>(batch.shareToken ?? null)
   const [togglingLink, setTogglingLink] = useState(false)
@@ -448,6 +459,7 @@ function ShareModal({
       const data = await res.json()
       if (!res.ok) { setInviteError(data.error || 'Failed to invite'); return }
       setShares((prev) => prev.find((s) => s.email === data.email) ? prev : [...prev, data])
+      setLastInvited(inviteEmail.trim().toLowerCase())
       setInviteEmail('')
     } catch { setInviteError('Failed to invite') } finally { setInviting(false) }
   }
@@ -493,6 +505,12 @@ function ShareModal({
               <Button size="sm" onClick={handleInvite} disabled={inviting || !inviteEmail}>{inviting ? '…' : 'Add'}</Button>
             </div>
             {inviteError && <p className="text-xs text-rose-500 mt-1.5">{inviteError}</p>}
+            {lastInvited && !inviteError && (
+              <div className="mt-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 space-y-1">
+                <p className="font-semibold">Invite sent to {lastInvited}</p>
+                <p>They need to <strong>sign in or create an account</strong> at this app using that exact email address. Ask them to check their spam folder for the invitation email.</p>
+              </div>
+            )}
             {!loadingShares && shares.length > 0 && (
               <ul className="mt-3 space-y-2">
                 {shares.map((share) => (
@@ -551,6 +569,80 @@ function DeleteConfirmDialog({ batchName, onConfirm, onCancel }: { batchName: st
   )
 }
 
+// ─── Run History Panel ────────────────────────────────────────────────────────
+
+function RunHistoryPanel({
+  sessions,
+  onDeleteSession,
+}: {
+  sessions: RunSessionInfo[]
+  onDeleteSession: (sessionId: string) => void
+}) {
+  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+
+  const handleDelete = async (id: string) => {
+    setDeleting(id)
+    try {
+      const res = await fetch(`/api/run/session/${id}`, { method: 'DELETE' })
+      if (res.ok) onDeleteSession(id)
+    } catch {} finally { setDeleting(null); setConfirmId(null) }
+  }
+
+  if (sessions.length === 0) {
+    return <p className="text-xs text-[#8aadb8] py-2">No runs recorded yet.</p>
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {sessions.map((s) => {
+        const d = new Date(s.startedAt)
+        const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+          ' at ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+        const isConfirming = confirmId === s.id
+        return (
+          <div key={s.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-[#f5f8fa] group">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${s.status === 'done' ? 'bg-emerald-500' : s.status === 'running' ? 'bg-amber-400' : 'bg-[#b8cdd3]'}`} />
+              <span className="text-xs text-[#084c61] truncate">{label}</span>
+              <span className="text-[10px] text-[#8aadb8] flex-shrink-0">{s.triggeredBy}</span>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <span className="text-[10px] text-[#8aadb8]">{s.resultCount} results</span>
+              {isConfirming ? (
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-rose-600 font-medium">Delete?</span>
+                  <button
+                    onClick={() => handleDelete(s.id)}
+                    disabled={deleting === s.id}
+                    className="text-[10px] font-semibold text-white bg-rose-600 hover:bg-rose-700 px-1.5 py-0.5 rounded transition-colors disabled:opacity-50"
+                  >
+                    {deleting === s.id ? '…' : 'Yes'}
+                  </button>
+                  <button
+                    onClick={() => setConfirmId(null)}
+                    className="text-[10px] text-[#5a7a85] hover:text-[#084c61] px-1.5 py-0.5 rounded transition-colors"
+                  >
+                    No
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmId(s.id)}
+                  className="text-[#8aadb8] hover:text-rose-500 transition-colors"
+                  title="Delete this run"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── Batch Card ───────────────────────────────────────────────────────────────
 
 function BatchCard({
@@ -569,6 +661,8 @@ function BatchCard({
   const [editMode, setEditMode] = useState(false)
   const [editName, setEditName] = useState(batch.name)
   const [saving, setSaving] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [sessions, setSessions] = useState<RunSessionInfo[]>(batch.recentSessions ?? [])
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { if (editMode) inputRef.current?.focus() }, [editMode])
@@ -580,6 +674,10 @@ function BatchCard({
       const res = await fetch(`/api/projects/${batch.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: editName.trim() }) })
       if (res.ok) { onRename(batch.id, editName.trim()); setEditMode(false) }
     } catch {} finally { setSaving(false) }
+  }
+
+  const handleDeleteSession = (sessionId: string) => {
+    setSessions((prev) => prev.filter((s) => s.id !== sessionId))
   }
 
   return (
@@ -611,6 +709,12 @@ function BatchCard({
               )}
               <span className="text-xs text-[#8aadb8]">{new Date(batch.createdAt).toLocaleDateString()}</span>
             </div>
+            {batch.lastRunAt && (() => {
+              const d = new Date(batch.lastRunAt)
+              const pad = (n: number) => String(n).padStart(2, '0')
+              const label = `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+              return <p className="text-xs text-[#8aadb8] mt-1">Last run: {label}</p>
+            })()}
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
@@ -638,6 +742,23 @@ function BatchCard({
               <Trash2 className="h-4 w-4" />
             </button>
           </div>
+        </div>
+
+        {/* Run history collapsible */}
+        <div className="mt-4 pt-3 border-t border-[#eef3f5]">
+          <button
+            onClick={() => setShowHistory((v) => !v)}
+            className="flex items-center gap-1.5 text-xs font-medium text-[#5a7a85] hover:text-[#084c61] transition-colors"
+          >
+            <History className="h-3.5 w-3.5" />
+            Run History ({sessions.length})
+            {showHistory ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </button>
+          {showHistory && (
+            <div className="mt-3">
+              <RunHistoryPanel sessions={sessions} onDeleteSession={handleDeleteSession} />
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

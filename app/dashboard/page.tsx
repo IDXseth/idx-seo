@@ -4,10 +4,28 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Scorecard } from '@/components/scorecard'
 import { PlatformMentionChart } from '@/components/platform-chart'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
+import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
+import { OptimizationPriorityTable } from '@/components/optimization-priority-table'
+import { getSitemapAnalysis, SitemapAnalysis } from '@/lib/sitemap'
+import { getGscMetrics } from '@/lib/gsc'
 import { slugify } from '@/lib/utils'
-import { BarChart3, Target, Quote, Layers, ArrowRight } from 'lucide-react'
+import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
+
+async function getSessionList(): Promise<SessionOption[]> {
+  const sessions = await prisma.runSession.findMany({
+    where: { status: 'done' },
+    orderBy: { startedAt: 'asc' },
+    select: { id: true, startedAt: true, triggeredBy: true, _count: { select: { results: true } } },
+  })
+  return sessions.map((s) => ({
+    id: s.id,
+    startedAt: s.startedAt.toISOString(),
+    triggeredBy: s.triggeredBy,
+    resultCount: s._count.results,
+  }))
+}
 
 async function getTrendData(): Promise<TrendPoint[]> {
   const sessions = await prisma.runSession.findMany({
@@ -54,20 +72,35 @@ async function getTrendData(): Promise<TrendPoint[]> {
   })
 }
 
-async function getDashboardData() {
-  const [totalPrompts, totalResults, mentionedResults, citedResults] = await Promise.all([
-    prisma.prompt.count(),
-    prisma.result.count(),
-    prisma.result.count({ where: { isMentioned: true } }),
-    prisma.result.count({ where: { isCited: true } }),
+async function getDashboardData(sessionId?: string) {
+  // One canonical prompt per unique promptText (first created wins) — prevents cross-batch double-counting
+  const canonicalRows = await prisma.prompt.findMany({
+    distinct: ['promptText'],
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  })
+  const canonicalIds = canonicalRows.map((r) => r.id)
+
+  const rf = {
+    promptId: { in: canonicalIds },
+    ...(sessionId ? { runSessionId: sessionId } : {}),
+  }
+
+  const [totalResults, mentionedResults, citedResults] = await Promise.all([
+    prisma.result.count({ where: rf }),
+    prisma.result.count({ where: { ...rf, isMentioned: true } }),
+    prisma.result.count({ where: { ...rf, isCited: true } }),
   ])
+  const totalPrompts = sessionId
+    ? await prisma.prompt.count({ where: { id: { in: canonicalIds }, results: { some: { runSessionId: sessionId } } } })
+    : canonicalIds.length
 
   const platformStats = await Promise.all(
     PLATFORMS.map(async (platform) => {
       const [total, mentioned, cited] = await Promise.all([
-        prisma.result.count({ where: { platform } }),
-        prisma.result.count({ where: { platform, isMentioned: true } }),
-        prisma.result.count({ where: { platform, isCited: true } }),
+        prisma.result.count({ where: { ...rf, platform } }),
+        prisma.result.count({ where: { ...rf, platform, isMentioned: true } }),
+        prisma.result.count({ where: { ...rf, platform, isCited: true } }),
       ])
       return {
         platform,
@@ -80,14 +113,15 @@ async function getDashboardData() {
     })
   )
 
-  const communityGroups = await prisma.prompt.groupBy({ by: ['communityName', 'city'], _count: { id: true } })
-  const communityStats = await Promise.all(
-    communityGroups.map(async (c) => {
+  const communityGroups = await prisma.prompt.groupBy({ by: ['communityName', 'city'], where: { id: { in: canonicalIds } }, _count: { id: true } })
+  const communityStats = (await Promise.all(
+    communityGroups.filter((c) => c.communityName).map(async (c) => {
       const results = await prisma.result.findMany({
-        where: { prompt: { communityName: c.communityName } },
+        where: { ...rf, prompt: { communityName: c.communityName } },
         select: { isMentioned: true, isCited: true },
       })
       const total = results.length
+      if (sessionId && total === 0) return null
       return {
         communityName: c.communityName,
         city: c.city,
@@ -96,16 +130,17 @@ async function getDashboardData() {
         citationRate: total > 0 ? results.filter((r) => r.isCited).length / total : 0,
       }
     })
-  )
+  )).filter(Boolean) as Array<{ communityName: string; city: string; promptCount: number; mentionRate: number; citationRate: number }>
 
-  const categoryGroups = await prisma.prompt.groupBy({ by: ['category'], _count: { id: true } })
-  const categoryStats = await Promise.all(
+  const categoryGroups = await prisma.prompt.groupBy({ by: ['category'], where: { id: { in: canonicalIds } }, _count: { id: true } })
+  const categoryStats = (await Promise.all(
     categoryGroups.filter((c) => c.category).map(async (c) => {
       const results = await prisma.result.findMany({
-        where: { prompt: { category: c.category } },
+        where: { ...rf, prompt: { category: c.category } },
         select: { isMentioned: true, isCited: true },
       })
       const total = results.length
+      if (sessionId && total === 0) return null
       return {
         category: c.category,
         promptCount: c._count.id,
@@ -113,16 +148,17 @@ async function getDashboardData() {
         citationRate: total > 0 ? results.filter((r) => r.isCited).length / total : 0,
       }
     })
-  )
+  )).filter(Boolean) as Array<{ category: string; promptCount: number; mentionRate: number; citationRate: number }>
 
-  const careLevelGroups = await prisma.prompt.groupBy({ by: ['levelOfCare'], _count: { id: true } })
-  const careLevelStats = await Promise.all(
+  const careLevelGroups = await prisma.prompt.groupBy({ by: ['levelOfCare'], where: { id: { in: canonicalIds } }, _count: { id: true } })
+  const careLevelStats = (await Promise.all(
     careLevelGroups.filter((c) => c.levelOfCare).map(async (c) => {
       const results = await prisma.result.findMany({
-        where: { prompt: { levelOfCare: c.levelOfCare } },
+        where: { ...rf, prompt: { levelOfCare: c.levelOfCare } },
         select: { isMentioned: true, isCited: true },
       })
       const total = results.length
+      if (sessionId && total === 0) return null
       return {
         levelOfCare: c.levelOfCare,
         promptCount: c._count.id,
@@ -130,16 +166,17 @@ async function getDashboardData() {
         citationRate: total > 0 ? results.filter((r) => r.isCited).length / total : 0,
       }
     })
-  )
+  )).filter(Boolean) as Array<{ levelOfCare: string; promptCount: number; mentionRate: number; citationRate: number }>
 
-  const marketGroups = await prisma.prompt.groupBy({ by: ['market'], _count: { id: true } })
-  const marketStats = await Promise.all(
+  const marketGroups = await prisma.prompt.groupBy({ by: ['market'], where: { id: { in: canonicalIds } }, _count: { id: true } })
+  const marketStats = (await Promise.all(
     marketGroups.filter((m) => m.market).map(async (m) => {
       const results = await prisma.result.findMany({
-        where: { prompt: { market: m.market } },
+        where: { ...rf, prompt: { market: m.market } },
         select: { isMentioned: true, isCited: true },
       })
       const total = results.length
+      if (sessionId && total === 0) return null
       return {
         market: m.market,
         promptCount: m._count.id,
@@ -147,7 +184,22 @@ async function getDashboardData() {
         citationRate: total > 0 ? results.filter((r) => r.isCited).length / total : 0,
       }
     })
-  )
+  )).filter(Boolean) as Array<{ market: string; promptCount: number; mentionRate: number; citationRate: number }>
+
+  const rawCitations = await prisma.citation.findMany({
+    where: { ...(sessionId ? { result: { runSessionId: sessionId } } : {}), url: { not: '' } },
+    select: { url: true, title: true },
+  })
+  const urlMap = new Map<string, { title: string; count: number }>()
+  for (const c of rawCitations) {
+    const existing = urlMap.get(c.url)
+    if (existing) existing.count++
+    else urlMap.set(c.url, { title: c.title || c.url, count: 1 })
+  }
+  const topCitationUrls = [...urlMap.entries()]
+    .map(([url, { title, count }]) => ({ url, title, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10)
 
   return {
     overview: {
@@ -161,16 +213,37 @@ async function getDashboardData() {
     categoryStats,
     careLevelStats,
     marketStats,
+    topCitationUrls,
   }
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ session?: string }>
+}) {
+  const { session: sessionId } = await searchParams
+
   let data: Awaited<ReturnType<typeof getDashboardData>> | null = null
   let trendData: TrendPoint[] = []
+  let sessions: SessionOption[] = []
+  let sitemapAnalysis: SitemapAnalysis | null = null
   try {
-    ;[data, trendData] = await Promise.all([getDashboardData(), getTrendData()])
+    ;[data, trendData, sessions] = await Promise.all([
+      getDashboardData(sessionId),
+      getTrendData(),
+      getSessionList(),
+    ])
   } catch {
     // DB not configured — show empty state
+  }
+  if (data) {
+    try {
+      const gscMetrics = await getGscMetrics().catch(() => undefined)
+      sitemapAnalysis = await getSitemapAnalysis(data.communityStats, gscMetrics)
+    } catch {
+      // Tab shows empty state
+    }
   }
 
   if (!data || data.overview.totalPrompts === 0) {
@@ -185,138 +258,190 @@ export default async function DashboardPage() {
     )
   }
 
+  const currentSession = sessions.find((s) => s.id === sessionId)
+
   return (
     <div>
       {/* Page header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Dashboard</h1>
-        <p className="text-[#5a7a85] mt-1 text-sm">AI mention and citation monitoring across your senior living portfolio</p>
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Dashboard</h1>
+          <p className="text-[#5a7a85] mt-1 text-sm">
+            {currentSession
+              ? `Showing data from ${new Date(currentSession.startedAt).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`
+              : 'AI mention and citation monitoring across your senior living portfolio'}
+          </p>
+        </div>
+        <RunSessionPicker sessions={sessions} currentSessionId={sessionId} />
       </div>
 
       <>
-          {/* Hero stat strip */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <StatCard
-              icon={<BarChart3 className="h-5 w-5 text-[#084c61]" />}
-              iconBg="bg-[#e6f2f5]"
-              label="Prompts Analyzed"
-              value={data.overview.totalPrompts.toLocaleString()}
-            />
-            <StatCard
-              icon={<Target className="h-5 w-5 text-emerald-600" />}
-              iconBg="bg-emerald-50"
-              label="Overall Mention Rate"
-              value={formatPercent(data.overview.overallMentionRate)}
-              subtext={rateLabel(data.overview.overallMentionRate)}
-              subtextColor={rateTextColor(data.overview.overallMentionRate)}
-            />
-            <StatCard
-              icon={<Quote className="h-5 w-5 text-[#177e89]" />}
-              iconBg="bg-[#e6f2f5]"
-              label="Overall Citation Rate"
-              value={formatPercent(data.overview.overallCitationRate)}
-              subtext={rateLabel(data.overview.overallCitationRate)}
-              subtextColor={rateTextColor(data.overview.overallCitationRate)}
-            />
-            <StatCard
-              icon={<Layers className="h-5 w-5 text-[#084c61]" />}
-              iconBg="bg-[#e6f2f5]"
-              label="Platforms Monitored"
-              value={String(PLATFORMS.length)}
-              subtext="AI platforms"
-            />
-          </div>
+        {/* Hero stat strip */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <StatCard
+            icon={<BarChart3 className="h-5 w-5 text-[#084c61]" />}
+            iconBg="bg-[#e6f2f5]"
+            label="Prompts Analyzed"
+            value={data.overview.totalPrompts.toLocaleString()}
+          />
+          <StatCard
+            icon={<Target className="h-5 w-5 text-emerald-600" />}
+            iconBg="bg-emerald-50"
+            label="Overall Mention Rate"
+            value={formatPercent(data.overview.overallMentionRate)}
+            subtext={rateLabel(data.overview.overallMentionRate)}
+            subtextColor={rateTextColor(data.overview.overallMentionRate)}
+          />
+          <StatCard
+            icon={<Quote className="h-5 w-5 text-[#177e89]" />}
+            iconBg="bg-[#e6f2f5]"
+            label="Overall Citation Rate"
+            value={formatPercent(data.overview.overallCitationRate)}
+            subtext={rateLabel(data.overview.overallCitationRate)}
+            subtextColor={rateTextColor(data.overview.overallCitationRate)}
+          />
+          <StatCard
+            icon={<Layers className="h-5 w-5 text-[#084c61]" />}
+            iconBg="bg-[#e6f2f5]"
+            label="Platforms Monitored"
+            value={String(PLATFORMS.length)}
+            subtext="AI platforms"
+          />
+        </div>
 
-          {/* Tabbed views */}
-          <Tabs defaultValue="overview">
-            <TabsList className="mb-6">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="trends">Trends</TabsTrigger>
-              <TabsTrigger value="community">By Community</TabsTrigger>
-              <TabsTrigger value="category">By Category</TabsTrigger>
-              <TabsTrigger value="careLevel">By Level of Care</TabsTrigger>
-              <TabsTrigger value="market">By Market</TabsTrigger>
-            </TabsList>
+        {/* Tabbed views */}
+        <Tabs defaultValue="overview">
+          <TabsList className="mb-6">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="trends">Trends</TabsTrigger>
+            <TabsTrigger value="community">By Community</TabsTrigger>
+            <TabsTrigger value="category">By Category</TabsTrigger>
+            <TabsTrigger value="careLevel">By Level of Care</TabsTrigger>
+            <TabsTrigger value="market">By Market</TabsTrigger>
+            <TabsTrigger value="optimization">Optimization Priority</TabsTrigger>
+          </TabsList>
 
-            <TabsContent value="overview">
+          <TabsContent value="overview">
+            <div className="space-y-6">
               <SectionCard title="Mention & Citation Rate by Platform">
                 <PlatformMentionChart data={data.platformStats} />
               </SectionCard>
-            </TabsContent>
-
-            <TabsContent value="trends">
-              <TrendCharts data={trendData} />
-            </TabsContent>
-
-            <TabsContent value="community">
-              <TabGrid
-                items={data.communityStats}
-                renderCard={(c) => (
-                  <Scorecard
-                    key={c.communityName}
-                    title={c.communityName}
-                    subtitle={c.city}
-                    mentionRate={c.mentionRate}
-                    citationRate={c.citationRate}
-                    promptCount={c.promptCount}
-                    href={`/dashboard/community/${encodeURIComponent(slugify(c.communityName))}`}
-                  />
+              <SectionCard title="Top Citation URLs">
+                {data.topCitationUrls.length === 0 ? (
+                  <p className="text-sm text-[#8aadb8]">No citations recorded yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {data.topCitationUrls.map(({ url, title, count }) => {
+                      let domain = ''
+                      try { domain = new URL(url).hostname } catch {}
+                      return (
+                        <a
+                          key={url}
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 p-2.5 rounded-lg bg-[#f5f8fa] hover:bg-[#e6f2f5] transition-colors group"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5 text-[#8aadb8] flex-shrink-0 group-hover:text-[#177e89] transition-colors" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-[#084c61] truncate">{title}</p>
+                            {domain && <p className="text-[10px] text-[#8aadb8]">{domain}</p>}
+                          </div>
+                          <span className="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#e6f2f5] text-[#084c61]">
+                            {count}
+                          </span>
+                        </a>
+                      )
+                    })}
+                  </div>
                 )}
-                empty="No community data available"
-              />
-            </TabsContent>
+              </SectionCard>
+            </div>
+          </TabsContent>
 
-            <TabsContent value="category">
-              <TabGrid
-                items={data.categoryStats}
-                renderCard={(c) => (
-                  <Scorecard
-                    key={c.category}
-                    title={c.category}
-                    mentionRate={c.mentionRate}
-                    citationRate={c.citationRate}
-                    promptCount={c.promptCount}
-                    href={`/dashboard/category/${encodeURIComponent(c.category)}`}
-                  />
-                )}
-                empty="No category data available"
-              />
-            </TabsContent>
+          <TabsContent value="trends">
+            <TrendCharts data={trendData} />
+          </TabsContent>
 
-            <TabsContent value="careLevel">
-              <TabGrid
-                items={data.careLevelStats}
-                renderCard={(c) => (
-                  <Scorecard
-                    key={c.levelOfCare}
-                    title={c.levelOfCare}
-                    mentionRate={c.mentionRate}
-                    citationRate={c.citationRate}
-                    promptCount={c.promptCount}
-                    href={`/dashboard/care-level/${encodeURIComponent(c.levelOfCare)}`}
-                  />
-                )}
-                empty="No care level data available"
-              />
-            </TabsContent>
+          <TabsContent value="community">
+            <TabGrid
+              items={data.communityStats}
+              renderCard={(c) => (
+                <Scorecard
+                  key={c.communityName}
+                  title={c.communityName}
+                  subtitle={c.city}
+                  mentionRate={c.mentionRate}
+                  citationRate={c.citationRate}
+                  promptCount={c.promptCount}
+                  href={`/dashboard/community/${encodeURIComponent(slugify(c.communityName))}${sessionId ? `?session=${sessionId}` : ''}`}
+                />
+              )}
+              empty="No community data available"
+            />
+          </TabsContent>
 
-            <TabsContent value="market">
-              <TabGrid
-                items={data.marketStats}
-                renderCard={(m) => (
-                  <Scorecard
-                    key={m.market}
-                    title={m.market}
-                    mentionRate={m.mentionRate}
-                    citationRate={m.citationRate}
-                    promptCount={m.promptCount}
-                    href={`/dashboard/market/${encodeURIComponent(m.market)}`}
-                  />
-                )}
-                empty="No market data available"
-              />
-            </TabsContent>
-          </Tabs>
+          <TabsContent value="category">
+            <TabGrid
+              items={data.categoryStats}
+              renderCard={(c) => (
+                <Scorecard
+                  key={c.category}
+                  title={c.category}
+                  mentionRate={c.mentionRate}
+                  citationRate={c.citationRate}
+                  promptCount={c.promptCount}
+                  href={`/dashboard/category/${encodeURIComponent(c.category)}${sessionId ? `?session=${sessionId}` : ''}`}
+                />
+              )}
+              empty="No category data available"
+            />
+          </TabsContent>
+
+          <TabsContent value="careLevel">
+            <TabGrid
+              items={data.careLevelStats}
+              renderCard={(c) => (
+                <Scorecard
+                  key={c.levelOfCare}
+                  title={c.levelOfCare}
+                  mentionRate={c.mentionRate}
+                  citationRate={c.citationRate}
+                  promptCount={c.promptCount}
+                  href={`/dashboard/care-level/${encodeURIComponent(c.levelOfCare)}${sessionId ? `?session=${sessionId}` : ''}`}
+                />
+              )}
+              empty="No care level data available"
+            />
+          </TabsContent>
+
+          <TabsContent value="market">
+            <TabGrid
+              items={data.marketStats}
+              renderCard={(m) => (
+                <Scorecard
+                  key={m.market}
+                  title={m.market}
+                  mentionRate={m.mentionRate}
+                  citationRate={m.citationRate}
+                  promptCount={m.promptCount}
+                  href={`/dashboard/market/${encodeURIComponent(m.market)}${sessionId ? `?session=${sessionId}` : ''}`}
+                />
+              )}
+              empty="No market data available"
+            />
+          </TabsContent>
+
+          <TabsContent value="optimization">
+            {sitemapAnalysis ? (
+              <OptimizationPriorityTable {...sitemapAnalysis} />
+            ) : (
+              <SectionCard title="Optimization Priority">
+                <p className="text-sm text-[#8aadb8]">Sitemap analysis unavailable.</p>
+              </SectionCard>
+            )}
+          </TabsContent>
+        </Tabs>
       </>
     </div>
   )
@@ -388,7 +513,6 @@ function TabGrid<T>({
 function EmptyDashboard() {
   return (
     <div className="bg-white rounded-2xl border border-[#dde6ea] overflow-hidden">
-      {/* Decorative gradient header */}
       <div className="px-8 py-12 text-center" style={{ background: 'linear-gradient(135deg, #084c61 0%, #054166 100%)' }}>
         <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-white/10 backdrop-blur mb-4">
           <BarChart3 className="h-7 w-7 text-white" />
@@ -399,7 +523,6 @@ function EmptyDashboard() {
         </p>
       </div>
 
-      {/* Steps */}
       <div className="px-8 py-8">
         <p className="text-xs font-semibold text-[#8aadb8] uppercase tracking-wider mb-5">Get started in 2 steps</p>
         <div className="grid sm:grid-cols-2 gap-4">

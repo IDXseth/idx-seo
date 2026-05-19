@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { queryPlatform } from '@/lib/ai-clients'
 import { PLATFORMS } from '@/lib/utils'
 import { sendRunCompleteEmail } from '@/lib/email'
+import { refreshGscCache } from '@/lib/gsc'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -188,18 +189,8 @@ export const checkSchedules = inngest.createFunction(
     })
 
     for (const schedule of due) {
-      await step.sendEvent(`fire-schedule-${schedule.id}`, {
-        name: 'batch/run.requested',
-        data: {
-          batchId: schedule.batchId,
-          triggeredBy: 'scheduled',
-          scheduleId: schedule.id,
-          isRerun: true,
-        },
-      })
-
-      // Create RunSession and BatchRun for this scheduled run
-      await step.run(`init-session-${schedule.id}`, async () => {
+      // Create RunSession and BatchRun BEFORE sending event so IDs are available to batchFanOut
+      const { batchRunId, runSessionId } = await step.run(`init-session-${schedule.id}`, async () => {
         const totalPrompts = await prisma.prompt.count({ where: { batchId: schedule.batchId } })
         const runSession = await prisma.runSession.create({
           data: {
@@ -209,7 +200,7 @@ export const checkSchedules = inngest.createFunction(
             status: 'running',
           },
         })
-        await prisma.batchRun.create({
+        const batchRun = await prisma.batchRun.create({
           data: {
             batchId: schedule.batchId,
             runSessionId: runSession.id,
@@ -223,10 +214,33 @@ export const checkSchedules = inngest.createFunction(
           where: { id: schedule.id },
           data: { lastRunAt: new Date(), nextRunAt },
         })
+        return { batchRunId: batchRun.id, runSessionId: runSession.id }
+      })
+
+      await step.sendEvent(`fire-schedule-${schedule.id}`, {
+        name: 'batch/run.requested',
+        data: {
+          batchId: schedule.batchId,
+          batchRunId,
+          runSessionId,
+          triggeredBy: 'scheduled',
+          scheduleId: schedule.id,
+          isRerun: true,
+        },
       })
     }
 
     return { fired: due.length }
+  }
+)
+
+// ─── Daily GSC cache refresh (3 AM UTC) ──────────────────────────────────────
+
+export const refreshGsc = inngest.createFunction(
+  { id: 'refresh-gsc-cache', triggers: [{ cron: '0 3 * * *' }] },
+  async ({ step }) => {
+    const result = await step.run('fetch-gsc-metrics', () => refreshGscCache())
+    return result
   }
 )
 

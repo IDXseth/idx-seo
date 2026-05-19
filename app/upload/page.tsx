@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, X, Info } from 'lucide-react'
+import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, X, Info, TriangleAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { normalizeRow, KNOWN_LEVELS_OF_CARE } from '@/lib/normalize'
 
 interface ParsedRow {
   promptType: string
@@ -18,6 +19,7 @@ interface ParsedRow {
   market: string
   levelOfCare: string
   promptText: string
+  isUnknownCare: boolean
 }
 
 function normalizeKey(key: string): string {
@@ -43,7 +45,7 @@ function parseSpreadsheet(file: File): Promise<ParsedRow[]> {
       try {
         const workbook = XLSX.read(e.target?.result, { type: 'array' })
         const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]) as Record<string, unknown>[]
-        resolve(rows.map((row) => ({
+        resolve(rows.map((row) => normalizeRow({
           promptType: getField(row, 'prompt_type', 'type', 'promptType') || 'nonbrand',
           category: getField(row, 'category'),
           communityName: getField(row, 'community_name', 'community', 'communityName'),
@@ -72,6 +74,7 @@ export default function UploadPage() {
   const [uploadProgress, setUploadProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [skippedCount, setSkippedCount] = useState(0)
 
   const handleFile = async (f: File) => {
     if (!f.name.match(/\.(xlsx|csv|xls)$/i)) {
@@ -115,12 +118,11 @@ export default function UploadPage() {
       const res = await fetch('/api/upload', { method: 'POST', body: formData })
       clearInterval(progressInterval)
       setUploadProgress(100)
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Upload failed')
-      }
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Upload failed')
+      setSkippedCount(data.skippedCount ?? 0)
       setSuccess(true)
-      setTimeout(() => router.push('/run'), 1500)
+      setTimeout(() => router.push('/run'), 2500)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Upload failed')
       setUploading(false)
@@ -134,6 +136,7 @@ export default function UploadPage() {
     setBatchName('')
     setError(null)
     setSuccess(false)
+    setSkippedCount(0)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -210,14 +213,41 @@ export default function UploadPage() {
       )}
 
       {success && (
-        <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl mb-6">
-          <CheckCircle2 className="h-5 w-5 text-emerald-500 flex-shrink-0" />
-          <p className="text-sm text-emerald-700 font-medium">Upload successful! Redirecting to Run Prompts…</p>
+        <div className="space-y-3 mb-6">
+          <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+            <CheckCircle2 className="h-5 w-5 text-emerald-500 flex-shrink-0" />
+            <p className="text-sm text-emerald-700 font-medium">Upload successful! Redirecting to Run Prompts…</p>
+          </div>
+          {skippedCount > 0 && (
+            <div className="flex items-center gap-3 p-4 bg-[#e6f2f5] border border-[#b8d8e0] rounded-xl">
+              <Info className="h-5 w-5 text-[#177e89] flex-shrink-0" />
+              <p className="text-sm text-[#084c61]">
+                <span className="font-semibold">{skippedCount} prompt{skippedCount !== 1 ? 's' : ''}</span> already exist in your account and were not added again.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
       {preview.length > 0 && !success && (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          {(() => {
+            const unknownCareRows = preview.filter((r) => r.isUnknownCare)
+            if (unknownCareRows.length === 0) return null
+            return (
+              <div className="px-6 py-3 bg-amber-50 border-b border-amber-200 flex items-start gap-2.5">
+                <TriangleAlert className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">
+                    {unknownCareRows.length} row{unknownCareRows.length !== 1 ? 's have' : ' has'} an unrecognized Level of Care value
+                  </p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    Known values: {KNOWN_LEVELS_OF_CARE.join(', ')}. Unrecognized values will be stored as-is and shown highlighted below.
+                  </p>
+                </div>
+              </div>
+            )
+          })()}
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
             <div>
               <p className="font-semibold text-slate-900 text-sm">Preview</p>
@@ -266,7 +296,10 @@ export default function UploadPage() {
                     <TableCell className="text-slate-500">{row.city || '—'}</TableCell>
                     <TableCell className="text-slate-500">{row.market || '—'}</TableCell>
                     <TableCell className="text-slate-500">{row.category || '—'}</TableCell>
-                    <TableCell className="text-slate-500">{row.levelOfCare || '—'}</TableCell>
+                    <TableCell className={cn('text-xs', row.isUnknownCare ? 'text-amber-700 font-medium' : 'text-slate-500')}>
+                      {row.levelOfCare || '—'}
+                      {row.isUnknownCare && <span className="ml-1 text-amber-400">⚠</span>}
+                    </TableCell>
                     <TableCell className="max-w-xs">
                       <p className="truncate text-slate-700 text-xs">{row.promptText}</p>
                     </TableCell>
