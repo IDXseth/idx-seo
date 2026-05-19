@@ -1,4 +1,5 @@
 import { XMLParser } from 'fast-xml-parser'
+import { getGscMetricsByUrl, getGscStatus, type GscMetric, type GscStatus } from './gsc'
 
 const SITEMAP_URL = 'https://www.seniorlifestyle.com/community-sitemap.xml'
 // Community pages live under this path prefix
@@ -31,6 +32,7 @@ export interface CommunityWithSitemapStatus {
   sitemapUrl: string | null
   optimizationPriority: number | null  // 1 = highest priority, null if not ranked
   actionItems: ActionItem[]
+  gscMetric: GscMetric | null
 }
 
 export interface SitemapAnalysis {
@@ -45,6 +47,7 @@ export interface SitemapAnalysis {
   }
   fetchedAt: string
   error: string | null
+  gsc: GscStatus
 }
 
 // ── Normalization ────────────────────────────────────────────────────────────
@@ -242,14 +245,23 @@ export async function getSitemapAnalysis(
 ): Promise<SitemapAnalysis> {
   const fetchedAt = new Date().toISOString()
 
+  // Fetch sitemap + GSC data in parallel
   let sitemapEntries: SitemapEntry[] = []
   let error: string | null = null
+  let gscMetrics = new Map<string, GscMetric>()
+  let gscStatus: GscStatus = { connected: false, siteUrl: null, lastSynced: null }
 
-  try {
-    sitemapEntries = await fetchSitemapEntries()
-  } catch (err) {
-    error = err instanceof Error ? err.message : 'Failed to fetch sitemap'
-  }
+  await Promise.all([
+    fetchSitemapEntries()
+      .then(entries => { sitemapEntries = entries })
+      .catch(err => { error = err instanceof Error ? err.message : 'Failed to fetch sitemap' }),
+    getGscMetricsByUrl()
+      .then(m => { gscMetrics = m })
+      .catch(() => {}), // GSC failure is non-fatal
+    getGscStatus()
+      .then(s => { gscStatus = s })
+      .catch(() => {}),
+  ])
 
   // Track which sitemap entries get matched to avoid double-counting
   const matchedSitemapUrls = new Set<string>()
@@ -265,6 +277,14 @@ export async function getSitemapAnalysis(
       : match
         ? 'has_page'
         : 'no_page'
+
+    // Try to find a GSC metric by exact URL match, then by URL-prefix match
+    let gscMetric: GscMetric | null = null
+    if (match) {
+      gscMetric = gscMetrics.get(match.url) ?? null
+      // GSC may return URLs without trailing slash — try both
+      if (!gscMetric) gscMetric = gscMetrics.get(match.url.replace(/\/$/, '')) ?? null
+    }
 
     const actionItems = getActionItems(
       c.mentionRate,
@@ -286,6 +306,7 @@ export async function getSitemapAnalysis(
       sitemapUrl: match?.url ?? null,
       optimizationPriority: null, // assigned below
       actionItems,
+      gscMetric,
     }
   })
 
@@ -297,7 +318,7 @@ export async function getSitemapAnalysis(
   // Sitemap pages not matched to any DB community
   const untrackedPages = sitemapEntries.filter(e => !matchedSitemapUrls.has(e.url))
 
-  const withPageCount = communities.filter(c => c.sitemapStatus === 'has_page').length
+  const withPageCount = withPage.length
   const avgScoreWithPage = withPageCount > 0
     ? Math.round(withPage.reduce((sum, c) => sum + c.visibilityScore, 0) / withPageCount)
     : 0
@@ -314,5 +335,6 @@ export async function getSitemapAnalysis(
     },
     fetchedAt,
     error,
+    gsc: gscStatus,
   }
 }

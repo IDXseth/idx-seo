@@ -336,6 +336,7 @@ export default async function DashboardPage() {
                   summary={sitemapAnalysis.summary}
                   fetchedAt={sitemapAnalysis.fetchedAt}
                   error={sitemapAnalysis.error}
+                  gsc={sitemapAnalysis.gsc}
                 />
               ) : (
                 <SectionCard title="Optimization Priority">
