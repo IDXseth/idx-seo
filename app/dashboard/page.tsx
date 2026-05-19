@@ -5,6 +5,9 @@ import { Scorecard } from '@/components/scorecard'
 import { PlatformMentionChart } from '@/components/platform-chart'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
+import { OptimizationPriorityTable } from '@/components/optimization-priority-table'
+import { getSitemapAnalysis, SitemapAnalysis } from '@/lib/sitemap'
+import { getGscMetrics } from '@/lib/gsc'
 import { slugify } from '@/lib/utils'
 import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink } from 'lucide-react'
 
@@ -224,6 +227,7 @@ export default async function DashboardPage({
   let data: Awaited<ReturnType<typeof getDashboardData>> | null = null
   let trendData: TrendPoint[] = []
   let sessions: SessionOption[] = []
+  let sitemapAnalysis: SitemapAnalysis | null = null
   try {
     ;[data, trendData, sessions] = await Promise.all([
       getDashboardData(sessionId),
@@ -232,6 +236,14 @@ export default async function DashboardPage({
     ])
   } catch {
     // DB not configured — show empty state
+  }
+  if (data) {
+    try {
+      const gscMetrics = await getGscMetrics().catch(() => undefined)
+      sitemapAnalysis = await getSitemapAnalysis(data.communityStats, gscMetrics)
+    } catch {
+      // Tab shows empty state
+    }
   }
 
   if (!data || data.overview.totalPrompts === 0) {
@@ -306,6 +318,7 @@ export default async function DashboardPage({
             <TabsTrigger value="category">By Category</TabsTrigger>
             <TabsTrigger value="careLevel">By Level of Care</TabsTrigger>
             <TabsTrigger value="market">By Market</TabsTrigger>
+            <TabsTrigger value="optimization">Optimization Priority</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview">
@@ -417,6 +430,16 @@ export default async function DashboardPage({
               )}
               empty="No market data available"
             />
+          </TabsContent>
+
+          <TabsContent value="optimization">
+            {sitemapAnalysis ? (
+              <OptimizationPriorityTable {...sitemapAnalysis} />
+            ) : (
+              <SectionCard title="Optimization Priority">
+                <p className="text-sm text-[#8aadb8]">Sitemap analysis unavailable.</p>
+              </SectionCard>
+            )}
           </TabsContent>
         </Tabs>
       </>

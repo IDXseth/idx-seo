@@ -171,3 +171,14 @@ model Citation {
   title    String
   domain   String
 }
+
+model GscMetric {
+  id          String   @id @default(cuid())
+  pageUrl     String   @unique
+  isIndexed   Boolean  @default(false)
+  impressions Int      @default(0)
+  clicks      Int      @default(0)
+  position    Float?
+  fetchedAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

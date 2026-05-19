@@ -7,7 +7,19 @@ import { prisma } from './prisma'
 
 const googleProvider =
   process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
-    ? [Google({ clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET })]
+    ? [
+        Google({
+          clientId: process.env.GOOGLE_CLIENT_ID,
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+          authorization: {
+            params: {
+              scope: 'openid email profile https://www.googleapis.com/auth/webmasters.readonly',
+              access_type: 'offline',
+              prompt: 'consent',
+            },
+          },
+        }),
+      ]
     : []
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
