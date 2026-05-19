@@ -4,6 +4,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Scorecard } from '@/components/scorecard'
 import { PlatformMentionChart } from '@/components/platform-chart'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
+import { OptimizationPriorityTable } from '@/components/optimization-priority-table'
+import { getSitemapAnalysis, SitemapAnalysis } from '@/lib/sitemap'
 import { slugify } from '@/lib/utils'
 import { BarChart3, Target, Quote, Layers, ArrowRight } from 'lucide-react'
 
@@ -167,10 +169,18 @@ async function getDashboardData() {
 export default async function DashboardPage() {
   let data: Awaited<ReturnType<typeof getDashboardData>> | null = null
   let trendData: TrendPoint[] = []
+  let sitemapAnalysis: SitemapAnalysis | null = null
   try {
     ;[data, trendData] = await Promise.all([getDashboardData(), getTrendData()])
   } catch {
     // DB not configured — show empty state
+  }
+  if (data) {
+    try {
+      sitemapAnalysis = await getSitemapAnalysis(data.communityStats)
+    } catch {
+      // Tab shows empty state
+    }
   }
 
   if (!data || data.overview.totalPrompts === 0) {
@@ -236,6 +246,7 @@ export default async function DashboardPage() {
               <TabsTrigger value="category">By Category</TabsTrigger>
               <TabsTrigger value="careLevel">By Level of Care</TabsTrigger>
               <TabsTrigger value="market">By Market</TabsTrigger>
+              <TabsTrigger value="optimization">Optimization Priority</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview">
@@ -315,6 +326,16 @@ export default async function DashboardPage() {
                 )}
                 empty="No market data available"
               />
+            </TabsContent>
+
+            <TabsContent value="optimization">
+              {sitemapAnalysis ? (
+                <OptimizationPriorityTable {...sitemapAnalysis} />
+              ) : (
+                <SectionCard title="Optimization Priority">
+                  <p className="text-sm text-[#8aadb8]">Sitemap analysis unavailable.</p>
+                </SectionCard>
+              )}
             </TabsContent>
           </Tabs>
       </>
