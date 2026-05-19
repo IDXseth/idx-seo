@@ -16,6 +16,7 @@ model User {
   emailVerified DateTime?
   image         String?
   password      String?        // null for OAuth users
+  gscSiteUrl    String?        // selected Google Search Console property URL — SQL: ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "gscSiteUrl" TEXT;
   createdAt     DateTime       @default(now())
   accounts      Account[]
   sessions      Session[]

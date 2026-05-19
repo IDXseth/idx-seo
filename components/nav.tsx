@@ -6,6 +6,7 @@ import { useSession, signOut } from 'next-auth/react'
 import { useState, useRef, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { BarChart3, Upload, Play, ChevronDown, LogOut, User } from 'lucide-react'
+import { GscSiteSelector } from './gsc-site-selector'
 
 const links = [
   { href: '/dashboard', label: 'Dashboard', icon: BarChart3 },
@@ -61,6 +62,14 @@ function UserMenu() {
           <div className="px-4 py-3 border-b border-[#dde6ea]">
             <p className="text-sm font-semibold text-[#084c61] truncate">{user.name ?? 'User'}</p>
             <p className="text-xs text-[#8aadb8] truncate">{user.email}</p>
+          </div>
+
+          {/* GSC domain selector */}
+          <div className="border-b border-[#dde6ea]">
+            <p className="px-4 pt-2.5 pb-1 text-xs font-semibold text-[#8aadb8] uppercase tracking-wide">
+              GSC Domain
+            </p>
+            <GscSiteSelector />
           </div>
 
           {/* Actions */}
