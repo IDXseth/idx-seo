@@ -306,8 +306,12 @@ export async function getSitemapAnalysis(
   const communitiesBase: CommunityBase[] = communityStats.map((c) => {
     const normalizedName = normalizeForMatch(c.communityName)
 
-    // Exact slug match first, then best Jaccard ≥ 0.7
+    // 1. Exact slug match
+    // 2. Best Jaccard ≥ 0.6
+    // 3. Containment: every word in the community name appears in the slug
+    //    (handles "Prairie Green" → "prairie-green-senior-living")
     let matchedGroup: CommunityUrlGroup | null = null
+    const nameWords = new Set(normalizedName.split(' '))
     for (const group of urlGroups) {
       if (matchedGroupIds.has(group.baseUrl)) continue
       if (group.slug === normalizedName) {
@@ -320,9 +324,23 @@ export async function getSitemapAnalysis(
       for (const group of urlGroups) {
         if (matchedGroupIds.has(group.baseUrl)) continue
         const score = jaccardSimilarity(normalizedName, group.slug)
-        if (score > bestScore && score >= 0.7) {
+        if (score > bestScore && score >= 0.6) {
           bestScore = score
           matchedGroup = group
+        }
+      }
+    }
+    if (!matchedGroup) {
+      let bestScore = 0
+      for (const group of urlGroups) {
+        if (matchedGroupIds.has(group.baseUrl)) continue
+        const slugWords = new Set(group.slug.split(' '))
+        if ([...nameWords].every((w) => slugWords.has(w))) {
+          const score = jaccardSimilarity(normalizedName, group.slug)
+          if (score > bestScore) {
+            bestScore = score
+            matchedGroup = group
+          }
         }
       }
     }
