@@ -9,21 +9,33 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Find any Google account — include debug info to diagnose connection issues
-  const googleAccount = await prisma.account.findFirst({
-    where: { provider: 'google' },
-    select: { id: true, scope: true, refresh_token: true },
-  })
+  // Find any Google account for this user or any user (needed for shared GSC access)
+  const [myAccount, anyAccount] = await Promise.all([
+    prisma.account.findFirst({
+      where: { provider: 'google', userId: session.user.id },
+      select: { id: true, scope: true, refresh_token: true },
+    }),
+    prisma.account.findFirst({
+      where: { provider: 'google' },
+      select: { id: true, scope: true, refresh_token: true, userId: true },
+    }),
+  ])
 
+  const account = myAccount ?? anyAccount
   const sites = await listGscSites()
-  const connected = !!(googleAccount?.refresh_token)
+  const connected = !!(account)
   return NextResponse.json({
     sites,
     connected,
     debug: {
-      hasGoogleAccount: !!googleAccount,
-      hasRefreshToken: !!googleAccount?.refresh_token,
-      scope: googleAccount?.scope ?? null,
+      sessionUserId: session.user.id,
+      hasMyGoogleAccount: !!myAccount,
+      myAccountHasRefreshToken: !!myAccount?.refresh_token,
+      myAccountScope: myAccount?.scope ?? null,
+      hasAnyGoogleAccount: !!anyAccount,
+      anyAccountUserId: anyAccount?.userId ?? null,
+      anyAccountHasRefreshToken: !!anyAccount?.refresh_token,
+      anyAccountScope: anyAccount?.scope ?? null,
     },
   })
 }
