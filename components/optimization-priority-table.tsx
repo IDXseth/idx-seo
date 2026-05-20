@@ -200,8 +200,8 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
   const [googleConnected, setGoogleConnected] = useState(false)
 
   useEffect(() => {
-    fetch('/api/gsc/sites').then(r => r.ok ? r.json() : { sites: [] }).then(d => {
-      setGoogleConnected((d.sites ?? []).length > 0)
+    fetch('/api/gsc/sites').then(r => r.ok ? r.json() : { sites: [], connected: false }).then(d => {
+      setGoogleConnected(d.connected === true)
     }).catch(() => {})
   }, [])
 
