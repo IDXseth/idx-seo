@@ -32,3 +32,24 @@ export async function PUT(req: NextRequest) {
 
   return NextResponse.json({ siteUrl })
 }
+
+export async function DELETE() {
+  const session = await auth()
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Clear GSC tokens from the linked Google account so the user can reconnect
+  await prisma.account.updateMany({
+    where: { userId: session.user.id, provider: 'google' },
+    data: { access_token: null, refresh_token: null, scope: null, expires_at: null },
+  })
+
+  // Also clear the selected site
+  await prisma.user.update({
+    where: { id: session.user.id },
+    data: { gscSiteUrl: null },
+  })
+
+  return NextResponse.json({ ok: true })
+}
