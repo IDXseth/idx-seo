@@ -346,9 +346,10 @@ export async function getSitemapAnalysis(
 
     const visibilityScore = computeScore(c.mentionRate, c.citationRate, gscRaw)
 
-    // Look up crawl result using the clean base URL (no query params)
-    const baseUrl = matchedEntry ? matchedEntry.url.split('?')[0].replace(/\/?$/, '/') : null
-    const hasLocalBusiness = baseUrl ? (crawlResults?.get(baseUrl)?.hasLocalBusiness ?? null) : null
+    // Look up crawl result using the community base URL (already normalized, no query params)
+    const hasLocalBusiness = matchedGroup
+      ? (crawlResults?.get(matchedGroup.baseUrl)?.hasLocalBusiness ?? null)
+      : null
 
     return {
       communityName: c.communityName,
