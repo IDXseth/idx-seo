@@ -54,15 +54,11 @@ export async function listGscSites(): Promise<{ siteUrl: string; permissionLevel
   if (!auth) return []
 
   const sc = google.searchconsole({ version: 'v1', auth })
-  try {
-    const res = await sc.sites.list()
-    return (res.data.siteEntry ?? []).map((s) => ({
-      siteUrl: s.siteUrl ?? '',
-      permissionLevel: s.permissionLevel ?? 'unknown',
-    }))
-  } catch {
-    return []
-  }
+  const res = await sc.sites.list()
+  return (res.data.siteEntry ?? []).map((s) => ({
+    siteUrl: s.siteUrl ?? '',
+    permissionLevel: s.permissionLevel ?? 'unknown',
+  }))
 }
 
 export async function refreshGscCache(): Promise<{ pagesUpdated: number; error?: string }> {
