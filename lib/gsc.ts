@@ -13,7 +13,6 @@ async function getGscOAuth2Client() {
   const account = await prisma.account.findFirst({
     where: {
       provider: 'google',
-      scope: { contains: 'webmasters' },
       refresh_token: { not: null },
     },
     select: {
@@ -41,7 +40,6 @@ async function getConfiguredSiteUrl(): Promise<string | null> {
   const account = await prisma.account.findFirst({
     where: {
       provider: 'google',
-      scope: { contains: 'webmasters' },
       refresh_token: { not: null },
     },
     select: {
