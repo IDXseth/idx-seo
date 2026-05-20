@@ -39,10 +39,11 @@ export async function DELETE() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Clear GSC tokens from the linked Google account so the user can reconnect
-  await prisma.account.updateMany({
+  // Delete the linked Google account record(s) entirely so a fresh OAuth
+  // sign-in creates a clean record with new tokens. Clearing tokens is not
+  // enough — the stale record would be picked up before any new one.
+  await prisma.account.deleteMany({
     where: { userId: session.user.id, provider: 'google' },
-    data: { access_token: null, refresh_token: null, scope: null, expires_at: null },
   })
 
   // Also clear the selected site
