@@ -21,6 +21,14 @@ export async function GET(req: NextRequest) {
       })
     : await prisma.gscMetric.findMany({ take: 10, select: { pageUrl: true } })
 
+  const communityMatches = q
+    ? await prisma.prompt.findMany({
+        where: { communityName: { contains: q, mode: 'insensitive' } },
+        distinct: ['communityName'],
+        select: { communityName: true, city: true },
+      })
+    : []
+
   let sitemapStatus = ''
   let allUrls: string[] = []
   let fetchError = ''
@@ -49,5 +57,6 @@ export async function GET(req: NextRequest) {
     sitemapMatches,
     gscMetricTotal: gscTotal,
     gscMatches: gscMatches.map((g) => g.pageUrl),
+    communityNamesInDB: communityMatches,
   })
 }
