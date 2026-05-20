@@ -73,7 +73,7 @@ export function GscSiteSelector() {
   if (sites.length === 0) {
     return (
       <button
-        onClick={() => signIn('google', { callbackUrl: '/dashboard?tab=optimization' })}
+        onClick={() => signIn('google', { callbackUrl: '/dashboard?tab=optimization' }, { prompt: 'consent', access_type: 'offline' })}
         className="flex-shrink-0 px-4 py-2 rounded-lg bg-[#084c61] text-white text-xs font-semibold hover:bg-[#177e89] transition-colors whitespace-nowrap"
       >
         Connect with Google
