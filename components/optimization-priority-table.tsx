@@ -1,9 +1,11 @@
 'use client'
 
 import { useState } from 'react'
+import dynamic from 'next/dynamic'
 import { ExternalLink, ChevronDown, ChevronUp, AlertTriangle, RefreshCw, BarChart2 } from 'lucide-react'
-import { signIn } from 'next-auth/react'
 import type { CommunityWithSitemapStatus, SitemapEntry, SitemapAnalysis, ActionItem } from '@/lib/sitemap'
+
+const GscSiteSelector = dynamic(() => import('./gsc-site-selector').then(m => ({ default: m.GscSiteSelector })), { ssr: false })
 
 interface Props {
   communities: CommunityWithSitemapStatus[]
@@ -239,7 +241,7 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
 
   return (
     <div className="space-y-6">
-      {/* GSC not connected notice */}
+      {/* GSC banner — GscSiteSelector handles connect vs domain-pick internally */}
       {!gscEnabled && (
         <div className="flex flex-col sm:flex-row sm:items-center gap-4 bg-[#f0f5f7] border border-[#dde6ea] rounded-xl p-4">
           <BarChart2 className="h-5 w-5 text-[#177e89] flex-shrink-0" />
@@ -251,16 +253,20 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
               <span className="font-mono text-[#084c61]">mention×0.35 + citation×0.35 + impressions×0.15 + indexed×0.15</span>
             </p>
           </div>
-          <button
-            onClick={() => signIn('google', { callbackUrl: '/dashboard?tab=optimization' })}
-            className="flex-shrink-0 px-4 py-2 rounded-lg bg-[#084c61] text-white text-xs font-semibold hover:bg-[#177e89] transition-colors whitespace-nowrap"
-          >
-            Connect with Google
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <GscSiteSelector />
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="px-4 py-2 rounded-lg bg-[#084c61] text-white text-xs font-semibold hover:bg-[#177e89] disabled:opacity-50 transition-colors whitespace-nowrap"
+            >
+              {syncing ? 'Syncing…' : 'Sync now'}
+            </button>
+          </div>
         </div>
       )}
 
-      {/* GSC connected — sync button */}
+      {/* GSC connected with data — sync button */}
       {gscEnabled && (
         <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
           <span className="text-xs text-emerald-700 font-medium flex-1">
