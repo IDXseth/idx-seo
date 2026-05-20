@@ -36,7 +36,7 @@ async function getSessionsForPrompt(promptId: string): Promise<SessionOption[]> 
   }))
 }
 
-const PLATFORM_ORDER = ['chatgpt', 'claude', 'perplexity', 'gemini', 'google_aio', 'google_ai_mode']
+const PLATFORM_ORDER = ['chatgpt', 'claude', 'perplexity', 'gemini', 'google_aio']
 
 export default async function ResultsDetailPage({
   params,
