@@ -217,6 +217,26 @@ function getActionItems(c: CommunityBase): ActionItem[] {
   return items
 }
 
+function buildEntriesFromGscUrls(gscUrls: Iterable<string>): SitemapEntry[] {
+  const entries: SitemapEntry[] = []
+  for (const url of gscUrls) {
+    try {
+      const pathname = new URL(url).pathname.replace(/\/$/, '')
+      const parts = pathname.split('/').filter(Boolean)
+      if (parts.length < 2) continue
+      const communitySlug = parts[parts.length - 1]
+      const citySlug = parts[parts.length - 2]
+      const slug = normalizeForMatch(communitySlug)
+      if (slug.length > 0) {
+        entries.push({ url, communitySlug, citySlug, slug })
+      }
+    } catch {
+      // skip malformed URLs
+    }
+  }
+  return entries
+}
+
 export async function getSitemapAnalysis(
   communityStats: Array<{
     communityName: string
@@ -238,6 +258,14 @@ export async function getSitemapAnalysis(
     sitemapEntries = parseSitemapEntries(xml)
   } catch (err) {
     fetchError = err instanceof Error ? err.message : String(err)
+  }
+
+  // If the sitemap was blocked or returned no community entries, fall back to
+  // matching against GscMetric URLs already in the database. The last path
+  // segment of each URL is treated as the community slug.
+  if (sitemapEntries.length === 0 && gscMetrics && gscMetrics.size > 0) {
+    sitemapEntries = buildEntriesFromGscUrls(gscMetrics.keys())
+    fetchError = null  // suppress the sitemap error — we have data
   }
 
   const matched = new Set<number>()
