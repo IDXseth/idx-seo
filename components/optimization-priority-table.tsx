@@ -1,10 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import dynamic from 'next/dynamic'
 import { ExternalLink, ChevronDown, ChevronUp, AlertTriangle, RefreshCw, BarChart2 } from 'lucide-react'
 import { signIn } from 'next-auth/react'
-import { GscSiteSelector } from './gsc-site-selector'
 import type { CommunityWithSitemapStatus, SitemapEntry, SitemapAnalysis, ActionItem } from '@/lib/sitemap'
+
+const GscSiteSelector = dynamic(() => import('./gsc-site-selector').then(m => ({ default: m.GscSiteSelector })), { ssr: false })
 
 interface Props {
   communities: CommunityWithSitemapStatus[]
