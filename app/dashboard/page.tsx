@@ -7,7 +7,7 @@ import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { OptimizationPriorityTable } from '@/components/optimization-priority-table'
 import { getSitemapAnalysis, SitemapAnalysis } from '@/lib/sitemap'
-import { getGscMetrics } from '@/lib/gsc'
+import { getGscMetrics, getPageCrawlResults } from '@/lib/gsc'
 import { slugify } from '@/lib/utils'
 import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink } from 'lucide-react'
 
@@ -239,8 +239,11 @@ export default async function DashboardPage({
   }
   if (data) {
     try {
-      const gscMetrics = await getGscMetrics().catch(() => undefined)
-      sitemapAnalysis = await getSitemapAnalysis(data.communityStats, gscMetrics)
+      const [gscMetrics, crawlResults] = await Promise.all([
+        getGscMetrics().catch(() => undefined),
+        getPageCrawlResults().catch(() => undefined),
+      ])
+      sitemapAnalysis = await getSitemapAnalysis(data.communityStats, gscMetrics, crawlResults)
     } catch {
       // Tab shows empty state
     }

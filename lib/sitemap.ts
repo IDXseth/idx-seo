@@ -37,6 +37,7 @@ export interface CommunityWithSitemapStatus {
   optimizationPriority: number | null
   actionItems: ActionItem[]
   gsc: GscSnapshot | null
+  hasLocalBusiness: boolean | null
 }
 
 export interface SitemapAnalysis {
@@ -159,7 +160,7 @@ function getActionItems(c: CommunityBase): ActionItem[] {
     })
   }
 
-  if (c.citationRate < 0.3 && c.sitemapStatus === 'has_page') {
+  if (c.citationRate < 0.3 && c.sitemapStatus === 'has_page' && c.hasLocalBusiness !== true) {
     items.push({
       priority: 'medium',
       category: 'technical',
@@ -167,6 +168,9 @@ function getActionItems(c: CommunityBase): ActionItem[] {
       detail:
         "The page isn't being cited as a source by LLMs. Adding Schema.org LocalBusiness and SeniorCare markup helps AI platforms recognise it as an authoritative source.",
     })
+  }
+
+  if (c.citationRate < 0.3 && c.sitemapStatus === 'has_page') {
     items.push({
       priority: 'medium',
       category: 'content',
@@ -225,7 +229,8 @@ export async function getSitemapAnalysis(
     citationRate: number
     promptCount: number
   }>,
-  gscMetrics?: Map<string, GscData>
+  gscMetrics?: Map<string, GscData>,
+  crawlResults?: Map<string, { hasLocalBusiness: boolean | null; hasSeniorCare: boolean | null }>
 ): Promise<SitemapAnalysis> {
   const fetchedAt = new Date().toISOString()
   let sitemapEntries: SitemapEntry[] = []
@@ -286,6 +291,10 @@ export async function getSitemapAnalysis(
 
     const visibilityScore = computeScore(c.mentionRate, c.citationRate, gscRaw)
 
+    // Look up crawl result using the clean base URL (no query params)
+    const baseUrl = matchedEntry ? matchedEntry.url.split('?')[0].replace(/\/?$/, '/') : null
+    const hasLocalBusiness = baseUrl ? (crawlResults?.get(baseUrl)?.hasLocalBusiness ?? null) : null
+
     return {
       communityName: c.communityName,
       city: c.city,
@@ -297,6 +306,7 @@ export async function getSitemapAnalysis(
       sitemapUrl: matchedEntry?.url ?? null,
       optimizationPriority: null as number | null,
       gsc,
+      hasLocalBusiness,
     }
   })
 
