@@ -14,7 +14,7 @@ export interface GscSnapshot {
 export interface SitemapEntry {
   url: string
   communitySlug: string
-  citySlug: string
+  stateSlug: string
   slug: string
 }
 
@@ -55,7 +55,6 @@ export interface SitemapAnalysis {
 }
 
 const SITEMAP_URL = 'https://www.seniorlifestyle.com/community-sitemap.xml'
-const PATH_PREFIX = '/resources/senior-living/'
 const STOPWORDS = new Set(['the', 'at', 'of', 'a', 'an', 'and', 'by', 'for', 'in', 'on'])
 
 function normalizeForMatch(input: string): string {
@@ -76,25 +75,78 @@ function jaccardSimilarity(a: string, b: string): number {
   return union === 0 ? 0 : intersection / union
 }
 
-function parseSitemapEntries(xml: string): SitemapEntry[] {
+// Groups URLs by base community path: /property/[state]/[community-slug]/
+// Each group collects the base URL and all level-of-care subpage URLs.
+interface CommunityUrlGroup {
+  baseUrl: string
+  communitySlug: string
+  stateSlug: string
+  slug: string        // normalised for Jaccard matching
+  allUrls: string[]   // base + all subpages (assisted-living/, memory-care/, etc.)
+}
+
+function buildUrlGroups(urls: Iterable<string>): CommunityUrlGroup[] {
+  const groups = new Map<string, CommunityUrlGroup>()
+
+  for (const url of urls) {
+    try {
+      const parsed = new URL(url)
+      const parts = parsed.pathname.replace(/\/$/, '').split('/').filter(Boolean)
+      // Only consider /property/[state]/[community-slug]/...
+      if (parts[0] !== 'property' || parts.length < 3) continue
+
+      const stateSlug = parts[1]
+      const communitySlug = parts[2]
+      const baseUrl = `${parsed.protocol}//${parsed.host}/property/${stateSlug}/${communitySlug}/`
+
+      if (!groups.has(baseUrl)) {
+        groups.set(baseUrl, {
+          baseUrl,
+          communitySlug,
+          stateSlug,
+          slug: normalizeForMatch(communitySlug),
+          allUrls: [],
+        })
+      }
+      groups.get(baseUrl)!.allUrls.push(url)
+    } catch {
+      // skip malformed URLs
+    }
+  }
+
+  return Array.from(groups.values())
+}
+
+function parseSitemapGroups(xml: string): CommunityUrlGroup[] {
   const parser = new XMLParser({ ignoreAttributes: false, isArray: (name) => name === 'url' })
   const parsed = parser.parse(xml)
   const urls: string[] = (parsed?.urlset?.url ?? [])
     .map((u: { loc?: string }) => u?.loc)
-    .filter((loc: unknown): loc is string => typeof loc === 'string' && loc.includes(PATH_PREFIX))
+    .filter((loc: unknown): loc is string => typeof loc === 'string')
+  return buildUrlGroups(urls)
+}
 
-  return urls.map((url) => {
-    const path = new URL(url).pathname
-    const parts = path.replace(PATH_PREFIX, '').replace(/\/$/, '').split('/')
-    const citySlug = parts[0] ?? ''
-    const communitySlug = parts[1] ?? ''
-    return {
-      url,
-      communitySlug,
-      citySlug,
-      slug: normalizeForMatch(communitySlug),
-    }
-  })
+function aggregateGscMetrics(urls: string[], gscMetrics: Map<string, GscData>): GscData | null {
+  const metrics = urls.map((u) => gscMetrics.get(u)).filter((m): m is GscData => m != null)
+  if (metrics.length === 0) return null
+
+  const impressions = metrics.reduce((s, m) => s + m.impressions, 0)
+  const clicks = metrics.reduce((s, m) => s + m.clicks, 0)
+
+  // Impressions-weighted average position
+  const posMetrics = metrics.filter((m) => m.position != null)
+  let position: number | null = null
+  if (posMetrics.length > 0) {
+    const weightedSum = posMetrics.reduce((s, m) => s + m.position! * m.impressions, 0)
+    const totalWeight = posMetrics.reduce((s, m) => s + m.impressions, 0)
+    const raw = totalWeight > 0 ? weightedSum / totalWeight : posMetrics.reduce((s, m) => s + m.position!, 0) / posMetrics.length
+    position = Math.round(raw * 10) / 10
+  }
+
+  const isIndexed = metrics.some((m) => m.isIndexed)
+  const fetchedAt = metrics.reduce((a, b) => (a.fetchedAt > b.fetchedAt ? a : b)).fetchedAt
+
+  return { isIndexed, impressions, clicks, position, fetchedAt }
 }
 
 function computeScore(
@@ -103,8 +155,6 @@ function computeScore(
   gsc: GscData | null
 ): number {
   if (gsc) {
-    // Enhanced formula when GSC data is available
-    // Normalise impressions to 0–1 using a soft cap of 1000 impressions/28d
     const normImpressions = Math.min(gsc.impressions / 1000, 1)
     const isIndexedScore = gsc.isIndexed ? 1 : 0
     return Math.round(
@@ -124,14 +174,13 @@ function getActionItems(c: CommunityBase): ActionItem[] {
       priority: 'high',
       category: 'page',
       label: 'Create a dedicated community page',
-      detail: `Add a page at /resources/senior-living/[city-state]/${c.communityName
+      detail: `Add a page at /property/[state]/${c.communityName
         .toLowerCase()
         .replace(/\s+/g, '-')
         .replace(/[^a-z0-9-]/g, '')}/`,
     })
   }
 
-  // GSC: not indexed
   if (c.gsc && !c.gsc.isIndexed && c.sitemapStatus === 'has_page') {
     items.push({
       priority: 'high',
@@ -193,14 +242,13 @@ function getActionItems(c: CommunityBase): ActionItem[] {
     })
   }
 
-  // GSC: high impressions but low citation — page ranks but LLMs ignore it
   if (c.gsc && c.gsc.impressions > 200 && c.citationRate < 0.3) {
     items.push({
       priority: 'medium',
       category: 'content',
       label: 'High Google traffic, low LLM citation — add citable content',
       detail:
-        `This page gets ${c.gsc.impressions} organic impressions/month but LLMs aren't citing it. Add statistics, named experts, or a unique data point — LLMs prefer citable, quotable content over general descriptions.`,
+        `This page gets ${c.gsc.impressions.toLocaleString()} organic impressions/month but LLMs aren't citing it. Add statistics, named experts, or a unique data point — LLMs prefer citable, quotable content over general descriptions.`,
     })
   }
 
@@ -217,26 +265,6 @@ function getActionItems(c: CommunityBase): ActionItem[] {
   return items
 }
 
-function buildEntriesFromGscUrls(gscUrls: Iterable<string>): SitemapEntry[] {
-  const entries: SitemapEntry[] = []
-  for (const url of gscUrls) {
-    try {
-      const pathname = new URL(url).pathname.replace(/\/$/, '')
-      const parts = pathname.split('/').filter(Boolean)
-      if (parts.length < 2) continue
-      const communitySlug = parts[parts.length - 1]
-      const citySlug = parts[parts.length - 2]
-      const slug = normalizeForMatch(communitySlug)
-      if (slug.length > 0) {
-        entries.push({ url, communitySlug, citySlug, slug })
-      }
-    } catch {
-      // skip malformed URLs
-    }
-  }
-  return entries
-}
-
 export async function getSitemapAnalysis(
   communityStats: Array<{
     communityName: string
@@ -248,67 +276,66 @@ export async function getSitemapAnalysis(
   gscMetrics?: Map<string, GscData>
 ): Promise<SitemapAnalysis> {
   const fetchedAt = new Date().toISOString()
-  let sitemapEntries: SitemapEntry[] = []
+  let urlGroups: CommunityUrlGroup[] = []
   let fetchError: string | null = null
 
   try {
     const res = await fetch(SITEMAP_URL, { next: { revalidate: 3600 } })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const xml = await res.text()
-    sitemapEntries = parseSitemapEntries(xml)
+    urlGroups = parseSitemapGroups(xml)
   } catch (err) {
     fetchError = err instanceof Error ? err.message : String(err)
   }
 
-  // If the sitemap was blocked or returned no community entries, fall back to
-  // matching against GscMetric URLs already in the database. The last path
-  // segment of each URL is treated as the community slug.
-  if (sitemapEntries.length === 0 && gscMetrics && gscMetrics.size > 0) {
-    sitemapEntries = buildEntriesFromGscUrls(gscMetrics.keys())
-    fetchError = null  // suppress the sitemap error — we have data
+  // Sitemap blocked (403) or empty — fall back to GscMetric URLs already in the DB.
+  // URLs follow /property/[state]/[community-slug]/[optional-level-of-care]/ so the
+  // same buildUrlGroups logic applies and aggregation across subpages still works.
+  if (urlGroups.length === 0 && gscMetrics && gscMetrics.size > 0) {
+    urlGroups = buildUrlGroups(gscMetrics.keys())
+    fetchError = null
   }
 
-  const matched = new Set<number>()
+  const matchedGroupIds = new Set<string>()
 
   const communitiesBase: CommunityBase[] = communityStats.map((c) => {
     const normalizedName = normalizeForMatch(c.communityName)
 
-    // Exact match first
-    let matchedEntry: SitemapEntry | null = null
-    for (let i = 0; i < sitemapEntries.length; i++) {
-      if (sitemapEntries[i].slug === normalizedName) {
-        matchedEntry = sitemapEntries[i]
-        matched.add(i)
+    // Exact slug match first, then best Jaccard ≥ 0.7
+    let matchedGroup: CommunityUrlGroup | null = null
+    for (const group of urlGroups) {
+      if (matchedGroupIds.has(group.baseUrl)) continue
+      if (group.slug === normalizedName) {
+        matchedGroup = group
         break
       }
     }
-
-    // Jaccard fallback
-    if (!matchedEntry) {
+    if (!matchedGroup) {
       let bestScore = 0
-      let bestIdx = -1
-      for (let i = 0; i < sitemapEntries.length; i++) {
-        if (matched.has(i)) continue
-        const score = jaccardSimilarity(normalizedName, sitemapEntries[i].slug)
+      for (const group of urlGroups) {
+        if (matchedGroupIds.has(group.baseUrl)) continue
+        const score = jaccardSimilarity(normalizedName, group.slug)
         if (score > bestScore && score >= 0.7) {
           bestScore = score
-          bestIdx = i
+          matchedGroup = group
         }
       }
-      if (bestIdx >= 0) {
-        matchedEntry = sitemapEntries[bestIdx]
-        matched.add(bestIdx)
-      }
     }
+    if (matchedGroup) matchedGroupIds.add(matchedGroup.baseUrl)
 
-    const gscRaw = matchedEntry ? (gscMetrics?.get(matchedEntry.url) ?? null) : null
+    const gscRaw = matchedGroup && gscMetrics
+      ? aggregateGscMetrics(matchedGroup.allUrls, gscMetrics)
+      : null
+
     const gsc: CommunityBase['gsc'] = gscRaw
       ? {
           isIndexed: gscRaw.isIndexed,
           impressions: gscRaw.impressions,
           clicks: gscRaw.clicks,
           position: gscRaw.position,
-          fetchedAt: gscRaw.fetchedAt instanceof Date ? gscRaw.fetchedAt.toISOString() : String(gscRaw.fetchedAt),
+          fetchedAt: gscRaw.fetchedAt instanceof Date
+            ? (gscRaw.fetchedAt as Date).toISOString()
+            : String(gscRaw.fetchedAt),
         }
       : null
 
@@ -321,27 +348,22 @@ export async function getSitemapAnalysis(
       citationRate: c.citationRate,
       promptCount: c.promptCount,
       visibilityScore,
-      sitemapStatus: (matchedEntry ? 'has_page' : 'no_page') as 'has_page' | 'no_page',
-      sitemapUrl: matchedEntry?.url ?? null,
+      sitemapStatus: (matchedGroup ? 'has_page' : 'no_page') as 'has_page' | 'no_page',
+      sitemapUrl: matchedGroup?.baseUrl ?? null,
       optimizationPriority: null as number | null,
       gsc,
     }
   })
 
-  // Rank has_page communities by score ascending
-  const withPage = communitiesBase
-    .filter((c) => c.sitemapStatus === 'has_page')
-    .sort((a, b) => a.visibilityScore - b.visibilityScore)
-  withPage.forEach((c, i) => {
-    c.optimizationPriority = i + 1
-  })
+  // Rank has_page communities by score ascending (lowest score = highest priority)
+  const withPage = communitiesBase.filter((c) => c.sitemapStatus === 'has_page')
+  withPage.sort((a, b) => a.visibilityScore - b.visibilityScore)
+  withPage.forEach((c, i) => { c.optimizationPriority = i + 1 })
 
   const communities: CommunityWithSitemapStatus[] = communitiesBase.map((c) => ({
     ...c,
     actionItems: getActionItems(c),
   }))
-
-  const untrackedPages = sitemapEntries.filter((_, i) => !matched.has(i))
 
   const withPageCommunities = communities.filter((c) => c.sitemapStatus === 'has_page')
   const avgScoreWithPage =
@@ -355,12 +377,12 @@ export async function getSitemapAnalysis(
 
   return {
     communities,
-    untrackedPages,
+    untrackedPages: [],  // omitted — too many entries when sourcing from GscMetric
     summary: {
       totalTracked: communities.length,
       withPage: withPageCommunities.length,
       noPage: communities.filter((c) => c.sitemapStatus === 'no_page').length,
-      notTracked: untrackedPages.length,
+      notTracked: 0,
       avgScoreWithPage,
     },
     fetchedAt,
