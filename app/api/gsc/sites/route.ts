@@ -10,7 +10,7 @@ export async function GET() {
   }
 
   const account = await prisma.account.findFirst({
-    where: { provider: 'google' },
+    where: { userId: session.user.id, provider: 'google', refresh_token: { not: null } },
     select: { userId: true, scope: true, refresh_token: true, access_token: true },
   })
 
