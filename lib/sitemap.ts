@@ -303,7 +303,20 @@ export async function getSitemapAnalysis(
 
   const matchedGroupIds = new Set<string>()
 
-  const communitiesBase: CommunityBase[] = communityStats.map((c) => {
+  // Deduplicate communities that differ only in capitalisation (e.g. "At" vs "at").
+  // Keep the entry with the most prompts; average rates when counts are equal.
+  const dedupedStats = Array.from(
+    communityStats.reduce((map, c) => {
+      const key = `${c.communityName.toLowerCase().trim()}|${c.city.toLowerCase().trim()}`
+      const existing = map.get(key)
+      if (!existing || c.promptCount > existing.promptCount) {
+        map.set(key, c)
+      }
+      return map
+    }, new Map<string, typeof communityStats[0]>()).values()
+  )
+
+  const communitiesBase: CommunityBase[] = dedupedStats.map((c) => {
     const normalizedName = normalizeForMatch(c.communityName)
 
     // 1. Exact slug match
