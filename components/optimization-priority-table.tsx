@@ -142,7 +142,7 @@ function CommunityRow({
         <td className="px-4 py-3 text-center">
           {c.sitemapUrl ? (
             <a
-              href={c.sitemapUrl}
+              href={c.sitemapUrl.split('?')[0]}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center text-[#177e89] hover:text-[#084c61] transition-colors"
