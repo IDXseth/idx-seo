@@ -9,12 +9,21 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Check if any Google account exists (even if webmasters scope wasn't stored correctly)
+  // Find any Google account — include debug info to diagnose connection issues
   const googleAccount = await prisma.account.findFirst({
-    where: { provider: 'google', refresh_token: { not: null } },
-    select: { id: true },
+    where: { provider: 'google' },
+    select: { id: true, scope: true, refresh_token: true },
   })
 
   const sites = await listGscSites()
-  return NextResponse.json({ sites, connected: !!googleAccount })
+  const connected = !!(googleAccount?.refresh_token)
+  return NextResponse.json({
+    sites,
+    connected,
+    debug: {
+      hasGoogleAccount: !!googleAccount,
+      hasRefreshToken: !!googleAccount?.refresh_token,
+      scope: googleAccount?.scope ?? null,
+    },
+  })
 }
