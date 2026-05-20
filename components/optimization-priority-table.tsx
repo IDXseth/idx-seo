@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import dynamic from 'next/dynamic'
-import { ExternalLink, ChevronDown, ChevronUp, AlertTriangle, RefreshCw, BarChart2 } from 'lucide-react'
-import { signIn } from 'next-auth/react'
+import { ExternalLink, ChevronDown, ChevronUp, RefreshCw, BarChart2 } from 'lucide-react'
 import type { CommunityWithSitemapStatus, SitemapEntry, SitemapAnalysis, ActionItem } from '@/lib/sitemap'
 
 const GscSiteSelector = dynamic(() => import('./gsc-site-selector').then(m => ({ default: m.GscSiteSelector })), { ssr: false })
@@ -199,13 +198,6 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
   const [sort, setSort] = useState<SortKey>('priority')
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
-  const [googleConnected, setGoogleConnected] = useState(false)
-
-  useEffect(() => {
-    fetch('/api/gsc/sites').then(r => r.ok ? r.json() : { sites: [], connected: false }).then(d => {
-      setGoogleConnected(d.connected === true)
-    }).catch(() => {})
-  }, [])
 
   async function handleSync() {
     setSyncing(true)
@@ -249,8 +241,8 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
 
   return (
     <div className="space-y-6">
-      {/* GSC not connected — show connect button */}
-      {!gscEnabled && !googleConnected && (
+      {/* GSC banner — GscSiteSelector handles connect vs domain-pick internally */}
+      {!gscEnabled && (
         <div className="flex flex-col sm:flex-row sm:items-center gap-4 bg-[#f0f5f7] border border-[#dde6ea] rounded-xl p-4">
           <BarChart2 className="h-5 w-5 text-[#177e89] flex-shrink-0" />
           <div className="flex-1 min-w-0">
@@ -261,29 +253,8 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
               <span className="font-mono text-[#084c61]">mention×0.35 + citation×0.35 + impressions×0.15 + indexed×0.15</span>
             </p>
           </div>
-          <button
-            onClick={() => signIn('google', { callbackUrl: '/dashboard?tab=optimization' })}
-            className="flex-shrink-0 px-4 py-2 rounded-lg bg-[#084c61] text-white text-xs font-semibold hover:bg-[#177e89] transition-colors whitespace-nowrap"
-          >
-            Connect with Google
-          </button>
-        </div>
-      )}
-
-      {/* GSC connected but no domain selected — show domain picker */}
-      {!gscEnabled && googleConnected && (
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4 bg-[#f0f5f7] border border-[#dde6ea] rounded-xl p-4">
-          <BarChart2 className="h-5 w-5 text-[#177e89] flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-[#084c61]">Select your Search Console property</p>
-            <p className="text-xs text-[#5a7a85] mt-0.5">
-              Google account connected. Choose which property to pull data from, then click Sync.
-            </p>
-          </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <div className="bg-white border border-[#dde6ea] rounded-lg overflow-visible">
-              <GscSiteSelector />
-            </div>
+            <GscSiteSelector />
             <button
               onClick={handleSync}
               disabled={syncing}

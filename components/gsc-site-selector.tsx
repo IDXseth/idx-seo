@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Globe, ChevronDown, Check, Loader2, AlertCircle } from 'lucide-react'
+import { Globe, ChevronDown, Check, Loader2 } from 'lucide-react'
+import { signIn } from 'next-auth/react'
 
 interface GscSite {
   siteUrl: string
@@ -32,7 +33,7 @@ export function GscSiteSelector() {
           setSelected(data.siteUrl)
         }
       } catch {
-        setError('Failed to load GSC sites')
+        // silently ignore network errors
       } finally {
         setLoading(false)
       }
@@ -40,7 +41,7 @@ export function GscSiteSelector() {
     load()
   }, [])
 
-  async function selectSite(siteUrl: string | null) {
+  async function selectSite(siteUrl: string) {
     setSaving(true)
     setError(null)
     try {
@@ -61,22 +62,26 @@ export function GscSiteSelector() {
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 px-4 py-2.5 text-sm text-[#5a7a85]">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        <span>Loading GSC sites…</span>
+      <div className="flex items-center gap-2 text-sm text-[#5a7a85]">
+        <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
+        <span>Loading…</span>
       </div>
     )
   }
 
+  // Not connected — show connect button
   if (sites.length === 0) {
     return (
-      <div className="flex items-center gap-2 px-4 py-2.5 text-xs text-[#5a7a85]">
-        <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
-        <span>No GSC sites found. Sign in with Google.</span>
-      </div>
+      <button
+        onClick={() => signIn('google', { callbackUrl: '/dashboard?tab=optimization' })}
+        className="flex-shrink-0 px-4 py-2 rounded-lg bg-[#084c61] text-white text-xs font-semibold hover:bg-[#177e89] transition-colors whitespace-nowrap"
+      >
+        Connect with Google
+      </button>
     )
   }
 
+  // Connected — show domain picker
   const displayUrl = selected
     ? selected.replace(/^https?:\/\//, '').replace(/\/$/, '')
     : 'Select domain…'
@@ -85,10 +90,10 @@ export function GscSiteSelector() {
     <div className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#084c61] hover:bg-[#f0f7f9] transition-colors"
+        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#dde6ea] bg-white text-sm text-[#084c61] hover:bg-[#f0f7f9] transition-colors"
       >
         <Globe className="h-4 w-4 text-[#5a7a85] flex-shrink-0" />
-        <span className="flex-1 text-left truncate max-w-[160px]">{displayUrl}</span>
+        <span className="max-w-[200px] truncate">{displayUrl}</span>
         {saving ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin text-[#8aadb8]" />
         ) : (
@@ -96,12 +101,10 @@ export function GscSiteSelector() {
         )}
       </button>
 
-      {error && (
-        <p className="px-4 py-1 text-xs text-rose-600">{error}</p>
-      )}
+      {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-72 bg-white rounded-xl border border-[#dde6ea] shadow-lg overflow-hidden z-[60] max-h-60 overflow-y-auto">
+        <div className="absolute left-0 top-full mt-1 w-80 bg-white rounded-xl border border-[#dde6ea] shadow-lg overflow-hidden z-[60] max-h-60 overflow-y-auto">
           <p className="px-3 py-2 text-xs font-semibold text-[#8aadb8] uppercase tracking-wide border-b border-[#dde6ea]">
             Search Console Property
           </p>
@@ -111,9 +114,7 @@ export function GscSiteSelector() {
               onClick={() => selectSite(site.siteUrl)}
               className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-[#084c61] hover:bg-[#f0f7f9] transition-colors"
             >
-              <Check
-                className={`h-4 w-4 flex-shrink-0 ${site.siteUrl === selected ? 'text-emerald-500' : 'text-transparent'}`}
-              />
+              <Check className={`h-4 w-4 flex-shrink-0 ${site.siteUrl === selected ? 'text-emerald-500' : 'text-transparent'}`} />
               <span className="flex-1 text-left truncate">{site.siteUrl}</span>
               <span className="text-xs text-[#8aadb8] flex-shrink-0">
                 {site.permissionLevel === 'siteOwner' ? 'Owner' : 'Delegated'}
