@@ -215,6 +215,7 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
           <span className="text-xs text-emerald-700 font-medium flex-1">
             Search Console connected · scores include index status &amp; impressions
           </span>
+          <GscSiteSelector />
           <button
             onClick={handleSync}
             disabled={syncing}
