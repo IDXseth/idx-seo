@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import dynamic from 'next/dynamic'
-import { ExternalLink, ChevronDown, ChevronUp, RefreshCw, BarChart2 } from 'lucide-react'
+import { ExternalLink, ChevronDown, ChevronUp, AlertTriangle, RefreshCw, BarChart2 } from 'lucide-react'
 import type { CommunityWithSitemapStatus, SitemapEntry, SitemapAnalysis, ActionItem } from '@/lib/sitemap'
 
 const GscSiteSelector = dynamic(() => import('./gsc-site-selector').then(m => ({ default: m.GscSiteSelector })), { ssr: false })
@@ -285,7 +285,6 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
       {syncMsg && (
         <p className="text-xs text-[#5a7a85] px-1">{syncMsg}</p>
       )}
-
 
       {/* Error banner */}
       {error && (

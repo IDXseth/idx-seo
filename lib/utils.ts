@@ -22,7 +22,6 @@ export const PLATFORMS = [
   'perplexity',
   'gemini',
   'google_aio',
-  'google_ai_mode',
 ] as const
 
 export type Platform = typeof PLATFORMS[number]
@@ -33,7 +32,6 @@ export const PLATFORM_LABELS: Record<string, string> = {
   perplexity: 'Perplexity',
   gemini: 'Gemini',
   google_aio: 'Google AI Overviews',
-  google_ai_mode: 'AI Mode',
 }
 
 export const PLATFORM_COLORS: Record<string, string> = {
@@ -42,7 +40,6 @@ export const PLATFORM_COLORS: Record<string, string> = {
   perplexity: '#6366F1',
   gemini: '#3B82F6',
   google_aio: '#EF4444',
-  google_ai_mode: '#8B5CF6',
 }
 
 export function getMentionColor(rate: number): string {

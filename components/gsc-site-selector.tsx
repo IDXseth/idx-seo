@@ -15,6 +15,7 @@ export function GscSiteSelector() {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [disconnecting, setDisconnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -40,6 +41,21 @@ export function GscSiteSelector() {
     }
     load()
   }, [])
+
+  async function disconnect() {
+    setDisconnecting(true)
+    setError(null)
+    try {
+      await fetch('/api/gsc/site', { method: 'DELETE' })
+      setSites([])
+      setSelected(null)
+      setOpen(false)
+    } catch {
+      setError('Failed to disconnect')
+    } finally {
+      setDisconnecting(false)
+    }
+  }
 
   async function selectSite(siteUrl: string) {
     setSaving(true)
@@ -73,7 +89,7 @@ export function GscSiteSelector() {
   if (sites.length === 0) {
     return (
       <button
-        onClick={() => signIn('google', { callbackUrl: '/dashboard?tab=optimization' })}
+        onClick={() => signIn('google', { callbackUrl: '/dashboard?tab=optimization' }, { prompt: 'consent', access_type: 'offline' })}
         className="flex-shrink-0 px-4 py-2 rounded-lg bg-[#084c61] text-white text-xs font-semibold hover:bg-[#177e89] transition-colors whitespace-nowrap"
       >
         Connect with Google
@@ -121,6 +137,16 @@ export function GscSiteSelector() {
               </span>
             </button>
           ))}
+          <div className="border-t border-[#dde6ea]">
+            <button
+              onClick={disconnect}
+              disabled={disconnecting}
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-rose-500 hover:bg-rose-50 transition-colors"
+            >
+              {disconnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              <span>{disconnecting ? 'Disconnecting…' : 'Disconnect Google account'}</span>
+            </button>
+          </div>
         </div>
       )}
     </div>

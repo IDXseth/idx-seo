@@ -536,7 +536,7 @@ function EmptyDashboard() {
           <StepCard
             step="2"
             title="Run the prompts"
-            description="We'll send every prompt to ChatGPT, Claude, Perplexity, Gemini, Google AI Overviews, and AI Mode."
+            description="We'll send every prompt to ChatGPT, Claude, Perplexity, Gemini, and Google AI Overviews."
             href="/run"
             cta="Run prompts"
           />

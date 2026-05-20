@@ -47,6 +47,23 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   callbacks: {
+    async signIn({ account }) {
+      // When Google re-authorizes, explicitly persist updated tokens so the
+      // refresh_token and expanded scope (webmasters) are saved even if the
+      // PrismaAdapter skips updating an existing account record.
+      if (account?.provider === 'google' && account.providerAccountId) {
+        await prisma.account.updateMany({
+          where: { provider: 'google', providerAccountId: account.providerAccountId },
+          data: {
+            access_token: account.access_token,
+            refresh_token: account.refresh_token ?? undefined,
+            expires_at: account.expires_at,
+            scope: account.scope,
+          },
+        })
+      }
+      return true
+    },
     async jwt({ token, user }) {
       if (user) token.id = user.id
       return token

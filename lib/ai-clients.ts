@@ -217,26 +217,6 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
   let text = ''
   let citations: Array<{ url: string; title: string; domain: string }> = []
 
-  // Debug: log top-level keys for AI Mode to diagnose missing data
-  if (engine === 'google_ai_mode') {
-    console.log('[AI Mode] top-level keys:', Object.keys(data))
-    if (data.ai_mode) console.log('[AI Mode] ai_mode keys:', Object.keys(data.ai_mode))
-  }
-
-  // AI Mode response shape
-  if (data.ai_mode) {
-    const am = data.ai_mode
-    text = am.text ?? am.answer ?? am.snippet ?? am.summary ?? ''
-    const sources: unknown[] = am.sources ?? am.references ?? am.links ?? am.citations ?? []
-    citations = (sources as Array<Record<string, string>>)
-      .map((s) => ({
-        url: s.link ?? s.url ?? '',
-        title: s.title ?? s.name ?? '',
-        domain: extractDomain(s.link ?? s.url ?? ''),
-      }))
-      .filter((c) => c.url)
-  }
-
   // AI Overviews response shape
   if (!text && data.ai_overview) {
     const aio = data.ai_overview
@@ -397,42 +377,6 @@ async function querySearchAPI(
   return await parseSearchAPIResponse(data, communityName, engine)
 }
 
-async function queryGoogleAIMode(
-  promptText: string,
-  communityName: string
-): Promise<PlatformResult> {
-  const { GoogleGenerativeAI } = await import('@google/generative-ai')
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    systemInstruction: 'You are Google AI Mode, Google\'s AI-powered search assistant. Answer the following search query as a helpful, concise AI overview as it would appear at the top of Google Search results. Include relevant facts and cite your sources.',
-    tools: [{ googleSearch: {} } as never],
-  })
-
-  const result = await model.generateContent(promptText)
-  const text = result.response.text()
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const groundingMeta: any = result.response.candidates?.[0]?.groundingMetadata ?? {}
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const chunks: any[] = groundingMeta.groundingChunks ?? []
-  const citations = await Promise.all(
-    chunks
-      .filter((c) => c.web?.uri)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map(async (c: any) => {
-        const url = await resolveRedirect(c.web.uri as string)
-        return { url, title: (c.web.title as string) ?? '', domain: extractDomain(url) }
-      })
-  )
-
-  const isMentioned = checkMention(text, communityName)
-  const isCited = isMentioned && checkCited(citations, communityName)
-  const sentiment = await analyzeSentiment(text, communityName)
-
-  return { responseText: text, isMentioned, isCited, sentiment, citations }
-}
-
 export async function queryPlatform(
   platform: string,
   promptText: string,
@@ -451,8 +395,6 @@ export async function queryPlatform(
         result = await queryPerplexity(promptText, communityName); break
       case 'google_aio':
         return await querySearchAPI('google', promptText, communityName)
-      case 'google_ai_mode':
-        result = await queryGoogleAIMode(promptText, communityName); break
       default:
         throw new Error(`Unknown platform: ${platform}`)
     }
