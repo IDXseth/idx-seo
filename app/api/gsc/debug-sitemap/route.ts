@@ -1,22 +1,28 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { XMLParser } from 'fast-xml-parser'
 
 const SITEMAP_URL = 'https://www.seniorlifestyle.com/community-sitemap.xml'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const gscSample = await prisma.gscMetric.findMany({ take: 10, select: { pageUrl: true } })
+  const q = req.nextUrl.searchParams.get('q')?.toLowerCase() ?? ''
+
   const gscTotal = await prisma.gscMetric.count()
+  const gscMatches = q
+    ? await prisma.gscMetric.findMany({
+        where: { pageUrl: { contains: q } },
+        select: { pageUrl: true },
+      })
+    : await prisma.gscMetric.findMany({ take: 10, select: { pageUrl: true } })
 
   let sitemapStatus = ''
   let allUrls: string[] = []
-  let urlsWithPrefix: string[] = []
   let fetchError = ''
 
   try {
@@ -29,21 +35,19 @@ export async function GET() {
       allUrls = (parsed?.urlset?.url ?? [])
         .map((u: { loc?: string }) => u?.loc)
         .filter((loc: unknown): loc is string => typeof loc === 'string')
-      urlsWithPrefix = allUrls.filter((u) => u.includes('/resources/senior-living/'))
     }
   } catch (err) {
     fetchError = err instanceof Error ? err.message : String(err)
   }
 
+  const sitemapMatches = q ? allUrls.filter((u) => u.toLowerCase().includes(q)) : allUrls.slice(0, 10)
+
   return NextResponse.json({
-    sitemapUrl: SITEMAP_URL,
     sitemapStatus,
     fetchError: fetchError || null,
     totalSitemapUrls: allUrls.length,
-    urlsMatchingPrefix: urlsWithPrefix.length,
-    first10SitemapUrls: allUrls.slice(0, 10),
-    first5WithPrefix: urlsWithPrefix.slice(0, 5),
+    sitemapMatches,
     gscMetricTotal: gscTotal,
-    sampleGscUrls: gscSample.map((g) => g.pageUrl),
+    gscMatches: gscMatches.map((g) => g.pageUrl),
   })
 }
