@@ -1,8 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { ExternalLink, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react'
+import dynamic from 'next/dynamic'
+import { ExternalLink, ChevronDown, ChevronUp, RefreshCw, BarChart2 } from 'lucide-react'
 import type { CommunityWithSitemapStatus, SitemapEntry, SitemapAnalysis, ActionItem } from '@/lib/sitemap'
+
+const GscSiteSelector = dynamic(() => import('./gsc-site-selector').then(m => ({ default: m.GscSiteSelector })), { ssr: false })
 
 interface Props {
   communities: CommunityWithSitemapStatus[]
@@ -193,6 +196,23 @@ function CommunityRow({
 export function OptimizationPriorityTable({ communities, untrackedPages, summary, fetchedAt, error, gscEnabled }: Props) {
   const [filter, setFilter] = useState<FilterTab>('all')
   const [sort, setSort] = useState<SortKey>('priority')
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState<string | null>(null)
+
+  async function handleSync() {
+    setSyncing(true)
+    setSyncMsg(null)
+    try {
+      const res = await fetch('/api/gsc/sync', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) setSyncMsg(`Error: ${json.error}`)
+      else setSyncMsg(`Synced ${json.pagesUpdated} pages. Reload to see updated scores.`)
+    } catch {
+      setSyncMsg('Sync failed — check console.')
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   const filtered = communities.filter((c) => {
     if (filter === 'all') return true
@@ -221,20 +241,51 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
 
   return (
     <div className="space-y-6">
-      {/* GSC not connected notice */}
+      {/* GSC banner — GscSiteSelector handles connect vs domain-pick internally */}
       {!gscEnabled && (
-        <div className="flex items-start gap-3 bg-[#f0f5f7] border border-[#dde6ea] rounded-xl p-4">
-          <AlertTriangle className="h-4 w-4 text-[#5a7a85] flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-[#5a7a85]">
-            <span className="font-semibold text-[#084c61]">Google Search Console not connected.</span>{' '}
-            Sign in with Google to unlock index status, organic impressions, and position data per community.
-            Once connected, scores use the enhanced formula:{' '}
-            <span className="font-mono text-xs text-[#084c61]">
-              mention×0.35 + citation×0.35 + impressions×0.15 + indexed×0.15
-            </span>
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 bg-[#f0f5f7] border border-[#dde6ea] rounded-xl p-4">
+          <BarChart2 className="h-5 w-5 text-[#177e89] flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-[#084c61]">Connect Google Search Console</p>
+            <p className="text-xs text-[#5a7a85] mt-0.5">
+              Unlock index status, organic impressions, and position data per community. Scores will use the
+              enhanced formula:{' '}
+              <span className="font-mono text-[#084c61]">mention×0.35 + citation×0.35 + impressions×0.15 + indexed×0.15</span>
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <GscSiteSelector />
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="px-4 py-2 rounded-lg bg-[#084c61] text-white text-xs font-semibold hover:bg-[#177e89] disabled:opacity-50 transition-colors whitespace-nowrap"
+            >
+              {syncing ? 'Syncing…' : 'Sync now'}
+            </button>
+          </div>
         </div>
       )}
+
+      {/* GSC connected with data — sync button */}
+      {gscEnabled && (
+        <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+          <span className="text-xs text-emerald-700 font-medium flex-1">
+            Search Console connected · scores include index status &amp; impressions
+          </span>
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-300 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Syncing…' : 'Sync now'}
+          </button>
+        </div>
+      )}
+      {syncMsg && (
+        <p className="text-xs text-[#5a7a85] px-1">{syncMsg}</p>
+      )}
+
 
       {/* Error banner */}
       {error && (
