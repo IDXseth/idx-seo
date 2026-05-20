@@ -874,7 +874,7 @@ export default function RunPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Run Prompts</h1>
-          <p className="text-[#5a7a85] mt-1 text-sm">Send prompts to 6 AI platforms and capture responses</p>
+          <p className="text-[#5a7a85] mt-1 text-sm">Send prompts to 5 AI platforms and capture responses</p>
         </div>
         <div className="flex items-center gap-3">
           <Button variant="outline" onClick={fetchBatches} size="sm">
@@ -935,7 +935,7 @@ export default function RunPage() {
           <div>
             <p className="text-sm font-medium text-emerald-800">
               {done.processed > 0
-                ? `Ran ${done.processed} prompt${done.processed !== 1 ? 's' : ''} across all 6 platforms${done.errors > 0 ? ` (${done.errors} errors)` : ''}`
+                ? `Ran ${done.processed} prompt${done.processed !== 1 ? 's' : ''} across all 5 platforms${done.errors > 0 ? ` (${done.errors} errors)` : ''}`
                 : 'No prompts to run'}
             </p>
             {done.processed > 0 && (

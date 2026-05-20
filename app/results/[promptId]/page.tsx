@@ -37,6 +37,7 @@ async function getSessionsForPrompt(promptId: string): Promise<SessionOption[]> 
 }
 
 const PLATFORM_ORDER = ['chatgpt', 'claude', 'perplexity', 'gemini', 'google_aio']
+const EXCLUDED_PLATFORMS = new Set(['google_ai_mode'])
 
 export default async function ResultsDetailPage({
   params,
@@ -60,9 +61,9 @@ export default async function ResultsDetailPage({
   try { prompt = await getPromptData(promptId, activeSessionId) } catch { /* DB not configured */ }
   if (!prompt) notFound()
 
-  const sortedResults = [...prompt.results].sort(
-    (a, b) => PLATFORM_ORDER.indexOf(a.platform) - PLATFORM_ORDER.indexOf(b.platform)
-  )
+  const sortedResults = [...prompt.results]
+    .filter((r) => !EXCLUDED_PLATFORMS.has(r.platform))
+    .sort((a, b) => PLATFORM_ORDER.indexOf(a.platform) - PLATFORM_ORDER.indexOf(b.platform))
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
 

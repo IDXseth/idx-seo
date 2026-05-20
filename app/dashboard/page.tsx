@@ -522,7 +522,7 @@ function EmptyDashboard() {
         </div>
         <h2 className="text-xl font-bold text-white mb-1" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>No data yet</h2>
         <p className="text-white/70 text-sm max-w-sm mx-auto">
-          Upload your prompts spreadsheet and run it against 6 AI platforms to see your mention and citation performance.
+          Upload your prompts spreadsheet and run it against 5 AI platforms to see your mention and citation performance.
         </p>
       </div>
 
