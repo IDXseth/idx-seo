@@ -1,8 +1,6 @@
 import { google } from 'googleapis'
 import { prisma } from './prisma'
 
-const SITE_URL = 'https://www.seniorlifestyle.com'
-
 export interface GscData {
   isIndexed: boolean
   impressions: number
@@ -39,6 +37,36 @@ async function getGscOAuth2Client() {
   return oauth2
 }
 
+async function getConfiguredSiteUrl(): Promise<string | null> {
+  const account = await prisma.account.findFirst({
+    where: {
+      provider: 'google',
+      scope: { contains: 'webmasters' },
+      refresh_token: { not: null },
+    },
+    select: {
+      user: { select: { gscSiteUrl: true } },
+    },
+  })
+  return account?.user?.gscSiteUrl ?? null
+}
+
+export async function listGscSites(): Promise<{ siteUrl: string; permissionLevel: string }[]> {
+  const auth = await getGscOAuth2Client()
+  if (!auth) return []
+
+  const sc = google.searchconsole({ version: 'v1', auth })
+  try {
+    const res = await sc.sites.list()
+    return (res.data.siteEntry ?? []).map((s) => ({
+      siteUrl: s.siteUrl ?? '',
+      permissionLevel: s.permissionLevel ?? 'unknown',
+    }))
+  } catch {
+    return []
+  }
+}
+
 export async function refreshGscCache(): Promise<{ pagesUpdated: number; error?: string }> {
   const auth = await getGscOAuth2Client()
   if (!auth) {
@@ -46,6 +74,14 @@ export async function refreshGscCache(): Promise<{ pagesUpdated: number; error?:
       pagesUpdated: 0,
       error:
         'No Google account with Search Console access found. Sign in with Google and grant the webmasters.readonly scope.',
+    }
+  }
+
+  const siteUrl = await getConfiguredSiteUrl()
+  if (!siteUrl) {
+    return {
+      pagesUpdated: 0,
+      error: 'No GSC domain selected. Go to Settings and choose a Search Console property.',
     }
   }
 
@@ -58,7 +94,7 @@ export async function refreshGscCache(): Promise<{ pagesUpdated: number; error?:
   let rows: Array<{ keys?: string[] | null; impressions?: number | null; clicks?: number | null; position?: number | null }> = []
   try {
     const res = await sc.searchanalytics.query({
-      siteUrl: SITE_URL,
+      siteUrl,
       requestBody: {
         startDate,
         endDate,
