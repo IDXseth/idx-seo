@@ -264,6 +264,7 @@ export default async function DashboardPage({
   }
 
   const currentSession = sessions.find((s) => s.id === sessionId)
+  const exportSessionId = sessionId ?? (sessions.length === 1 ? sessions[0]?.id : undefined)
 
   return (
     <div>
@@ -330,9 +331,9 @@ export default async function DashboardPage({
             <div className="space-y-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <PromptTypeFilter current={promptType ?? ''} sessionId={sessionId} />
-                {sessionId && (
+                {exportSessionId && (
                   <a
-                    href={`/api/export?session=${sessionId}`}
+                    href={`/api/export?session=${exportSessionId}`}
                     download
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#dde6ea] text-xs font-medium text-[#5a7a85] hover:bg-[#f0f5f7] transition-colors"
                   >
