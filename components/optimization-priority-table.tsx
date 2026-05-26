@@ -3,8 +3,8 @@
 import { useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import dynamic from 'next/dynamic'
-import { ExternalLink, AlertTriangle, RefreshCw, BarChart2, Info } from 'lucide-react'
-import type { CommunityWithSitemapStatus, SitemapEntry, SitemapAnalysis } from '@/lib/sitemap'
+import { ExternalLink, ChevronDown, ChevronUp, AlertTriangle, RefreshCw, BarChart2, Info } from 'lucide-react'
+import type { CommunityWithSitemapStatus, SitemapEntry, SitemapAnalysis, ActionItem } from '@/lib/sitemap'
 
 function TooltipIcon({ text }: { text: string }) {
   const [rect, setRect] = useState<DOMRect | null>(null)
