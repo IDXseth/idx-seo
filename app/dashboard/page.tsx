@@ -9,13 +9,14 @@ import { OptimizationPriorityTable } from '@/components/optimization-priority-ta
 import { getSitemapAnalysis, SitemapAnalysis } from '@/lib/sitemap'
 import { getGscMetrics, getPageCrawlResults } from '@/lib/gsc'
 import { slugify } from '@/lib/utils'
-import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink } from 'lucide-react'
+import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink, Download } from 'lucide-react'
+import { PromptTypeFilter } from '@/components/prompt-type-filter'
 
 export const dynamic = 'force-dynamic'
 
 async function getSessionList(): Promise<SessionOption[]> {
   const sessions = await prisma.runSession.findMany({
-    where: { status: 'done' },
+    where: { status: 'done', results: { some: {} } },
     orderBy: { startedAt: 'asc' },
     select: { id: true, startedAt: true, triggeredBy: true, _count: { select: { results: true } } },
   })
@@ -29,7 +30,7 @@ async function getSessionList(): Promise<SessionOption[]> {
 
 async function getTrendData(): Promise<TrendPoint[]> {
   const sessions = await prisma.runSession.findMany({
-    where: { status: 'done' },
+    where: { status: 'done', results: { some: {} } },
     orderBy: { startedAt: 'asc' },
     select: {
       id: true,
@@ -72,12 +73,13 @@ async function getTrendData(): Promise<TrendPoint[]> {
   })
 }
 
-async function getDashboardData(sessionId?: string) {
+async function getDashboardData(sessionId?: string, promptType?: string) {
   // One canonical prompt per unique promptText (first created wins) — prevents cross-batch double-counting
   const canonicalRows = await prisma.prompt.findMany({
     distinct: ['promptText'],
     orderBy: { createdAt: 'asc' },
     select: { id: true },
+    where: promptType ? { promptType } : undefined,
   })
   const canonicalIds = canonicalRows.map((r) => r.id)
 
@@ -220,9 +222,9 @@ async function getDashboardData(sessionId?: string) {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ session?: string }>
+  searchParams: Promise<{ session?: string; type?: string }>
 }) {
-  const { session: sessionId } = await searchParams
+  const { session: sessionId, type: promptType } = await searchParams
 
   let data: Awaited<ReturnType<typeof getDashboardData>> | null = null
   let trendData: TrendPoint[] = []
@@ -230,7 +232,7 @@ export default async function DashboardPage({
   let sitemapAnalysis: SitemapAnalysis | null = null
   try {
     ;[data, trendData, sessions] = await Promise.all([
-      getDashboardData(sessionId),
+      getDashboardData(sessionId, promptType),
       getTrendData(),
       getSessionList(),
     ])
@@ -326,6 +328,19 @@ export default async function DashboardPage({
 
           <TabsContent value="overview">
             <div className="space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <PromptTypeFilter />
+                {sessionId && (
+                  <a
+                    href={`/api/export?session=${sessionId}`}
+                    download
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#dde6ea] text-xs font-medium text-[#5a7a85] hover:bg-[#f0f5f7] transition-colors"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Export run
+                  </a>
+                )}
+              </div>
               <SectionCard title="Mention & Citation Rate by Platform">
                 <PlatformMentionChart data={data.platformStats} />
               </SectionCard>

@@ -122,48 +122,85 @@ async function queryClaude(
   const { default: Anthropic } = await import('@anthropic-ai/sdk')
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-  const response = await client.messages.create({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let response: any = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
     tools: [{ type: 'web_search_20250305' as const, name: 'web_search' }],
     messages: [{ role: 'user', content: promptText }],
   })
 
-  // Collect final text and citations from search result blocks
+  // If Claude returned stop_reason=tool_use, the web_search tool requires us to
+  // execute the search and send results back in a follow-up turn.
+  if (response.stop_reason === 'tool_use') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const toolUseBlock = response.content.find((b: any) => b.type === 'tool_use' && b.name === 'web_search')
+    const query: string = toolUseBlock?.input?.query ?? promptText.slice(0, 120)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let searchResults: any[] = []
+    try {
+      const searchRes = await fetch(
+        `https://www.searchapi.io/api/v1/search?engine=google&q=${encodeURIComponent(query)}&api_key=${process.env.SEARCHAPI_KEY}`,
+        { signal: AbortSignal.timeout(15_000) }
+      )
+      if (searchRes.ok) {
+        const d = await searchRes.json()
+        searchResults = (d.organic_results ?? []).slice(0, 5).map((r: Record<string, string>) => ({
+          url: r.link ?? '',
+          title: r.title ?? '',
+          snippet: r.snippet ?? '',
+        }))
+      }
+    } catch { /* ignore */ }
+
+    response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      tools: [{ type: 'web_search_20250305' as const, name: 'web_search' }],
+      messages: [
+        { role: 'user', content: promptText },
+        { role: 'assistant', content: response.content },
+        {
+          role: 'user',
+          content: [{
+            type: 'tool_result' as const,
+            tool_use_id: toolUseBlock?.id ?? '',
+            content: JSON.stringify(searchResults),
+          }],
+        },
+      ],
+    })
+  }
+
   let text = ''
   const citations: Array<{ url: string; title: string; domain: string }> = []
 
-  for (const block of response.content) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const block of response.content as any[]) {
     if (block.type === 'text') {
       text += block.text
-    } else if (block.type === 'tool_result') {
+    }
+    // Top-level web_search_result blocks (Anthropic server-tool response format)
+    if (block.type === 'web_search_result' || block.type === 'web_search_result_block') {
+      const url: string = block.url ?? ''
+      if (url) citations.push({ url, title: block.title ?? '', domain: extractDomain(url) })
+    }
+    // tool_result or server_tool_result wrapping search items
+    if (block.type === 'tool_result' || block.type === 'server_tool_result') {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const content: any[] = Array.isArray((block as any).content) ? (block as any).content : []
+      const content: any[] = Array.isArray(block.content) ? block.content : []
       for (const item of content) {
-        if (item.type === 'web_search_result') {
-          const url: string = item.url ?? ''
-          if (url) {
-            citations.push({
-              url,
-              title: item.title ?? '',
-              domain: extractDomain(url),
-            })
-          }
-        }
+        const url: string = item.url ?? ''
+        if (url) citations.push({ url, title: item.title ?? '', domain: extractDomain(url) })
       }
     }
-  }
-
-  // If no citations from tool results, scan tool_use result blocks (alternate shape)
-  if (citations.length === 0) {
-    for (const block of response.content) {
+    // tool_use with results embedded in input (some response shapes)
+    if (block.type === 'tool_use' && block.name === 'web_search') {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const b = block as any
-      if (b.type === 'tool_use' && b.name === 'web_search' && Array.isArray(b.input?.results)) {
-        for (const r of b.input.results) {
-          const url: string = r.url ?? ''
-          if (url) citations.push({ url, title: r.title ?? '', domain: extractDomain(url) })
-        }
+      const results: any[] = Array.isArray(block.input?.results) ? block.input.results : []
+      for (const r of results) {
+        const url: string = r.url ?? ''
+        if (url) citations.push({ url, title: r.title ?? '', domain: extractDomain(url) })
       }
     }
   }
