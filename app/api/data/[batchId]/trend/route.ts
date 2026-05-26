@@ -27,7 +27,7 @@ export async function GET(
 
   // Fetch all completed run sessions for this batch, oldest first
   const sessions = await prisma.runSession.findMany({
-    where: { batchId, status: 'done' },
+    where: { batchId, status: 'done', results: { some: {} } },
     orderBy: { startedAt: 'asc' },
   })
 

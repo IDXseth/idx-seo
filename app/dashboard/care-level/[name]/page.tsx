@@ -7,7 +7,7 @@ import { getSegmentTrendData } from '@/lib/segment-trend'
 
 async function getSessionList(): Promise<SessionOption[]> {
   const sessions = await prisma.runSession.findMany({
-    where: { status: 'done' },
+    where: { status: 'done', results: { some: {} } },
     orderBy: { startedAt: 'asc' },
     select: { id: true, startedAt: true, triggeredBy: true, _count: { select: { results: true } } },
   })

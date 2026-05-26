@@ -43,7 +43,7 @@ export async function GET() {
           select: { finishedAt: true },
         })
         const recentSessions = await prisma.runSession.findMany({
-          where: { batchId: batch.id },
+          where: { batchId: batch.id, results: { some: {} } },
           orderBy: { startedAt: 'desc' },
           take: 20,
           select: {
