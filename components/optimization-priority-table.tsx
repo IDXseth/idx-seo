@@ -242,6 +242,7 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
           { label: 'Position', tooltip: gscWindowNote },
         ]
       : []),
+    { label: 'Actions' },
   ]
 
   return (
