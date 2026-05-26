@@ -341,7 +341,7 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
                         {label}
                         <span className="relative group">
                           <Info className="h-3 w-3 cursor-help" />
-                          <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-52 px-2.5 py-1.5 rounded-lg text-xs bg-[#084c61] text-white opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-20 whitespace-normal text-center font-normal normal-case tracking-normal leading-snug">
+                          <span className="absolute bottom-full right-0 mb-1.5 w-52 px-2.5 py-1.5 rounded-lg text-xs bg-[#084c61] text-white opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-20 whitespace-normal text-center font-normal normal-case tracking-normal leading-snug">
                             {tooltip}
                           </span>
                         </span>
