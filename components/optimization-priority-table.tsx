@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import dynamic from 'next/dynamic'
-import { ExternalLink, AlertTriangle, RefreshCw, BarChart2 } from 'lucide-react'
+import { ExternalLink, AlertTriangle, RefreshCw, BarChart2, Info } from 'lucide-react'
 import type { CommunityWithSitemapStatus, SitemapEntry, SitemapAnalysis } from '@/lib/sitemap'
 
 const GscSiteSelector = dynamic(() => import('./gsc-site-selector').then(m => ({ default: m.GscSiteSelector })), { ssr: false })
@@ -182,6 +182,37 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
     { key: 'not_tracked', label: 'Not Tracked', count: summary.notTracked },
   ]
 
+  const gscSyncedAt = gscEnabled
+    ? communities
+        .filter((c) => c.gsc?.fetchedAt)
+        .map((c) => c.gsc!.fetchedAt)
+        .sort()
+        .at(-1)
+    : null
+
+  const gscWindowNote = gscSyncedAt
+    ? `28-day window ending on sync date (${new Date(gscSyncedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })})`
+    : '28-day window prior to last sync'
+
+  type HeaderDef = { label: string; tooltip?: string }
+  const headers: HeaderDef[] = [
+    { label: 'Rank' },
+    { label: 'Community' },
+    { label: 'City' },
+    { label: 'Score' },
+    { label: 'Mention %' },
+    { label: 'Citation %' },
+    { label: 'Status' },
+    { label: 'Page' },
+    ...(gscEnabled
+      ? [
+          { label: 'Indexed' },
+          { label: 'Impressions', tooltip: gscWindowNote },
+          { label: 'Position', tooltip: gscWindowNote },
+        ]
+      : []),
+  ]
+
   return (
     <div className="space-y-6">
       {/* GSC banner — GscSiteSelector handles connect vs domain-pick internally */}
@@ -300,22 +331,24 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
           <table className="w-full min-w-[720px]">
             <thead>
               <tr className="border-b border-[#f0f5f7]">
-                {[
-                  'Rank',
-                  'Community',
-                  'City',
-                  'Score',
-                  'Mention %',
-                  'Citation %',
-                  'Status',
-                  'Page',
-                  ...(gscEnabled ? ['Indexed', 'Impressions', 'Position'] : []),
-                ].map((h) => (
+                {headers.map(({ label, tooltip }) => (
                   <th
-                    key={h}
+                    key={label}
                     className="px-4 py-3 text-xs font-semibold text-[#8aadb8] uppercase tracking-wider text-center"
                   >
-                    {h}
+                    {tooltip ? (
+                      <span className="inline-flex items-center justify-center gap-1">
+                        {label}
+                        <span className="relative group">
+                          <Info className="h-3 w-3 cursor-help" />
+                          <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-52 px-2.5 py-1.5 rounded-lg text-xs bg-[#084c61] text-white opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-20 whitespace-normal text-center font-normal normal-case tracking-normal leading-snug">
+                            {tooltip}
+                          </span>
+                        </span>
+                      </span>
+                    ) : (
+                      label
+                    )}
                   </th>
                 ))}
               </tr>
