@@ -329,7 +329,7 @@ export default async function DashboardPage({
           <TabsContent value="overview">
             <div className="space-y-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <PromptTypeFilter />
+                <PromptTypeFilter current={promptType ?? ''} sessionId={sessionId} />
                 {sessionId && (
                   <a
                     href={`/api/export?session=${sessionId}`}

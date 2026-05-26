@@ -1,6 +1,6 @@
 'use client'
 
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 
 const OPTIONS = [
   { value: '', label: 'All' },
@@ -8,16 +8,21 @@ const OPTIONS = [
   { value: 'nonbrand', label: 'Non-brand' },
 ] as const
 
-export function PromptTypeFilter() {
+export function PromptTypeFilter({
+  current,
+  sessionId,
+}: {
+  current: string
+  sessionId?: string
+}) {
   const router = useRouter()
-  const params = useSearchParams()
-  const current = params.get('type') ?? ''
 
   function set(value: string) {
-    const next = new URLSearchParams(params.toString())
-    if (value) next.set('type', value)
-    else next.delete('type')
-    router.push(`/dashboard?${next.toString()}`)
+    const params = new URLSearchParams()
+    if (value) params.set('type', value)
+    if (sessionId) params.set('session', sessionId)
+    const qs = params.toString()
+    router.push(`/dashboard${qs ? `?${qs}` : ''}`)
   }
 
   return (
