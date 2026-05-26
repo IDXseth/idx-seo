@@ -1,9 +1,40 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import dynamic from 'next/dynamic'
 import { ExternalLink, AlertTriangle, RefreshCw, BarChart2, Info } from 'lucide-react'
 import type { CommunityWithSitemapStatus, SitemapEntry, SitemapAnalysis } from '@/lib/sitemap'
+
+function TooltipIcon({ text }: { text: string }) {
+  const [rect, setRect] = useState<DOMRect | null>(null)
+  const ref = useRef<HTMLSpanElement>(null)
+  return (
+    <span
+      ref={ref}
+      onMouseEnter={() => setRect(ref.current?.getBoundingClientRect() ?? null)}
+      onMouseLeave={() => setRect(null)}
+      className="inline-flex cursor-help"
+    >
+      <Info className="h-3 w-3" />
+      {rect && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            top: rect.top - 8,
+            left: rect.right,
+            transform: 'translate(-100%, -100%)',
+            zIndex: 9999,
+          }}
+          className="w-52 px-2.5 py-1.5 rounded-lg text-xs bg-[#084c61] text-white whitespace-normal text-center leading-snug pointer-events-none"
+        >
+          {text}
+        </div>,
+        document.body
+      )}
+    </span>
+  )
+}
 
 const GscSiteSelector = dynamic(() => import('./gsc-site-selector').then(m => ({ default: m.GscSiteSelector })), { ssr: false })
 
@@ -339,12 +370,7 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
                     {tooltip ? (
                       <span className="inline-flex items-center justify-center gap-1">
                         {label}
-                        <span className="relative group">
-                          <Info className="h-3 w-3 cursor-help" />
-                          <span className="absolute bottom-full right-0 mb-1.5 w-52 px-2.5 py-1.5 rounded-lg text-xs bg-[#084c61] text-white opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-20 whitespace-normal text-center font-normal normal-case tracking-normal leading-snug">
-                            {tooltip}
-                          </span>
-                        </span>
+                        <TooltipIcon text={tooltip} />
                       </span>
                     ) : (
                       label
