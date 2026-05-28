@@ -4,7 +4,15 @@ import { prisma } from '@/lib/prisma'
 
 export const maxDuration = 60
 
+export async function GET() {
+  return run()
+}
+
 export async function POST() {
+  return run()
+}
+
+async function run() {
   const session = await auth()
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
