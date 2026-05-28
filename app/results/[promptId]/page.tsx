@@ -142,6 +142,7 @@ export default async function ResultsDetailPage({
           {sortedResults.map((result) => {
             const color = PLATFORM_COLORS[result.platform] || '#084c61'
             const label = PLATFORM_LABELS[result.platform] || result.platform
+            const isNoAIO = result.responseText?.startsWith('[No AI Overview]')
             return (
               <div key={result.id} className="bg-white rounded-xl border border-[#dde6ea] flex flex-col overflow-hidden">
                 {/* Platform header */}
@@ -151,7 +152,7 @@ export default async function ResultsDetailPage({
                     <span className="font-semibold text-[#084c61] text-sm">{label}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    {result.isMentioned ? (
+                    {!isNoAIO && (result.isMentioned ? (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                         Mentioned
                       </span>
@@ -159,13 +160,13 @@ export default async function ResultsDetailPage({
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#f0f4f7] text-[#8aadb8]">
                         Not Mentioned
                       </span>
-                    )}
-                    {result.isCited && (
+                    ))}
+                    {!isNoAIO && result.isCited && (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#e6f2f5] text-[#084c61] border border-[#b8d8e0]">
                         Cited
                       </span>
                     )}
-                    {result.sentiment === 'positive' ? (
+                    {!isNoAIO && (result.sentiment === 'positive' ? (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                         Positive
                       </span>
@@ -177,14 +178,18 @@ export default async function ResultsDetailPage({
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#f0f4f7] text-[#8aadb8]">
                         Neutral
                       </span>
-                    ) : null}
+                    ) : null)}
                   </div>
                 </div>
 
                 {/* Response text */}
                 <div className="px-5 py-4 flex-1">
                   <p className="text-[10px] font-semibold text-[#8aadb8] uppercase tracking-wider mb-2">Response</p>
-                  <p className="text-xs text-[#1a1a1a] leading-relaxed">{result.responseText}</p>
+                  {isNoAIO ? (
+                    <p className="text-xs text-[#8aadb8] italic">No AI Overview was served for this query.</p>
+                  ) : (
+                    <p className="text-xs text-[#1a1a1a] leading-relaxed">{result.responseText}</p>
+                  )}
                 </div>
 
                 {/* Citations */}
