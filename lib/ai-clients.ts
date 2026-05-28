@@ -21,7 +21,7 @@ async function analyzeSentiment(
   responseText: string,
   communityName: string
 ): Promise<'positive' | 'neutral' | 'negative'> {
-  if (!responseText || responseText.startsWith('[Error]') || responseText.startsWith('[Timeout]')) {
+  if (!responseText || responseText.startsWith('[Error]') || responseText.startsWith('[Timeout]') || responseText.startsWith('[No AI Overview]')) {
     return 'neutral'
   }
   try {
@@ -293,26 +293,10 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
       .filter((c) => c.url)
   }
 
-  // Always fall back to organic results for both text snippet and citations
-  if (Array.isArray(data.organic_results) && data.organic_results.length > 0) {
-    if (!text) {
-      text = data.organic_results
-        .slice(0, 3)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map((r: any) => r.snippet ?? '')
-        .join(' ')
-    }
-    if (citations.length === 0) {
-      citations = data.organic_results
-        .slice(0, 5)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map((r: any) => ({
-          url: r.link ?? '',
-          title: r.title ?? '',
-          domain: extractDomain(r.link ?? ''),
-        }))
-        .filter((c: { url: string }) => c.url)
-    }
+  // No AI Overview (or answer/answer_box) was served — mark explicitly rather
+  // than falling back to organic snippets which would be misleading as AIO data.
+  if (!text) {
+    return { responseText: '[No AI Overview]', isMentioned: false, isCited: false, sentiment: 'neutral', citations: [] }
   }
 
   const isMentioned = checkMention(text, communityName)
