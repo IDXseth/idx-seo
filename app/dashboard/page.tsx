@@ -265,6 +265,8 @@ export default async function DashboardPage({
 
   const currentSession = sessions.find((s) => s.id === sessionId)
   const exportSessionId = sessionId ?? (sessions.length === 1 ? sessions[0]?.id : undefined)
+  const detailQs = [sessionId && `session=${sessionId}`, promptType && `type=${promptType}`].filter(Boolean).join('&')
+  const dqs = detailQs ? `?${detailQs}` : ''
 
   return (
     <div>
@@ -383,72 +385,84 @@ export default async function DashboardPage({
           </TabsContent>
 
           <TabsContent value="community">
-            <TabGrid
-              items={data.communityStats}
-              renderCard={(c) => (
-                <Scorecard
-                  key={c.communityName}
-                  title={c.communityName}
-                  subtitle={c.city}
-                  mentionRate={c.mentionRate}
-                  citationRate={c.citationRate}
-                  promptCount={c.promptCount}
-                  href={`/dashboard/community/${encodeURIComponent(slugify(c.communityName))}${sessionId ? `?session=${sessionId}` : ''}`}
-                />
-              )}
-              empty="No community data available"
-            />
+            <div className="space-y-4">
+              <PromptTypeFilter current={promptType ?? ''} sessionId={sessionId} />
+              <TabGrid
+                items={data.communityStats}
+                renderCard={(c) => (
+                  <Scorecard
+                    key={c.communityName}
+                    title={c.communityName}
+                    subtitle={c.city}
+                    mentionRate={c.mentionRate}
+                    citationRate={c.citationRate}
+                    promptCount={c.promptCount}
+                    href={`/dashboard/community/${encodeURIComponent(slugify(c.communityName))}${dqs}`}
+                  />
+                )}
+                empty="No community data available"
+              />
+            </div>
           </TabsContent>
 
           <TabsContent value="category">
-            <TabGrid
-              items={data.categoryStats}
-              renderCard={(c) => (
-                <Scorecard
-                  key={c.category}
-                  title={c.category}
-                  mentionRate={c.mentionRate}
-                  citationRate={c.citationRate}
-                  promptCount={c.promptCount}
-                  href={`/dashboard/category/${encodeURIComponent(c.category)}${sessionId ? `?session=${sessionId}` : ''}`}
-                />
-              )}
-              empty="No category data available"
-            />
+            <div className="space-y-4">
+              <PromptTypeFilter current={promptType ?? ''} sessionId={sessionId} />
+              <TabGrid
+                items={data.categoryStats}
+                renderCard={(c) => (
+                  <Scorecard
+                    key={c.category}
+                    title={c.category}
+                    mentionRate={c.mentionRate}
+                    citationRate={c.citationRate}
+                    promptCount={c.promptCount}
+                    href={`/dashboard/category/${encodeURIComponent(c.category)}${dqs}`}
+                  />
+                )}
+                empty="No category data available"
+              />
+            </div>
           </TabsContent>
 
           <TabsContent value="careLevel">
-            <TabGrid
-              items={data.careLevelStats}
-              renderCard={(c) => (
-                <Scorecard
-                  key={c.levelOfCare}
-                  title={c.levelOfCare}
-                  mentionRate={c.mentionRate}
-                  citationRate={c.citationRate}
-                  promptCount={c.promptCount}
-                  href={`/dashboard/care-level/${encodeURIComponent(c.levelOfCare)}${sessionId ? `?session=${sessionId}` : ''}`}
-                />
-              )}
-              empty="No care level data available"
-            />
+            <div className="space-y-4">
+              <PromptTypeFilter current={promptType ?? ''} sessionId={sessionId} />
+              <TabGrid
+                items={data.careLevelStats}
+                renderCard={(c) => (
+                  <Scorecard
+                    key={c.levelOfCare}
+                    title={c.levelOfCare}
+                    mentionRate={c.mentionRate}
+                    citationRate={c.citationRate}
+                    promptCount={c.promptCount}
+                    href={`/dashboard/care-level/${encodeURIComponent(c.levelOfCare)}${dqs}`}
+                  />
+                )}
+                empty="No care level data available"
+              />
+            </div>
           </TabsContent>
 
           <TabsContent value="market">
-            <TabGrid
-              items={data.marketStats}
-              renderCard={(m) => (
-                <Scorecard
-                  key={m.market}
-                  title={m.market}
-                  mentionRate={m.mentionRate}
-                  citationRate={m.citationRate}
-                  promptCount={m.promptCount}
-                  href={`/dashboard/market/${encodeURIComponent(m.market)}${sessionId ? `?session=${sessionId}` : ''}`}
-                />
-              )}
-              empty="No market data available"
-            />
+            <div className="space-y-4">
+              <PromptTypeFilter current={promptType ?? ''} sessionId={sessionId} />
+              <TabGrid
+                items={data.marketStats}
+                renderCard={(m) => (
+                  <Scorecard
+                    key={m.market}
+                    title={m.market}
+                    mentionRate={m.mentionRate}
+                    citationRate={m.citationRate}
+                    promptCount={m.promptCount}
+                    href={`/dashboard/market/${encodeURIComponent(m.market)}${dqs}`}
+                  />
+                )}
+                empty="No market data available"
+              />
+            </div>
           </TabsContent>
 
           <TabsContent value="optimization">
