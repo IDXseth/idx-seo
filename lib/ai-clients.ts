@@ -109,7 +109,7 @@ async function queryChatGPT(
     .filter((c) => c.url)
 
   const isMentioned = checkMention(text, communityName)
-  const isCited = isMentioned && checkCited(citations, communityName)
+  const isCited = checkCited(citations, communityName)
   const sentiment = await analyzeSentiment(text, communityName)
 
   return { responseText: text, isMentioned, isCited, sentiment, citations }
@@ -169,7 +169,7 @@ async function queryClaude(
   }
 
   const isMentioned = checkMention(text, communityName)
-  const isCited = isMentioned && checkCited(citations, communityName)
+  const isCited = checkCited(citations, communityName)
   const sentiment = await analyzeSentiment(text, communityName)
 
   return { responseText: text, isMentioned, isCited, sentiment, citations }
@@ -206,7 +206,7 @@ async function queryGemini(
   )
 
   const isMentioned = checkMention(text, communityName)
-  const isCited = isMentioned && checkCited(citations, communityName)
+  const isCited = checkCited(citations, communityName)
   const sentiment = await analyzeSentiment(text, communityName)
 
   return { responseText: text, isMentioned, isCited, sentiment, citations }
@@ -279,7 +279,7 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
   }
 
   const isMentioned = checkMention(text, communityName)
-  const isCited = isMentioned && checkCited(citations, communityName)
+  const isCited = checkCited(citations, communityName)
   const sentiment = await analyzeSentiment(text, communityName)
 
   return { responseText: text, isMentioned, isCited, sentiment, citations }
@@ -315,7 +315,7 @@ async function queryPerplexity(
     .map((url) => ({ url, title: extractDomain(url), domain: extractDomain(url) }))
 
   const isMentioned = checkMention(text, communityName)
-  const isCited = isMentioned && checkCited(citations, communityName)
+  const isCited = checkCited(citations, communityName)
   const sentiment = await analyzeSentiment(text, communityName)
 
   return { responseText: text, isMentioned, isCited, sentiment, citations }
