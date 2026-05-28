@@ -21,6 +21,7 @@ interface Citation {
 interface Result {
   id: string
   platform: string
+  responseText: string
   isMentioned: boolean
   isCited: boolean
   sentiment: string
@@ -333,7 +334,7 @@ export function SegmentDetail({
                     if (!result) return <td key={platform} className="px-4 py-4 text-[#b8cdd3] text-xs">—</td>
                     return (
                       <td key={platform} className="px-4 py-4">
-                        <PlatformCell isMentioned={result.isMentioned} isCited={result.isCited} />
+                        <PlatformCell responseText={result.responseText} isMentioned={result.isMentioned} isCited={result.isCited} />
                       </td>
                     )
                   })}
@@ -347,7 +348,16 @@ export function SegmentDetail({
   )
 }
 
-function PlatformCell({ isMentioned, isCited }: { isMentioned: boolean; isCited: boolean }) {
+function PlatformCell({ responseText, isMentioned, isCited }: { responseText: string; isMentioned: boolean; isCited: boolean }) {
+  const isNoAIO = responseText?.startsWith('[No AI Overview]')
+  const isError = responseText?.startsWith('[Error]') || responseText?.startsWith('[Timeout]')
+  if (isNoAIO || isError) {
+    return (
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#f0f4f7] text-[#b8cdd3] w-fit italic">
+        {isNoAIO ? 'No AI Overview' : 'Error'}
+      </span>
+    )
+  }
   return (
     <div className="flex flex-col gap-1">
       <span className={cn(
