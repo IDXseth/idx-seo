@@ -254,18 +254,36 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
   let text = ''
   let citations: Array<{ url: string; title: string; domain: string }> = []
 
-  // google_ai_mode response shape
-  if (!text && data.ai_mode) {
-    const aim = data.ai_mode
-    text = aim.answer ?? aim.text ?? aim.markdown ?? ''
-    const refs: unknown[] = aim.references ?? aim.sources ?? aim.reference_links ?? []
-    citations = (refs as Array<Record<string, string>>)
-      .map((r) => ({
-        url: r.link ?? r.url ?? '',
-        title: r.title ?? r.name ?? '',
-        domain: extractDomain(r.link ?? r.url ?? ''),
-      }))
-      .filter((c) => c.url)
+  // google_ai_mode: content may be at top level (text_blocks/reference_links)
+  // or nested under data.ai_mode — handle both shapes
+  if (!text) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const aim: any = data.ai_mode ?? data
+    // text_blocks array (each block has a snippet/text field)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const blocks: Array<{ snippet?: string; text?: string }> = aim.text_blocks ?? []
+    if (blocks.length > 0) {
+      text = blocks.map((b) => b.snippet ?? b.text ?? '').filter(Boolean).join('\n\n')
+    }
+    // scalar text fields
+    if (!text) {
+      text = aim.answer ?? aim.text ?? aim.markdown ?? aim.reconstructed_markdown ?? ''
+    }
+    // top-level markdown as last resort when aim fell back to data but ai_mode exists
+    if (!text && data.ai_mode) {
+      text = data.markdown ?? data.reconstructed_markdown ?? ''
+    }
+    if (text) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const refs: unknown[] = aim.reference_links ?? aim.references ?? aim.sources ?? []
+      citations = (refs as Array<Record<string, string>>)
+        .map((r) => ({
+          url: r.link ?? r.url ?? '',
+          title: r.title ?? r.name ?? '',
+          domain: extractDomain(r.link ?? r.url ?? ''),
+        }))
+        .filter((c) => c.url)
+    }
   }
 
   // AI Overviews response shape
