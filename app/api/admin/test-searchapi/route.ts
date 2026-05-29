@@ -32,6 +32,12 @@ export async function GET(req: Request) {
   return NextResponse.json({
     status: response.status,
     topLevelKeys: Object.keys(data),
+    // google_ai_mode fields (content at root level)
+    text_blocks_count: data.text_blocks?.length ?? 0,
+    text_blocks_first: data.text_blocks?.[0] ?? null,
+    reference_links_count: data.reference_links?.length ?? 0,
+    markdown_preview: typeof data.markdown === 'string' ? data.markdown.slice(0, 300) : null,
+    // other engine fields
     ai_mode: data.ai_mode ?? null,
     ai_overview: data.ai_overview ?? null,
     answer: data.answer ?? null,
