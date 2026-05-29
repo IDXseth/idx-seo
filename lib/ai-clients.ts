@@ -474,27 +474,6 @@ async function queryGoogleAIO(
     return await parseSearchAPIResponse(step1Data, communityName, 'google')
   }
 
-  // engine=google didn't capture an AIO (common for API calls without user context) —
-  // call google_ai_overview directly; SearchAPI's dedicated engine fetches AIOs without
-  // needing a prior page_token
-  const aioUrl = new URL('https://www.searchapi.io/api/v1/search')
-  aioUrl.searchParams.set('api_key', apiKey!)
-  aioUrl.searchParams.set('engine', 'google_ai_overview')
-  aioUrl.searchParams.set('q', promptText)
-  aioUrl.searchParams.set('gl', 'us')
-  aioUrl.searchParams.set('hl', 'en')
-
-  try {
-    const aioRes = await fetch(aioUrl.toString(), {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(30_000),
-    })
-    if (aioRes.ok) {
-      const aioData = await aioRes.json()
-      return await parseSearchAPIResponse(aioData, communityName, 'google_ai_overview')
-    }
-  } catch { /* fall through to [No AI Overview] */ }
-
   return { responseText: '[No AI Overview]', isMentioned: false, isCited: false, sentiment: 'neutral', citations: [] }
 }
 
