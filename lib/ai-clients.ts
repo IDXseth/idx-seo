@@ -254,36 +254,29 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
   let text = ''
   let citations: Array<{ url: string; title: string; domain: string }> = []
 
-  // google_ai_mode: content may be at top level (text_blocks/reference_links)
-  // or nested under data.ai_mode — handle both shapes
-  if (!text) {
+  // google_ai_mode: content is at the root level — no ai_mode wrapper object.
+  // text_blocks[].answer holds each paragraph; reference_links[] holds citations.
+  // markdown/reconstructed_markdown is an alternative full-text field.
+  if (!text && Array.isArray(data.text_blocks) && data.text_blocks.length > 0) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const aim: any = data.ai_mode ?? data
-    // text_blocks array (each block has a snippet/text field)
+    text = (data.text_blocks as Array<any>)
+      .map((b) => b.answer ?? b.snippet ?? b.text ?? '')
+      .filter(Boolean)
+      .join('\n\n')
+  }
+  if (!text && (data.markdown || data.reconstructed_markdown)) {
+    text = data.markdown ?? data.reconstructed_markdown ?? ''
+  }
+  if (text && !citations.length) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const blocks: Array<{ snippet?: string; text?: string }> = aim.text_blocks ?? []
-    if (blocks.length > 0) {
-      text = blocks.map((b) => b.snippet ?? b.text ?? '').filter(Boolean).join('\n\n')
-    }
-    // scalar text fields
-    if (!text) {
-      text = aim.answer ?? aim.text ?? aim.markdown ?? aim.reconstructed_markdown ?? ''
-    }
-    // top-level markdown as last resort when aim fell back to data but ai_mode exists
-    if (!text && data.ai_mode) {
-      text = data.markdown ?? data.reconstructed_markdown ?? ''
-    }
-    if (text) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const refs: unknown[] = aim.reference_links ?? aim.references ?? aim.sources ?? []
-      citations = (refs as Array<Record<string, string>>)
-        .map((r) => ({
-          url: r.link ?? r.url ?? '',
-          title: r.title ?? r.name ?? '',
-          domain: extractDomain(r.link ?? r.url ?? ''),
-        }))
-        .filter((c) => c.url)
-    }
+    const refs: unknown[] = data.reference_links ?? data.references ?? data.sources ?? []
+    citations = (refs as Array<Record<string, string>>)
+      .map((r) => ({
+        url: r.link ?? r.url ?? '',
+        title: r.title ?? r.name ?? '',
+        domain: extractDomain(r.link ?? r.url ?? ''),
+      }))
+      .filter((c) => c.url)
   }
 
   // AI Overviews response shape
