@@ -254,18 +254,21 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
   let text = ''
   let citations: Array<{ url: string; title: string; domain: string }> = []
 
-  // engine=google_ai_overview may return content at root level (same shape as google_ai_mode)
+  // engine=google_ai_overview with page_token returns root-level markdown/text_blocks/reference_links
   if (!text && typeof data.markdown === 'string' && data.markdown.length > 0) {
-    text = data.markdown
+    // Strip inline citation markers like [1], [2] before storing
+    text = data.markdown.replace(/\[\d+\]/g, '').trim()
   }
   if (!text && Array.isArray(data.text_blocks) && data.text_blocks.length > 0) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     text = (data.text_blocks as Array<any>)
-      .map((b) => b.snippet ?? b.text ?? b.content ?? '')
+      .map((b) => (b.snippet ?? b.text ?? b.content ?? '').replace(/\[\d+\]/g, ''))
       .filter(Boolean)
       .join('\n\n')
+      .trim()
   }
   if (text && !citations.length) {
+    // reference_links[].link is the canonical citation URL per SearchAPI's google_ai_overview response
     const refs: unknown[] = data.reference_links ?? []
     citations = (refs as Array<Record<string, string>>)
       .map((r) => ({
@@ -422,17 +425,21 @@ async function querySearchAPI(
 
 async function queryGoogleAIO(
   promptText: string,
-  communityName: string
+  communityName: string,
+  city?: string
 ): Promise<PlatformResult> {
   const apiKey = process.env.SEARCHAPI_KEY
 
-  // Step 1: standard Google search — returns ai_overview + page_token when Google serves one
+  // Step 1: standard Google search — returns ai_overview + page_token when Google serves one.
+  // Passing location causes Google to return geo-targeted results, which significantly
+  // increases the chance of ai_overview appearing for local-service queries.
   const step1Url = new URL('https://www.searchapi.io/api/v1/search')
   step1Url.searchParams.set('api_key', apiKey!)
   step1Url.searchParams.set('engine', 'google')
   step1Url.searchParams.set('q', promptText)
   step1Url.searchParams.set('gl', 'us')
   step1Url.searchParams.set('hl', 'en')
+  if (city) step1Url.searchParams.set('location', city)
 
   const step1Res = await fetch(step1Url.toString(), {
     headers: { Accept: 'application/json' },
@@ -480,7 +487,8 @@ async function queryGoogleAIO(
 export async function queryPlatform(
   platform: string,
   promptText: string,
-  communityName: string
+  communityName: string,
+  city?: string
 ): Promise<PlatformResult> {
   try {
     let result: PlatformResult
@@ -494,7 +502,7 @@ export async function queryPlatform(
       case 'perplexity':
         result = await queryPerplexity(promptText, communityName); break
       case 'google_aio':
-        return await queryGoogleAIO(promptText, communityName)
+        return await queryGoogleAIO(promptText, communityName, city)
       default:
         throw new Error(`Unknown platform: ${platform}`)
     }

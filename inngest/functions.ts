@@ -140,7 +140,7 @@ export const runSinglePrompt = inngest.createFunction(
     await step.run('query-and-save', async () => {
       const platformResults = await Promise.all(
         PLATFORMS.map(async (platform) => {
-          const result = await queryPlatform(platform, prompt.promptText, prompt.communityName)
+          const result = await queryPlatform(platform, prompt.promptText, prompt.communityName, prompt.city ?? undefined)
           return { platform, result }
         })
       )
