@@ -254,6 +254,20 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
   let text = ''
   let citations: Array<{ url: string; title: string; domain: string }> = []
 
+  // google_ai_mode response shape
+  if (!text && data.ai_mode) {
+    const aim = data.ai_mode
+    text = aim.answer ?? aim.text ?? aim.markdown ?? ''
+    const refs: unknown[] = aim.references ?? aim.sources ?? aim.reference_links ?? []
+    citations = (refs as Array<Record<string, string>>)
+      .map((r) => ({
+        url: r.link ?? r.url ?? '',
+        title: r.title ?? r.name ?? '',
+        domain: extractDomain(r.link ?? r.url ?? ''),
+      }))
+      .filter((c) => c.url)
+  }
+
   // AI Overviews response shape
   if (!text && data.ai_overview) {
     const aio = data.ai_overview
@@ -415,7 +429,7 @@ export async function queryPlatform(
       case 'perplexity':
         result = await queryPerplexity(promptText, communityName); break
       case 'google_aio':
-        return await querySearchAPI('google', promptText, communityName)
+        return await querySearchAPI('google_ai_mode', promptText, communityName)
       default:
         throw new Error(`Unknown platform: ${platform}`)
     }
