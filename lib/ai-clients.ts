@@ -179,28 +179,32 @@ async function queryClaude(
   for (const block of response.content as any[]) {
     if (block.type === 'text') {
       text += block.text
+      // Inline citations on text blocks (beta SDK web_search_result_location format)
+      if (Array.isArray(block.citations)) {
+        for (const c of block.citations) {
+          const url: string = c.url ?? ''
+          if (url && !citations.some((x) => x.url === url)) {
+            citations.push({ url, title: c.title ?? '', domain: extractDomain(url) })
+          }
+        }
+      }
     }
-    // Top-level web_search_result blocks (Anthropic server-tool response format)
-    if (block.type === 'web_search_result' || block.type === 'web_search_result_block') {
+    // Top-level web_search_result blocks
+    if (block.type === 'web_search_result') {
       const url: string = block.url ?? ''
-      if (url) citations.push({ url, title: block.title ?? '', domain: extractDomain(url) })
+      if (url && !citations.some((x) => x.url === url)) {
+        citations.push({ url, title: block.title ?? '', domain: extractDomain(url) })
+      }
     }
-    // tool_result or server_tool_result wrapping search items
-    if (block.type === 'tool_result' || block.type === 'server_tool_result') {
+    // web_search_tool_result — the actual block type returned by web_search_20250305
+    if (block.type === 'web_search_tool_result' || block.type === 'tool_result' || block.type === 'server_tool_result') {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const content: any[] = Array.isArray(block.content) ? block.content : []
       for (const item of content) {
         const url: string = item.url ?? ''
-        if (url) citations.push({ url, title: item.title ?? '', domain: extractDomain(url) })
-      }
-    }
-    // tool_use with results embedded in input (some response shapes)
-    if (block.type === 'tool_use' && block.name === 'web_search') {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const results: any[] = Array.isArray(block.input?.results) ? block.input.results : []
-      for (const r of results) {
-        const url: string = r.url ?? ''
-        if (url) citations.push({ url, title: r.title ?? '', domain: extractDomain(url) })
+        if (url && !citations.some((x) => x.url === url)) {
+          citations.push({ url, title: item.title ?? '', domain: extractDomain(url) })
+        }
       }
     }
   }
