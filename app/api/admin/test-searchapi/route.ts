@@ -8,7 +8,7 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url)
-  const engine = searchParams.get('engine') ?? 'google'
+  const engine = searchParams.get('engine') ?? 'google_ai_mode'
   const q = searchParams.get('q') ?? 'assisted living communities near me'
 
   const apiKey = process.env.SEARCHAPI_KEY
@@ -32,8 +32,15 @@ export async function GET(req: Request) {
   return NextResponse.json({
     status: response.status,
     topLevelKeys: Object.keys(data),
+    // google_ai_mode fields
+    markdown_length: typeof data.markdown === 'string' ? data.markdown.length : 0,
+    markdown_preview: typeof data.markdown === 'string' ? data.markdown.slice(0, 400) : null,
+    text_blocks_count: Array.isArray(data.text_blocks) ? data.text_blocks.length : 0,
+    text_blocks_first: Array.isArray(data.text_blocks) ? data.text_blocks[0] ?? null : null,
+    reference_links_count: Array.isArray(data.reference_links) ? data.reference_links.length : 0,
+    reference_links_first: Array.isArray(data.reference_links) ? data.reference_links[0] ?? null : null,
+    // engine=google fields
     ai_overview: data.ai_overview ?? null,
-    ai_overview_page_token: data.ai_overview?.page_token ?? null,
     answer: data.answer ?? null,
     answer_box: data.answer_box ?? null,
     organic_results_count: data.organic_results?.length ?? 0,
