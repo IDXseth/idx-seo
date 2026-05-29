@@ -377,6 +377,64 @@ async function querySearchAPI(
   return await parseSearchAPIResponse(data, communityName, engine)
 }
 
+async function queryGoogleAIO(
+  promptText: string,
+  communityName: string
+): Promise<PlatformResult> {
+  const apiKey = process.env.SEARCHAPI_KEY
+
+  // Step 1: standard Google search — returns ai_overview when Google serves one
+  const step1Url = new URL('https://www.searchapi.io/api/v1/search')
+  step1Url.searchParams.set('api_key', apiKey!)
+  step1Url.searchParams.set('engine', 'google')
+  step1Url.searchParams.set('q', promptText)
+  step1Url.searchParams.set('gl', 'us')
+  step1Url.searchParams.set('hl', 'en')
+
+  const step1Res = await fetch(step1Url.toString(), {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(30_000),
+  })
+  if (!step1Res.ok) {
+    const body = await step1Res.text().catch(() => '')
+    throw new Error(`SearchAPI (google) ${step1Res.status}: ${body.slice(0, 200)}`)
+  }
+  const step1Data = await step1Res.json()
+
+  // No AIO served for this query — return immediately without a wasted Step 2 call
+  if (!step1Data.ai_overview) {
+    return { responseText: '[No AI Overview]', isMentioned: false, isCited: false, sentiment: 'neutral', citations: [] }
+  }
+
+  // If a page_token is present, fetch expanded AIO content from the dedicated engine
+  const pageToken: string | undefined = step1Data.ai_overview?.page_token
+  if (pageToken) {
+    const step2Url = new URL('https://www.searchapi.io/api/v1/search')
+    step2Url.searchParams.set('api_key', apiKey!)
+    step2Url.searchParams.set('engine', 'google_ai_overview')
+    step2Url.searchParams.set('q', promptText)
+    step2Url.searchParams.set('page_token', pageToken)
+    step2Url.searchParams.set('gl', 'us')
+    step2Url.searchParams.set('hl', 'en')
+
+    try {
+      const step2Res = await fetch(step2Url.toString(), {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(30_000),
+      })
+      if (step2Res.ok) {
+        const step2Data = await step2Res.json()
+        return await parseSearchAPIResponse(step2Data, communityName, 'google_ai_overview')
+      }
+    } catch {
+      // Step 2 failed — fall through to parse Step 1 data
+    }
+  }
+
+  // Parse the Step 1 response directly (ai_overview block will handle it)
+  return await parseSearchAPIResponse(step1Data, communityName, 'google')
+}
+
 export async function queryPlatform(
   platform: string,
   promptText: string,
@@ -394,7 +452,7 @@ export async function queryPlatform(
       case 'perplexity':
         result = await queryPerplexity(promptText, communityName); break
       case 'google_aio':
-        return await querySearchAPI('google', promptText, communityName)
+        return await queryGoogleAIO(promptText, communityName)
       default:
         throw new Error(`Unknown platform: ${platform}`)
     }
