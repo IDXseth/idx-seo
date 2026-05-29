@@ -254,7 +254,29 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
   let text = ''
   let citations: Array<{ url: string; title: string; domain: string }> = []
 
-  // engine=google / engine=google_ai_overview: ai_overview object
+  // engine=google_ai_overview may return content at root level (same shape as google_ai_mode)
+  if (!text && typeof data.markdown === 'string' && data.markdown.length > 0) {
+    text = data.markdown
+  }
+  if (!text && Array.isArray(data.text_blocks) && data.text_blocks.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    text = (data.text_blocks as Array<any>)
+      .map((b) => b.snippet ?? b.text ?? b.content ?? '')
+      .filter(Boolean)
+      .join('\n\n')
+  }
+  if (text && !citations.length) {
+    const refs: unknown[] = data.reference_links ?? []
+    citations = (refs as Array<Record<string, string>>)
+      .map((r) => ({
+        url: r.link ?? r.url ?? '',
+        title: r.title ?? r.name ?? '',
+        domain: extractDomain(r.link ?? r.url ?? ''),
+      }))
+      .filter((c) => c.url)
+  }
+
+  // engine=google / engine=google_ai_overview: nested ai_overview object
   if (!text && data.ai_overview) {
     const aio = data.ai_overview
     text = aio.answer ?? aio.text ?? aio.snippet ?? ''
@@ -404,7 +426,7 @@ async function queryGoogleAIO(
 ): Promise<PlatformResult> {
   const apiKey = process.env.SEARCHAPI_KEY
 
-  // Step 1: standard Google search — returns ai_overview when Google serves one
+  // Step 1: standard Google search — returns ai_overview + page_token when Google serves one
   const step1Url = new URL('https://www.searchapi.io/api/v1/search')
   step1Url.searchParams.set('api_key', apiKey!)
   step1Url.searchParams.set('engine', 'google')
@@ -422,12 +444,8 @@ async function queryGoogleAIO(
   }
   const step1Data = await step1Res.json()
 
-  // No AIO served for this query — return immediately without a wasted Step 2 call
-  if (!step1Data.ai_overview) {
-    return { responseText: '[No AI Overview]', isMentioned: false, isCited: false, sentiment: 'neutral', citations: [] }
-  }
-
-  // If a page_token is present, fetch expanded AIO content from the dedicated engine
+  // If engine=google returned an ai_overview with a page_token, use the dedicated
+  // google_ai_overview engine for the full expanded content
   const pageToken: string | undefined = step1Data.ai_overview?.page_token
   if (pageToken) {
     const step2Url = new URL('https://www.searchapi.io/api/v1/search')
@@ -445,15 +463,39 @@ async function queryGoogleAIO(
       })
       if (step2Res.ok) {
         const step2Data = await step2Res.json()
-        return await parseSearchAPIResponse(step2Data, communityName, 'google_ai_overview')
+        const result = await parseSearchAPIResponse(step2Data, communityName, 'google_ai_overview')
+        if (result.responseText !== '[No AI Overview]') return result
       }
-    } catch {
-      // Step 2 failed — fall through to parse Step 1 data
-    }
+    } catch { /* fall through */ }
   }
 
-  // Parse the Step 1 response directly (ai_overview block will handle it)
-  return await parseSearchAPIResponse(step1Data, communityName, 'google')
+  // If engine=google returned ai_overview but no page_token, parse it directly
+  if (step1Data.ai_overview) {
+    return await parseSearchAPIResponse(step1Data, communityName, 'google')
+  }
+
+  // engine=google didn't capture an AIO (common for API calls without user context) —
+  // call google_ai_overview directly; SearchAPI's dedicated engine fetches AIOs without
+  // needing a prior page_token
+  const aioUrl = new URL('https://www.searchapi.io/api/v1/search')
+  aioUrl.searchParams.set('api_key', apiKey!)
+  aioUrl.searchParams.set('engine', 'google_ai_overview')
+  aioUrl.searchParams.set('q', promptText)
+  aioUrl.searchParams.set('gl', 'us')
+  aioUrl.searchParams.set('hl', 'en')
+
+  try {
+    const aioRes = await fetch(aioUrl.toString(), {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(30_000),
+    })
+    if (aioRes.ok) {
+      const aioData = await aioRes.json()
+      return await parseSearchAPIResponse(aioData, communityName, 'google_ai_overview')
+    }
+  } catch { /* fall through to [No AI Overview] */ }
+
+  return { responseText: '[No AI Overview]', isMentioned: false, isCited: false, sentiment: 'neutral', citations: [] }
 }
 
 export async function queryPlatform(

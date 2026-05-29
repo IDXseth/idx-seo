@@ -31,10 +31,17 @@ export async function GET(req: Request) {
   // Return top-level keys and the full response for diagnosis
   return NextResponse.json({
     status: response.status,
+    engine,
     topLevelKeys: Object.keys(data),
-    // engine=google AI Overview fields
+    // nested ai_overview (engine=google / google_ai_overview with page_token)
     ai_overview: data.ai_overview ?? null,
     ai_overview_page_token: data.ai_overview?.page_token ?? null,
+    // root-level AI content (google_ai_overview without page_token / google_ai_mode)
+    markdown_length: typeof data.markdown === 'string' ? data.markdown.length : 0,
+    markdown_preview: typeof data.markdown === 'string' ? data.markdown.slice(0, 400) : null,
+    text_blocks_count: Array.isArray(data.text_blocks) ? data.text_blocks.length : 0,
+    text_blocks_first: Array.isArray(data.text_blocks) ? (data.text_blocks[0] ?? null) : null,
+    reference_links_count: Array.isArray(data.reference_links) ? data.reference_links.length : 0,
     answer: data.answer ?? null,
     answer_box: data.answer_box ?? null,
     organic_results_count: data.organic_results?.length ?? 0,
