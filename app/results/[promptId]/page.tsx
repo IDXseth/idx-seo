@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PLATFORM_LABELS, PLATFORM_COLORS } from '@/lib/utils'
 import { ChevronLeft, ExternalLink, MapPin, Building2, Tag, Heart, Info } from 'lucide-react'
+import { HighlightedText } from '@/components/highlighted-text'
 
 export const dynamic = 'force-dynamic'
 
@@ -183,7 +184,11 @@ export default async function ResultsDetailPage({
                 {/* Response text */}
                 <div className="px-5 py-4 flex-1">
                   <p className="text-[10px] font-semibold text-[#8aadb8] uppercase tracking-wider mb-2">Response</p>
-                  <p className="text-xs text-[#1a1a1a] leading-relaxed">{result.responseText}</p>
+                  <HighlightedText
+                    text={result.responseText}
+                    communityName={prompt.communityName}
+                    className="text-xs text-[#1a1a1a] leading-relaxed"
+                  />
                 </div>
 
                 {/* Citations */}

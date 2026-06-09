@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PLATFORMS, PLATFORM_LABELS } from '@/lib/utils'
 import { ChevronLeft } from 'lucide-react'
+import { HighlightedText } from '@/components/highlighted-text'
 
 export const dynamic = 'force-dynamic'
 
@@ -110,7 +111,11 @@ export default async function DataPage({ params }: { params: Promise<{ batchId: 
                             isError ? (
                               <span className="text-rose-500 italic">{r.responseText.slice(0, 80)}</span>
                             ) : (
-                              <span className="text-[#1a1a1a] line-clamp-3">{r.responseText}</span>
+                              <HighlightedText
+                                text={r.responseText}
+                                communityName={prompt.communityName}
+                                className="text-[#1a1a1a] line-clamp-3"
+                              />
                             )
                           ) : (
                             <span className="text-[#8aadb8] italic">not run</span>
