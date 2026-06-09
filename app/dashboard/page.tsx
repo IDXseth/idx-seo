@@ -121,7 +121,6 @@ async function getDashboardData(sessionId?: string) {
         select: { isMentioned: true, isCited: true },
       })
       const total = results.length
-      if (sessionId && total === 0) return null
       return {
         communityName: c.communityName,
         city: c.city,
@@ -140,7 +139,6 @@ async function getDashboardData(sessionId?: string) {
         select: { isMentioned: true, isCited: true },
       })
       const total = results.length
-      if (sessionId && total === 0) return null
       return {
         category: c.category,
         promptCount: c._count.id,
@@ -158,7 +156,6 @@ async function getDashboardData(sessionId?: string) {
         select: { isMentioned: true, isCited: true },
       })
       const total = results.length
-      if (sessionId && total === 0) return null
       return {
         levelOfCare: c.levelOfCare,
         promptCount: c._count.id,
@@ -176,7 +173,6 @@ async function getDashboardData(sessionId?: string) {
         select: { isMentioned: true, isCited: true },
       })
       const total = results.length
-      if (sessionId && total === 0) return null
       return {
         market: m.market,
         promptCount: m._count.id,
