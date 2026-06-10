@@ -188,7 +188,7 @@ export default async function ResultsDetailPage({
                   {isNoAIO ? (
                     <p className="text-xs text-[#8aadb8] italic">No AI Overview was served for this query.</p>
                   ) : (
-                    <p className="text-xs text-[#1a1a1a] leading-relaxed">{result.responseText}</p>
+                    <p className="text-xs text-[#1a1a1a] leading-relaxed">{highlightTerms(result.responseText ?? '', prompt.communityName)}</p>
                   )}
                 </div>
 
@@ -223,6 +223,21 @@ export default async function ResultsDetailPage({
         </div>
       )}
     </div>
+  )
+}
+
+const BRAND_TERMS = ['Senior Lifestyle Corporation', 'Senior Lifestyle']
+
+function highlightTerms(text: string, communityName: string): React.ReactNode {
+  const terms = [...new Set([communityName, ...BRAND_TERMS].filter(Boolean))]
+  // Sort longest-first so "Senior Lifestyle Corporation" matches before "Senior Lifestyle"
+  terms.sort((a, b) => b.length - a.length)
+  const pattern = new RegExp(`(${terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi')
+  const parts = text.split(pattern)
+  return parts.map((part, i) =>
+    terms.some((t) => t.toLowerCase() === part.toLowerCase())
+      ? <mark key={i} className="bg-yellow-100 text-yellow-900 rounded px-0.5">{part}</mark>
+      : part
   )
 }
 
