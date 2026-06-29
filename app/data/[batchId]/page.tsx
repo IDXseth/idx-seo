@@ -7,17 +7,12 @@ import { ChevronLeft } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
-async function getData(batchId: string, userId: string, userEmail: string | null | undefined) {
+async function getData(batchId: string) {
   const batch = await prisma.batch.findUnique({
     where: { id: batchId },
-    select: { id: true, name: true, userId: true, shares: { select: { email: true } } },
+    select: { id: true, name: true },
   })
   if (!batch) return null
-
-  const canAccess =
-    batch.userId === userId ||
-    batch.shares.some((s) => s.email === userEmail)
-  if (!canAccess) return null
 
   const prompts = await prisma.prompt.findMany({
     where: { batchId },
@@ -33,7 +28,7 @@ export default async function DataPage({ params }: { params: Promise<{ batchId: 
   if (!session?.user?.id) redirect('/login')
 
   const { batchId } = await params
-  const data = await getData(batchId, session.user.id, session.user.email)
+  const data = await getData(batchId)
   if (!data) notFound()
 
   const { batch, prompts } = data

@@ -9,19 +9,8 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = session.user.id
-    const userEmail = session.user.email
-
-    // Get batches owned by user OR shared with user (by email)
     const batches = await prisma.batch.findMany({
-      where: {
-        OR: [
-          { userId },
-          ...(userEmail
-            ? [{ shares: { some: { email: userEmail } } }]
-            : []),
-        ],
-      },
+      where: {},
       orderBy: { createdAt: 'desc' },
       include: {
         _count: { select: { prompts: true } },
