@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { canWrite } from '@/lib/access'
 
 // POST /api/prompts  — add a single prompt to an existing batch
 export async function POST(req: Request) {
@@ -28,16 +29,14 @@ export async function POST(req: Request) {
 
   const batch = await prisma.batch.findUnique({
     where: { id: batchId },
-    select: { userId: true, shares: { select: { email: true } } },
+    select: { userId: true },
   })
 
   if (!batch) return NextResponse.json({ error: 'Batch not found' }, { status: 404 })
 
-  const canAccess =
-    batch.userId === session.user.id ||
-    batch.shares.some((s) => s.email === session.user?.email)
-
-  if (!canAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!canWrite(session.user.id, session.user.email, batch.userId)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const prompt = await prisma.prompt.create({
     data: {
@@ -69,7 +68,7 @@ export async function DELETE(req: Request) {
     include: { batch: { select: { userId: true } } },
   })
 
-  if (!prompt || prompt.batch.userId !== session.user.id) {
+  if (!prompt || !canWrite(session.user.id, session.user.email, prompt.batch.userId)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 

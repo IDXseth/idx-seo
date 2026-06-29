@@ -28,6 +28,8 @@ interface BatchInfo {
   fileName: string
   createdAt: string
   userId?: string
+  userEmail?: string | null
+  canWrite: boolean
   isPrivate: boolean
   shareToken?: string | null
   _count: { prompts: number }
@@ -696,10 +698,15 @@ function BatchCard({
             ) : (
               <div className="flex items-center gap-2 mb-1">
                 <h3 className="font-semibold text-[#084c61] truncate">{batch.name}</h3>
-                <button onClick={() => setEditMode(true)} className="text-[#b8cdd3] hover:text-[#177e89] transition-colors shrink-0" title="Rename"><Pencil className="h-3.5 w-3.5" /></button>
+                {batch.canWrite && (
+                  <button onClick={() => setEditMode(true)} className="text-[#b8cdd3] hover:text-[#177e89] transition-colors shrink-0" title="Rename"><Pencil className="h-3.5 w-3.5" /></button>
+                )}
               </div>
             )}
             <p className="text-sm text-[#5a7a85]">{batch.fileName}</p>
+            {batch.userEmail && (
+              <p className="text-xs text-[#8aadb8] mt-0.5">by {batch.userEmail}</p>
+            )}
             <div className="flex items-center gap-3 mt-2">
               <span className="text-sm text-[#5a7a85]">{batch._count.prompts} prompts</span>
               {batch.unrunCount > 0 ? (
@@ -718,29 +725,35 @@ function BatchCard({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-            {batch.unrunCount > 0 ? (
-              <Button size="sm" onClick={() => onRun(batch.id)} disabled={running !== null}>
-                <Play className="h-3.5 w-3.5 mr-1" />Run
-              </Button>
-            ) : (
-              <Button size="sm" variant="outline" onClick={() => onRerun(batch.id)} disabled={running !== null} title="Re-run all prompts to capture a new trend snapshot">
-                <RotateCcw className="h-3.5 w-3.5 mr-1" />Re-run
-              </Button>
+            {batch.canWrite && (
+              batch.unrunCount > 0 ? (
+                <Button size="sm" onClick={() => onRun(batch.id)} disabled={running !== null}>
+                  <Play className="h-3.5 w-3.5 mr-1" />Run
+                </Button>
+              ) : (
+                <Button size="sm" variant="outline" onClick={() => onRerun(batch.id)} disabled={running !== null} title="Re-run all prompts to capture a new trend snapshot">
+                  <RotateCcw className="h-3.5 w-3.5 mr-1" />Re-run
+                </Button>
+              )
             )}
             <Link href="/dashboard"><Button variant="outline" size="sm">Results</Button></Link>
             <Link href={`/data/${batch.id}`}><Button variant="outline" size="sm">Data</Button></Link>
-            <button onClick={() => onAddPrompt(batch)} className="p-1.5 text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Add prompt">
-              <Plus className="h-4 w-4" />
-            </button>
-            <button onClick={() => onSchedule(batch)} className="p-1.5 text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Schedule">
-              <Calendar className="h-4 w-4" />
-            </button>
-            <button onClick={() => onShare(batch)} className="p-1.5 text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Share">
-              <Share2 className="h-4 w-4" />
-            </button>
-            <button onClick={() => onDelete(batch.id)} className="p-1.5 text-[#b8cdd3] hover:text-rose-500 transition-colors" title="Delete">
-              <Trash2 className="h-4 w-4" />
-            </button>
+            {batch.canWrite && (
+              <>
+                <button onClick={() => onAddPrompt(batch)} className="p-1.5 text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Add prompt">
+                  <Plus className="h-4 w-4" />
+                </button>
+                <button onClick={() => onSchedule(batch)} className="p-1.5 text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Schedule">
+                  <Calendar className="h-4 w-4" />
+                </button>
+                <button onClick={() => onShare(batch)} className="p-1.5 text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Share">
+                  <Share2 className="h-4 w-4" />
+                </button>
+                <button onClick={() => onDelete(batch.id)} className="p-1.5 text-[#b8cdd3] hover:text-rose-500 transition-colors" title="Delete">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -867,7 +880,7 @@ export default function RunPage() {
   const handleShareTokenChange = (batchId: string, token: string | null) =>
     setBatches((prev) => prev.map((b) => b.id === batchId ? { ...b, shareToken: token } : b))
 
-  const totalUnrun = batches.reduce((sum, b) => sum + b.unrunCount, 0)
+  const totalUnrun = batches.filter((b) => b.canWrite).reduce((sum, b) => sum + b.unrunCount, 0)
 
   return (
     <div className="max-w-4xl mx-auto">

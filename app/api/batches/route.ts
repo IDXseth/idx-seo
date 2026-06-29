@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { canWrite } from '@/lib/access'
 
 export async function GET() {
   try {
@@ -9,11 +10,14 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const { id: currentUserId, email: currentUserEmail } = session.user
+
     const batches = await prisma.batch.findMany({
       where: {},
       orderBy: { createdAt: 'desc' },
       include: {
         _count: { select: { prompts: true } },
+        user: { select: { email: true } },
       },
     })
 
@@ -45,6 +49,8 @@ export async function GET() {
         })
         return {
           ...batch,
+          userEmail: batch.user.email,
+          canWrite: canWrite(currentUserId, currentUserEmail, batch.userId),
           unrunCount,
           lastRunAt: lastRun?.finishedAt?.toISOString() ?? null,
           recentSessions: recentSessions.map((s) => ({
