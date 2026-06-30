@@ -569,6 +569,72 @@ function DeleteConfirmDialog({ batchName, onConfirm, onCancel }: { batchName: st
   )
 }
 
+// ─── Prompts Panel ───────────────────────────────────────────────────────────
+
+function PromptsPanel({ batchId, onCountChange }: { batchId: string; onCountChange: (delta: number) => void }) {
+  const [prompts, setPrompts] = useState<{ id: string; promptText: string; communityName: string }[]>([])
+  const [loading, setLoading] = useState(true)
+  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch(`/api/prompts?batchId=${batchId}`)
+      .then((r) => r.json())
+      .then((data) => setPrompts(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [batchId])
+
+  const handleDelete = async (id: string) => {
+    setDeleting(id)
+    try {
+      const res = await fetch(`/api/prompts?id=${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setPrompts((prev) => prev.filter((p) => p.id !== id))
+        onCountChange(-1)
+      }
+    } catch {} finally { setDeleting(null); setConfirmId(null) }
+  }
+
+  if (loading) return <p className="text-xs text-[#8aadb8] py-2">Loading…</p>
+  if (prompts.length === 0) return <p className="text-xs text-[#8aadb8] py-2">No prompts.</p>
+
+  return (
+    <div className="space-y-1.5">
+      {prompts.map((p) => {
+        const isConfirming = confirmId === p.id
+        return (
+          <div key={p.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-[#f5f8fa] group">
+            <div className="min-w-0">
+              <p className="text-xs text-[#084c61] truncate">{p.promptText}</p>
+              <p className="text-[10px] text-[#8aadb8] truncate">{p.communityName}</p>
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {isConfirming ? (
+                <>
+                  <span className="text-[10px] text-rose-600 font-medium">Delete?</span>
+                  <button
+                    onClick={() => handleDelete(p.id)}
+                    disabled={deleting === p.id}
+                    className="text-[10px] font-semibold text-white bg-rose-600 hover:bg-rose-700 px-1.5 py-0.5 rounded transition-colors disabled:opacity-50"
+                  >
+                    {deleting === p.id ? '…' : 'Yes'}
+                  </button>
+                  <button onClick={() => setConfirmId(null)} className="text-[10px] text-[#5a7a85] hover:text-[#084c61] px-1.5 py-0.5 rounded transition-colors">No</button>
+                </>
+              ) : (
+                <button onClick={() => setConfirmId(p.id)} className="text-[#b8cdd3] hover:text-rose-500 transition-colors" title="Delete prompt">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── Run History Panel ────────────────────────────────────────────────────────
 
 function RunHistoryPanel({
@@ -662,6 +728,8 @@ function BatchCard({
   const [editName, setEditName] = useState(batch.name)
   const [saving, setSaving] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const [showPrompts, setShowPrompts] = useState(false)
+  const [promptCount, setPromptCount] = useState(batch._count.prompts)
   const [sessions, setSessions] = useState<RunSessionInfo[]>(batch.recentSessions ?? [])
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -701,7 +769,7 @@ function BatchCard({
             )}
             <p className="text-sm text-[#5a7a85]">{batch.fileName}</p>
             <div className="flex items-center gap-3 mt-2">
-              <span className="text-sm text-[#5a7a85]">{batch._count.prompts} prompts</span>
+              <span className="text-sm text-[#5a7a85]">{promptCount} prompts</span>
               {batch.unrunCount > 0 ? (
                 <Badge variant="warning">{batch.unrunCount} unrun</Badge>
               ) : (
@@ -757,6 +825,23 @@ function BatchCard({
           {showHistory && (
             <div className="mt-3">
               <RunHistoryPanel sessions={sessions} onDeleteSession={handleDeleteSession} />
+            </div>
+          )}
+        </div>
+
+        {/* Prompts collapsible */}
+        <div className="mt-3 pt-3 border-t border-[#eef3f5]">
+          <button
+            onClick={() => setShowPrompts((v) => !v)}
+            className="flex items-center gap-1.5 text-xs font-medium text-[#5a7a85] hover:text-[#084c61] transition-colors"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Prompts ({promptCount})
+            {showPrompts ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </button>
+          {showPrompts && (
+            <div className="mt-3">
+              <PromptsPanel batchId={batch.id} onCountChange={(delta) => setPromptCount((c) => c + delta)} />
             </div>
           )}
         </div>

@@ -2,6 +2,37 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+// GET /api/prompts?batchId=X — list prompts for a batch
+export async function GET(req: Request) {
+  const session = await auth()
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { searchParams } = new URL(req.url)
+  const batchId = searchParams.get('batchId')
+  if (!batchId) return NextResponse.json({ error: 'batchId required' }, { status: 400 })
+
+  const batch = await prisma.batch.findUnique({
+    where: { id: batchId },
+    select: { userId: true, shares: { select: { email: true } } },
+  })
+
+  if (!batch) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const canAccess =
+    batch.userId === session.user.id ||
+    batch.shares.some((s) => s.email === session.user?.email)
+
+  if (!canAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const prompts = await prisma.prompt.findMany({
+    where: { batchId },
+    select: { id: true, promptText: true, communityName: true, promptType: true, category: true, city: true, market: true, levelOfCare: true },
+    orderBy: { id: 'asc' },
+  })
+
+  return NextResponse.json(prompts)
+}
+
 // POST /api/prompts  — add a single prompt to an existing batch
 export async function POST(req: Request) {
   const session = await auth()
