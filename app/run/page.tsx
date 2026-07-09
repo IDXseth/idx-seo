@@ -714,7 +714,7 @@ function RunHistoryPanel({
 // ─── Batch Card ───────────────────────────────────────────────────────────────
 
 function BatchCard({
-  batch, running, onRun, onRerun, onRename, onDelete, onShare, onSchedule, onAddPrompt,
+  batch, running, onRun, onRerun, onRename, onDelete, onShare, onSchedule, onAddPrompt, onDeleteSession,
 }: {
   batch: BatchInfo
   running: string | null
@@ -725,6 +725,7 @@ function BatchCard({
   onShare: (batch: BatchInfo) => void
   onSchedule: (batch: BatchInfo) => void
   onAddPrompt: (batch: BatchInfo) => void
+  onDeleteSession: (batchId: string, sessionId: string) => void
 }) {
   const [editMode, setEditMode] = useState(false)
   const [editName, setEditName] = useState(batch.name)
@@ -732,8 +733,8 @@ function BatchCard({
   const [showHistory, setShowHistory] = useState(false)
   const [showPrompts, setShowPrompts] = useState(false)
   const [promptCount, setPromptCount] = useState(batch._count.prompts)
-  const [sessions, setSessions] = useState<RunSessionInfo[]>(batch.recentSessions ?? [])
   const inputRef = useRef<HTMLInputElement>(null)
+  const sessions = batch.recentSessions ?? []
 
   useEffect(() => { if (editMode) inputRef.current?.focus() }, [editMode])
 
@@ -746,9 +747,7 @@ function BatchCard({
     } catch {} finally { setSaving(false) }
   }
 
-  const handleDeleteSession = (sessionId: string) => {
-    setSessions((prev) => prev.filter((s) => s.id !== sessionId))
-  }
+  const handleDeleteSession = (sessionId: string) => onDeleteSession(batch.id, sessionId)
 
   return (
     <Card>
@@ -965,6 +964,11 @@ export default function RunPage() {
   const handleShareTokenChange = (batchId: string, token: string | null) =>
     setBatches((prev) => prev.map((b) => b.id === batchId ? { ...b, shareToken: token } : b))
 
+  const handleDeleteSession = (batchId: string, sessionId: string) =>
+    setBatches((prev) => prev.map((b) => b.id === batchId
+      ? { ...b, recentSessions: (b.recentSessions ?? []).filter((s) => s.id !== sessionId) }
+      : b))
+
   const totalUnrun = batches.filter((b) => b.canWrite).reduce((sum, b) => sum + b.unrunCount, 0)
 
   return (
@@ -1081,6 +1085,7 @@ export default function RunPage() {
               onShare={(b) => setShareTarget(b)}
               onSchedule={(b) => setScheduleTarget(b)}
               onAddPrompt={(b) => setAddPromptTarget(b)}
+              onDeleteSession={handleDeleteSession}
             />
           ))}
         </div>
