@@ -652,6 +652,7 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
   const [deleting, setDeleting] = useState<string | null>(null)
   const [editId, setEditId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [sortBy, setSortBy] = useState<'none' | 'community' | 'category'>('none')
 
   useEffect(() => {
     fetch(`/api/prompts?batchId=${batchId}`)
@@ -691,9 +692,29 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
   if (loading) return <p className="text-xs text-[#8aadb8] py-2">Loading…</p>
   if (prompts.length === 0) return <p className="text-xs text-[#8aadb8] py-2">No prompts.</p>
 
+  const sortedPrompts = sortBy === 'none'
+    ? prompts
+    : [...prompts].sort((a, b) =>
+        sortBy === 'community'
+          ? a.communityName.localeCompare(b.communityName)
+          : a.category.localeCompare(b.category) || a.communityName.localeCompare(b.communityName)
+      )
+
   return (
     <div className="space-y-1.5">
-      {prompts.map((p) => {
+      <div className="flex items-center justify-end gap-1.5">
+        <label className="text-[10px] text-[#8aadb8]">Sort by</label>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as 'none' | 'community' | 'category')}
+          className="text-[10px] px-1.5 py-1 border border-[#dde6ea] rounded-md text-[#5a7a85] focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+        >
+          <option value="none">Default</option>
+          <option value="community">Community</option>
+          <option value="category">Category</option>
+        </select>
+      </div>
+      {sortedPrompts.map((p) => {
         if (editId === p.id) {
           return (
             <PromptEditForm
