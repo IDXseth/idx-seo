@@ -573,11 +573,85 @@ function DeleteConfirmDialog({ batchName, onConfirm, onCancel }: { batchName: st
 
 // ─── Prompts Panel ───────────────────────────────────────────────────────────
 
-function PromptsPanel({ batchId, onCountChange }: { batchId: string; onCountChange: (delta: number) => void }) {
-  const [prompts, setPrompts] = useState<{ id: string; promptText: string; communityName: string }[]>([])
+interface PromptDetail {
+  id: string
+  promptText: string
+  communityName: string
+  promptType: string
+  category: string
+  city: string
+  market: string
+  levelOfCare: string
+}
+
+function PromptEditForm({
+  prompt,
+  onSave,
+  onCancel,
+  saving,
+}: {
+  prompt: PromptDetail
+  onSave: (fields: Omit<PromptDetail, 'id'>) => void
+  onCancel: () => void
+  saving: boolean
+}) {
+  const [promptText, setPromptText] = useState(prompt.promptText)
+  const [communityName, setCommunityName] = useState(prompt.communityName)
+  const [promptType, setPromptType] = useState(prompt.promptType)
+  const [category, setCategory] = useState(prompt.category)
+  const [city, setCity] = useState(prompt.city)
+  const [market, setMarket] = useState(prompt.market)
+  const [levelOfCare, setLevelOfCare] = useState(prompt.levelOfCare)
+
+  return (
+    <div className="px-3 py-3 rounded-lg bg-[#f5f8fa] space-y-2">
+      <textarea
+        value={promptText}
+        onChange={(e) => setPromptText(e.target.value)}
+        rows={2}
+        className="w-full px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61] resize-none"
+      />
+      <input
+        value={communityName}
+        onChange={(e) => setCommunityName(e.target.value)}
+        placeholder="Community name"
+        className="w-full px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+      />
+      <div className="grid grid-cols-2 gap-2">
+        <select value={promptType} onChange={(e) => setPromptType(e.target.value)} className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]">
+          <option value="brand">Brand</option>
+          <option value="nonbrand">Non-brand</option>
+        </select>
+        <select value={levelOfCare} onChange={(e) => setLevelOfCare(e.target.value)} className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]">
+          {LEVEL_OF_CARE_OPTIONS.map((o) => <option key={o} value={o}>{o || '— None —'}</option>)}
+        </select>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+        <input value={market} onChange={(e) => setMarket(e.target.value)} placeholder="Market" className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+        <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Category" className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+      </div>
+      <div className="flex gap-2 pt-1">
+        <button
+          onClick={() => onSave({ promptText, communityName, promptType, category, city, market, levelOfCare })}
+          disabled={saving || !promptText.trim() || !communityName.trim()}
+          className="text-[11px] font-semibold text-white bg-[#084c61] hover:bg-[#063a4a] px-2.5 py-1 rounded-md transition-colors disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        <button onClick={onCancel} className="text-[11px] text-[#5a7a85] hover:text-[#084c61] px-2.5 py-1 rounded-md transition-colors">Cancel</button>
+      </div>
+    </div>
+  )
+}
+
+function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; canWrite: boolean; onCountChange: (delta: number) => void }) {
+  const [prompts, setPrompts] = useState<PromptDetail[]>([])
   const [loading, setLoading] = useState(true)
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [editId, setEditId] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     fetch(`/api/prompts?batchId=${batchId}`)
@@ -598,12 +672,39 @@ function PromptsPanel({ batchId, onCountChange }: { batchId: string; onCountChan
     } catch {} finally { setDeleting(null); setConfirmId(null) }
   }
 
+  const handleSave = async (id: string, fields: Omit<PromptDetail, 'id'>) => {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/prompts/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fields),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setPrompts((prev) => prev.map((p) => p.id === id ? { ...p, ...updated } : p))
+        setEditId(null)
+      }
+    } catch {} finally { setSaving(false) }
+  }
+
   if (loading) return <p className="text-xs text-[#8aadb8] py-2">Loading…</p>
   if (prompts.length === 0) return <p className="text-xs text-[#8aadb8] py-2">No prompts.</p>
 
   return (
     <div className="space-y-1.5">
       {prompts.map((p) => {
+        if (editId === p.id) {
+          return (
+            <PromptEditForm
+              key={p.id}
+              prompt={p}
+              saving={saving}
+              onCancel={() => setEditId(null)}
+              onSave={(fields) => handleSave(p.id, fields)}
+            />
+          )
+        }
         const isConfirming = confirmId === p.id
         return (
           <div key={p.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-[#f5f8fa] group">
@@ -611,25 +712,32 @@ function PromptsPanel({ batchId, onCountChange }: { batchId: string; onCountChan
               <p className="text-xs text-[#084c61] truncate">{p.promptText}</p>
               <p className="text-[10px] text-[#8aadb8] truncate">{p.communityName}</p>
             </div>
-            <div className="flex items-center gap-1 flex-shrink-0">
-              {isConfirming ? (
-                <>
-                  <span className="text-[10px] text-rose-600 font-medium">Delete?</span>
-                  <button
-                    onClick={() => handleDelete(p.id)}
-                    disabled={deleting === p.id}
-                    className="text-[10px] font-semibold text-white bg-rose-600 hover:bg-rose-700 px-1.5 py-0.5 rounded transition-colors disabled:opacity-50"
-                  >
-                    {deleting === p.id ? '…' : 'Yes'}
-                  </button>
-                  <button onClick={() => setConfirmId(null)} className="text-[10px] text-[#5a7a85] hover:text-[#084c61] px-1.5 py-0.5 rounded transition-colors">No</button>
-                </>
-              ) : (
-                <button onClick={() => setConfirmId(p.id)} className="text-[#b8cdd3] hover:text-rose-500 transition-colors" title="Delete prompt">
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
+            {canWrite && (
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {isConfirming ? (
+                  <>
+                    <span className="text-[10px] text-rose-600 font-medium">Delete?</span>
+                    <button
+                      onClick={() => handleDelete(p.id)}
+                      disabled={deleting === p.id}
+                      className="text-[10px] font-semibold text-white bg-rose-600 hover:bg-rose-700 px-1.5 py-0.5 rounded transition-colors disabled:opacity-50"
+                    >
+                      {deleting === p.id ? '…' : 'Yes'}
+                    </button>
+                    <button onClick={() => setConfirmId(null)} className="text-[10px] text-[#5a7a85] hover:text-[#084c61] px-1.5 py-0.5 rounded transition-colors">No</button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={() => setEditId(p.id)} className="text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Edit prompt">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={() => setConfirmId(p.id)} className="text-[#b8cdd3] hover:text-rose-500 transition-colors" title="Delete prompt">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )
       })}
@@ -853,7 +961,7 @@ function BatchCard({
           </button>
           {showPrompts && (
             <div className="mt-3">
-              <PromptsPanel batchId={batch.id} onCountChange={(delta) => setPromptCount((c) => c + delta)} />
+              <PromptsPanel batchId={batch.id} canWrite={batch.canWrite} onCountChange={(delta) => setPromptCount((c) => c + delta)} />
             </div>
           )}
         </div>
