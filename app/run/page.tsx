@@ -653,6 +653,8 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
   const [editId, setEditId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [sortBy, setSortBy] = useState<'none' | 'community' | 'category'>('none')
+  const [communityConfirm, setCommunityConfirm] = useState<string | null>(null)
+  const [communityDeleting, setCommunityDeleting] = useState<string | null>(null)
 
   useEffect(() => {
     fetch(`/api/prompts?batchId=${batchId}`)
@@ -671,6 +673,18 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
         onCountChange(-1)
       }
     } catch {} finally { setDeleting(null); setConfirmId(null) }
+  }
+
+  const handleDeleteCommunity = async (community: string) => {
+    setCommunityDeleting(community)
+    try {
+      const res = await fetch(`/api/prompts?batchId=${batchId}&communityName=${encodeURIComponent(community)}`, { method: 'DELETE' })
+      if (res.ok) {
+        const data = await res.json()
+        setPrompts((prev) => prev.filter((p) => p.communityName !== community))
+        onCountChange(-(data.count ?? 0))
+      }
+    } catch {} finally { setCommunityDeleting(null); setCommunityConfirm(null) }
   }
 
   const handleSave = async (id: string, fields: Omit<PromptDetail, 'id'>) => {
@@ -714,9 +728,44 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
           <option value="category">Category</option>
         </select>
       </div>
-      {sortedPrompts.map((p) => {
+      {sortedPrompts.map((p, i) => {
+        const items: JSX.Element[] = []
+        const isNewCommunityGroup = sortBy === 'community' && p.communityName !== sortedPrompts[i - 1]?.communityName
+        if (isNewCommunityGroup) {
+          const groupCount = sortedPrompts.filter((x) => x.communityName === p.communityName).length
+          const isCommunityConfirming = communityConfirm === p.communityName
+          items.push(
+            <div key={`group-${p.communityName}`} className="flex items-center justify-between gap-3 px-3 pt-3 pb-1">
+              <span className="text-[11px] font-semibold text-[#084c61] truncate">{p.communityName || '(no community)'} <span className="font-normal text-[#8aadb8]">({groupCount})</span></span>
+              {canWrite && (
+                isCommunityConfirming ? (
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <span className="text-[10px] text-rose-600 font-medium">Remove all {groupCount}?</span>
+                    <button
+                      onClick={() => handleDeleteCommunity(p.communityName)}
+                      disabled={communityDeleting === p.communityName}
+                      className="text-[10px] font-semibold text-white bg-rose-600 hover:bg-rose-700 px-1.5 py-0.5 rounded transition-colors disabled:opacity-50"
+                    >
+                      {communityDeleting === p.communityName ? '…' : 'Yes'}
+                    </button>
+                    <button onClick={() => setCommunityConfirm(null)} className="text-[10px] text-[#5a7a85] hover:text-[#084c61] px-1.5 py-0.5 rounded transition-colors">No</button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setCommunityConfirm(p.communityName)}
+                    className="flex items-center gap-1 text-[10px] text-[#b8cdd3] hover:text-rose-500 transition-colors flex-shrink-0"
+                    title="Remove this community and all its prompts"
+                  >
+                    <Trash2 className="h-3 w-3" />Remove community
+                  </button>
+                )
+              )}
+            </div>
+          )
+        }
+
         if (editId === p.id) {
-          return (
+          items.push(
             <PromptEditForm
               key={p.id}
               prompt={p}
@@ -725,9 +774,10 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
               onSave={(fields) => handleSave(p.id, fields)}
             />
           )
+          return items
         }
         const isConfirming = confirmId === p.id
-        return (
+        items.push(
           <div key={p.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-[#f5f8fa] group">
             <div className="min-w-0">
               <p className="text-xs text-[#084c61] truncate">{p.promptText}</p>
@@ -761,6 +811,7 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
             )}
           </div>
         )
+        return items
       })}
     </div>
   )
