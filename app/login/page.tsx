@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { signIn, useSession } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 
 function LoginForm() {
   const searchParams = useSearchParams()
@@ -154,9 +155,16 @@ function LoginForm() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#084c61] mb-1.5">
-                  Password
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-[#084c61]">
+                    Password
+                  </label>
+                  {tab === 'signin' && (
+                    <Link href="/forgot-password" className="text-xs font-semibold text-[#177e89] hover:underline">
+                      Forgot password?
+                    </Link>
+                  )}
+                </div>
                 <input
                   type="password"
                   value={password}

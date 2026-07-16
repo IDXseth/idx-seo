@@ -203,3 +203,75 @@ export async function sendShareInviteEmail(invite: ShareInvite) {
     html,
   })
 }
+
+interface PasswordReset {
+  to: string
+  resetUrl: string
+}
+
+export async function sendPasswordResetEmail({ to, resetUrl }: PasswordReset) {
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
+<body style="margin:0;padding:0;background:#f0f4f7;font-family:'Nunito',Arial,sans-serif;color:#1a1a1a;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #dde6ea;">
+
+          <!-- Header -->
+          <tr>
+            <td style="background:linear-gradient(90deg,#084c61 0%,#054166 100%);padding:32px 40px;">
+              <p style="margin:0;font-size:11px;font-weight:700;color:rgba(255,255,255,0.6);letter-spacing:1.5px;text-transform:uppercase;">Senior Lifestyle</p>
+              <h1 style="margin:4px 0 0;font-size:22px;font-weight:700;color:#ffffff;">AI Visibility Dashboard</h1>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:32px 40px;">
+              <h2 style="margin:0 0 6px;font-size:18px;color:#084c61;">Reset your password</h2>
+              <p style="margin:0 0 24px;font-size:14px;color:#5a7a85;line-height:1.6;">
+                We received a request to reset the password for <strong style="color:#084c61;">${to}</strong>.
+                This link expires in 1 hour. If you didn't request this, you can safely ignore this email.
+              </p>
+
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+                <tr>
+                  <td align="center">
+                    <a href="${resetUrl}"
+                       style="display:inline-block;background:#084c61;color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:14px 32px;border-radius:8px;">
+                      Reset password →
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0;font-size:12px;color:#8aadb8;line-height:1.6;word-break:break-all;">
+                Or copy this link: ${resetUrl}
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:20px 40px;border-top:1px solid #eef3f5;text-align:center;">
+              <p style="margin:0;font-size:11px;color:#8aadb8;">Senior Lifestyle AI Visibility Dashboard</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject: 'Reset your password',
+    html,
+  })
+}
