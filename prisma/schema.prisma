@@ -186,3 +186,15 @@ model GscMetric {
   fetchedAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+// Cache for page-level schema markup detection.
+// Populated by crawlCommunityPages() after each GSC sync.
+// SQL: CREATE TABLE IF NOT EXISTS "PageCrawlResult" ("id" TEXT NOT NULL PRIMARY KEY, "pageUrl" TEXT NOT NULL UNIQUE, "hasLocalBusiness" BOOLEAN, "hasSeniorCare" BOOLEAN, "crawledAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL);
+model PageCrawlResult {
+  id               String   @id @default(cuid())
+  pageUrl          String   @unique
+  hasLocalBusiness Boolean?
+  hasSeniorCare    Boolean?
+  crawledAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}

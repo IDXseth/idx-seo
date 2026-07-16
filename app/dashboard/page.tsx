@@ -8,15 +8,15 @@ import { RunSessionPicker, SessionOption } from '@/components/run-session-picker
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { OptimizationPriorityTable } from '@/components/optimization-priority-table'
 import { getSitemapAnalysis, SitemapAnalysis } from '@/lib/sitemap'
-import { getGscMetrics } from '@/lib/gsc'
+import { getGscMetrics, getPageCrawlResults } from '@/lib/gsc'
 import { slugify } from '@/lib/utils'
-import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink } from 'lucide-react'
+import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink, Download } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
 async function getSessionList(): Promise<SessionOption[]> {
   const sessions = await prisma.runSession.findMany({
-    where: { status: 'done' },
+    where: { status: 'done', results: { some: {} } },
     orderBy: { startedAt: 'asc' },
     select: { id: true, startedAt: true, triggeredBy: true, _count: { select: { results: true } } },
   })
@@ -30,7 +30,7 @@ async function getSessionList(): Promise<SessionOption[]> {
 
 async function getTrendData(promptType?: string): Promise<TrendPoint[]> {
   const sessions = await prisma.runSession.findMany({
-    where: { status: 'done' },
+    where: { status: 'done', results: { some: {} } },
     orderBy: { startedAt: 'asc' },
     select: {
       id: true,
@@ -247,8 +247,11 @@ export default async function DashboardPage({
   }
   if (data) {
     try {
-      const gscMetrics = await getGscMetrics().catch(() => undefined)
-      sitemapAnalysis = await getSitemapAnalysis(data.communityStats, gscMetrics)
+      const [gscMetrics, crawlResults] = await Promise.all([
+        getGscMetrics().catch(() => undefined),
+        getPageCrawlResults().catch(() => undefined),
+      ])
+      sitemapAnalysis = await getSitemapAnalysis(data.communityStats, gscMetrics, crawlResults)
     } catch {
       // Tab shows empty state
     }
@@ -267,6 +270,7 @@ export default async function DashboardPage({
   }
 
   const currentSession = sessions.find((s) => s.id === sessionId)
+  const exportSessionId = sessionId ?? (sessions.length === 1 ? sessions[0]?.id : undefined)
 
   const drillParams = new URLSearchParams()
   if (sessionId) drillParams.set('session', sessionId)
@@ -339,6 +343,18 @@ export default async function DashboardPage({
 
           <TabsContent value="overview">
             <div className="space-y-6">
+              {exportSessionId && (
+                <div className="flex items-center justify-end">
+                  <a
+                    href={`/api/export?session=${exportSessionId}`}
+                    download
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#dde6ea] text-xs font-medium text-[#5a7a85] hover:bg-[#f0f5f7] transition-colors"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Export run
+                  </a>
+                </div>
+              )}
               <SectionCard title="Mention & Citation Rate by Platform">
                 <PlatformMentionChart data={data.platformStats} />
               </SectionCard>
@@ -535,7 +551,7 @@ function EmptyDashboard() {
         </div>
         <h2 className="text-xl font-bold text-white mb-1" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>No data yet</h2>
         <p className="text-white/70 text-sm max-w-sm mx-auto">
-          Upload your prompts spreadsheet and run it against 6 AI platforms to see your mention and citation performance.
+          Upload your prompts spreadsheet and run it against 5 AI platforms to see your mention and citation performance.
         </p>
       </div>
 

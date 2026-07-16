@@ -28,6 +28,8 @@ interface BatchInfo {
   fileName: string
   createdAt: string
   userId?: string
+  userEmail?: string | null
+  canWrite: boolean
   isPrivate: boolean
   shareToken?: string | null
   _count: { prompts: number }
@@ -569,6 +571,252 @@ function DeleteConfirmDialog({ batchName, onConfirm, onCancel }: { batchName: st
   )
 }
 
+// ─── Prompts Panel ───────────────────────────────────────────────────────────
+
+interface PromptDetail {
+  id: string
+  promptText: string
+  communityName: string
+  promptType: string
+  category: string
+  city: string
+  market: string
+  levelOfCare: string
+}
+
+function PromptEditForm({
+  prompt,
+  onSave,
+  onCancel,
+  saving,
+}: {
+  prompt: PromptDetail
+  onSave: (fields: Omit<PromptDetail, 'id'>) => void
+  onCancel: () => void
+  saving: boolean
+}) {
+  const [promptText, setPromptText] = useState(prompt.promptText)
+  const [communityName, setCommunityName] = useState(prompt.communityName)
+  const [promptType, setPromptType] = useState(prompt.promptType)
+  const [category, setCategory] = useState(prompt.category)
+  const [city, setCity] = useState(prompt.city)
+  const [market, setMarket] = useState(prompt.market)
+  const [levelOfCare, setLevelOfCare] = useState(prompt.levelOfCare)
+
+  return (
+    <div className="px-3 py-3 rounded-lg bg-[#f5f8fa] space-y-2">
+      <textarea
+        value={promptText}
+        onChange={(e) => setPromptText(e.target.value)}
+        rows={2}
+        className="w-full px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61] resize-none"
+      />
+      <input
+        value={communityName}
+        onChange={(e) => setCommunityName(e.target.value)}
+        placeholder="Community name"
+        className="w-full px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+      />
+      <div className="grid grid-cols-2 gap-2">
+        <select value={promptType} onChange={(e) => setPromptType(e.target.value)} className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]">
+          <option value="brand">Brand</option>
+          <option value="nonbrand">Non-brand</option>
+        </select>
+        <select value={levelOfCare} onChange={(e) => setLevelOfCare(e.target.value)} className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]">
+          {LEVEL_OF_CARE_OPTIONS.map((o) => <option key={o} value={o}>{o || '— None —'}</option>)}
+        </select>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+        <input value={market} onChange={(e) => setMarket(e.target.value)} placeholder="Market" className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+        <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Category" className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+      </div>
+      <div className="flex gap-2 pt-1">
+        <button
+          onClick={() => onSave({ promptText, communityName, promptType, category, city, market, levelOfCare })}
+          disabled={saving || !promptText.trim() || !communityName.trim()}
+          className="text-[11px] font-semibold text-white bg-[#084c61] hover:bg-[#063a4a] px-2.5 py-1 rounded-md transition-colors disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        <button onClick={onCancel} className="text-[11px] text-[#5a7a85] hover:text-[#084c61] px-2.5 py-1 rounded-md transition-colors">Cancel</button>
+      </div>
+    </div>
+  )
+}
+
+function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; canWrite: boolean; onCountChange: (delta: number) => void }) {
+  const [prompts, setPrompts] = useState<PromptDetail[]>([])
+  const [loading, setLoading] = useState(true)
+  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [editId, setEditId] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [sortBy, setSortBy] = useState<'none' | 'community' | 'category'>('none')
+  const [communityConfirm, setCommunityConfirm] = useState<string | null>(null)
+  const [communityDeleting, setCommunityDeleting] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch(`/api/prompts?batchId=${batchId}`)
+      .then((r) => r.json())
+      .then((data) => setPrompts(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [batchId])
+
+  const handleDelete = async (id: string) => {
+    setDeleting(id)
+    try {
+      const res = await fetch(`/api/prompts?id=${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setPrompts((prev) => prev.filter((p) => p.id !== id))
+        onCountChange(-1)
+      }
+    } catch {} finally { setDeleting(null); setConfirmId(null) }
+  }
+
+  const handleDeleteCommunity = async (community: string) => {
+    setCommunityDeleting(community)
+    try {
+      const res = await fetch(`/api/prompts?batchId=${batchId}&communityName=${encodeURIComponent(community)}`, { method: 'DELETE' })
+      if (res.ok) {
+        const data = await res.json()
+        setPrompts((prev) => prev.filter((p) => p.communityName !== community))
+        onCountChange(-(data.count ?? 0))
+      }
+    } catch {} finally { setCommunityDeleting(null); setCommunityConfirm(null) }
+  }
+
+  const handleSave = async (id: string, fields: Omit<PromptDetail, 'id'>) => {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/prompts/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fields),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setPrompts((prev) => prev.map((p) => p.id === id ? { ...p, ...updated } : p))
+        setEditId(null)
+      }
+    } catch {} finally { setSaving(false) }
+  }
+
+  if (loading) return <p className="text-xs text-[#8aadb8] py-2">Loading…</p>
+  if (prompts.length === 0) return <p className="text-xs text-[#8aadb8] py-2">No prompts.</p>
+
+  const sortedPrompts = sortBy === 'none'
+    ? prompts
+    : [...prompts].sort((a, b) =>
+        sortBy === 'community'
+          ? a.communityName.localeCompare(b.communityName)
+          : a.category.localeCompare(b.category) || a.communityName.localeCompare(b.communityName)
+      )
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-end gap-1.5">
+        <label className="text-[10px] text-[#8aadb8]">Sort by</label>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as 'none' | 'community' | 'category')}
+          className="text-[10px] px-1.5 py-1 border border-[#dde6ea] rounded-md text-[#5a7a85] focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+        >
+          <option value="none">Default</option>
+          <option value="community">Community</option>
+          <option value="category">Category</option>
+        </select>
+      </div>
+      {sortedPrompts.map((p, i) => {
+        const items: JSX.Element[] = []
+        const isNewCommunityGroup = sortBy === 'community' && p.communityName !== sortedPrompts[i - 1]?.communityName
+        if (isNewCommunityGroup) {
+          const groupCount = sortedPrompts.filter((x) => x.communityName === p.communityName).length
+          const isCommunityConfirming = communityConfirm === p.communityName
+          items.push(
+            <div key={`group-${p.communityName}`} className="flex items-center justify-between gap-3 px-3 pt-3 pb-1">
+              <span className="text-[11px] font-semibold text-[#084c61] truncate">{p.communityName || '(no community)'} <span className="font-normal text-[#8aadb8]">({groupCount})</span></span>
+              {canWrite && (
+                isCommunityConfirming ? (
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <span className="text-[10px] text-rose-600 font-medium">Remove all {groupCount}?</span>
+                    <button
+                      onClick={() => handleDeleteCommunity(p.communityName)}
+                      disabled={communityDeleting === p.communityName}
+                      className="text-[10px] font-semibold text-white bg-rose-600 hover:bg-rose-700 px-1.5 py-0.5 rounded transition-colors disabled:opacity-50"
+                    >
+                      {communityDeleting === p.communityName ? '…' : 'Yes'}
+                    </button>
+                    <button onClick={() => setCommunityConfirm(null)} className="text-[10px] text-[#5a7a85] hover:text-[#084c61] px-1.5 py-0.5 rounded transition-colors">No</button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setCommunityConfirm(p.communityName)}
+                    className="flex items-center gap-1 text-[10px] text-[#b8cdd3] hover:text-rose-500 transition-colors flex-shrink-0"
+                    title="Remove this community and all its prompts"
+                  >
+                    <Trash2 className="h-3 w-3" />Remove community
+                  </button>
+                )
+              )}
+            </div>
+          )
+        }
+
+        if (editId === p.id) {
+          items.push(
+            <PromptEditForm
+              key={p.id}
+              prompt={p}
+              saving={saving}
+              onCancel={() => setEditId(null)}
+              onSave={(fields) => handleSave(p.id, fields)}
+            />
+          )
+          return items
+        }
+        const isConfirming = confirmId === p.id
+        items.push(
+          <div key={p.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-[#f5f8fa] group">
+            <div className="min-w-0">
+              <p className="text-xs text-[#084c61] truncate">{p.promptText}</p>
+              <p className="text-[10px] text-[#8aadb8] truncate">{p.communityName}</p>
+            </div>
+            {canWrite && (
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {isConfirming ? (
+                  <>
+                    <span className="text-[10px] text-rose-600 font-medium">Delete?</span>
+                    <button
+                      onClick={() => handleDelete(p.id)}
+                      disabled={deleting === p.id}
+                      className="text-[10px] font-semibold text-white bg-rose-600 hover:bg-rose-700 px-1.5 py-0.5 rounded transition-colors disabled:opacity-50"
+                    >
+                      {deleting === p.id ? '…' : 'Yes'}
+                    </button>
+                    <button onClick={() => setConfirmId(null)} className="text-[10px] text-[#5a7a85] hover:text-[#084c61] px-1.5 py-0.5 rounded transition-colors">No</button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={() => setEditId(p.id)} className="text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Edit prompt">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={() => setConfirmId(p.id)} className="text-[#b8cdd3] hover:text-rose-500 transition-colors" title="Delete prompt">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )
+        return items
+      })}
+    </div>
+  )
+}
+
 // ─── Run History Panel ────────────────────────────────────────────────────────
 
 function RunHistoryPanel({
@@ -646,7 +894,7 @@ function RunHistoryPanel({
 // ─── Batch Card ───────────────────────────────────────────────────────────────
 
 function BatchCard({
-  batch, running, onRun, onRerun, onRename, onDelete, onShare, onSchedule, onAddPrompt,
+  batch, running, onRun, onRerun, onRename, onDelete, onShare, onSchedule, onAddPrompt, onDeleteSession,
 }: {
   batch: BatchInfo
   running: string | null
@@ -657,13 +905,16 @@ function BatchCard({
   onShare: (batch: BatchInfo) => void
   onSchedule: (batch: BatchInfo) => void
   onAddPrompt: (batch: BatchInfo) => void
+  onDeleteSession: (batchId: string, sessionId: string) => void
 }) {
   const [editMode, setEditMode] = useState(false)
   const [editName, setEditName] = useState(batch.name)
   const [saving, setSaving] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
-  const [sessions, setSessions] = useState<RunSessionInfo[]>(batch.recentSessions ?? [])
+  const [showPrompts, setShowPrompts] = useState(false)
+  const [promptCount, setPromptCount] = useState(batch._count.prompts)
   const inputRef = useRef<HTMLInputElement>(null)
+  const sessions = batch.recentSessions ?? []
 
   useEffect(() => { if (editMode) inputRef.current?.focus() }, [editMode])
 
@@ -676,9 +927,7 @@ function BatchCard({
     } catch {} finally { setSaving(false) }
   }
 
-  const handleDeleteSession = (sessionId: string) => {
-    setSessions((prev) => prev.filter((s) => s.id !== sessionId))
-  }
+  const handleDeleteSession = (sessionId: string) => onDeleteSession(batch.id, sessionId)
 
   return (
     <Card>
@@ -696,12 +945,17 @@ function BatchCard({
             ) : (
               <div className="flex items-center gap-2 mb-1">
                 <h3 className="font-semibold text-[#084c61] truncate">{batch.name}</h3>
-                <button onClick={() => setEditMode(true)} className="text-[#b8cdd3] hover:text-[#177e89] transition-colors shrink-0" title="Rename"><Pencil className="h-3.5 w-3.5" /></button>
+                {batch.canWrite && (
+                  <button onClick={() => setEditMode(true)} className="text-[#b8cdd3] hover:text-[#177e89] transition-colors shrink-0" title="Rename"><Pencil className="h-3.5 w-3.5" /></button>
+                )}
               </div>
             )}
             <p className="text-sm text-[#5a7a85]">{batch.fileName}</p>
+            {batch.userEmail && (
+              <p className="text-xs text-[#8aadb8] mt-0.5">by {batch.userEmail}</p>
+            )}
             <div className="flex items-center gap-3 mt-2">
-              <span className="text-sm text-[#5a7a85]">{batch._count.prompts} prompts</span>
+              <span className="text-sm text-[#5a7a85]">{promptCount} prompts</span>
               {batch.unrunCount > 0 ? (
                 <Badge variant="warning">{batch.unrunCount} unrun</Badge>
               ) : (
@@ -718,29 +972,35 @@ function BatchCard({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-            {batch.unrunCount > 0 ? (
-              <Button size="sm" onClick={() => onRun(batch.id)} disabled={running !== null}>
-                <Play className="h-3.5 w-3.5 mr-1" />Run
-              </Button>
-            ) : (
-              <Button size="sm" variant="outline" onClick={() => onRerun(batch.id)} disabled={running !== null} title="Re-run all prompts to capture a new trend snapshot">
-                <RotateCcw className="h-3.5 w-3.5 mr-1" />Re-run
-              </Button>
+            {batch.canWrite && (
+              batch.unrunCount > 0 ? (
+                <Button size="sm" onClick={() => onRun(batch.id)} disabled={running !== null}>
+                  <Play className="h-3.5 w-3.5 mr-1" />Run
+                </Button>
+              ) : (
+                <Button size="sm" variant="outline" onClick={() => onRerun(batch.id)} disabled={running !== null} title="Re-run all prompts to capture a new trend snapshot">
+                  <RotateCcw className="h-3.5 w-3.5 mr-1" />Re-run
+                </Button>
+              )
             )}
             <Link href="/dashboard"><Button variant="outline" size="sm">Results</Button></Link>
             <Link href={`/data/${batch.id}`}><Button variant="outline" size="sm">Data</Button></Link>
-            <button onClick={() => onAddPrompt(batch)} className="p-1.5 text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Add prompt">
-              <Plus className="h-4 w-4" />
-            </button>
-            <button onClick={() => onSchedule(batch)} className="p-1.5 text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Schedule">
-              <Calendar className="h-4 w-4" />
-            </button>
-            <button onClick={() => onShare(batch)} className="p-1.5 text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Share">
-              <Share2 className="h-4 w-4" />
-            </button>
-            <button onClick={() => onDelete(batch.id)} className="p-1.5 text-[#b8cdd3] hover:text-rose-500 transition-colors" title="Delete">
-              <Trash2 className="h-4 w-4" />
-            </button>
+            {batch.canWrite && (
+              <>
+                <button onClick={() => onAddPrompt(batch)} className="p-1.5 text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Add prompt">
+                  <Plus className="h-4 w-4" />
+                </button>
+                <button onClick={() => onSchedule(batch)} className="p-1.5 text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Schedule">
+                  <Calendar className="h-4 w-4" />
+                </button>
+                <button onClick={() => onShare(batch)} className="p-1.5 text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Share">
+                  <Share2 className="h-4 w-4" />
+                </button>
+                <button onClick={() => onDelete(batch.id)} className="p-1.5 text-[#b8cdd3] hover:text-rose-500 transition-colors" title="Delete">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -757,6 +1017,23 @@ function BatchCard({
           {showHistory && (
             <div className="mt-3">
               <RunHistoryPanel sessions={sessions} onDeleteSession={handleDeleteSession} />
+            </div>
+          )}
+        </div>
+
+        {/* Prompts collapsible */}
+        <div className="mt-3 pt-3 border-t border-[#eef3f5]">
+          <button
+            onClick={() => setShowPrompts((v) => !v)}
+            className="flex items-center gap-1.5 text-xs font-medium text-[#5a7a85] hover:text-[#084c61] transition-colors"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Prompts ({promptCount})
+            {showPrompts ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </button>
+          {showPrompts && (
+            <div className="mt-3">
+              <PromptsPanel batchId={batch.id} canWrite={batch.canWrite} onCountChange={(delta) => setPromptCount((c) => c + delta)} />
             </div>
           )}
         </div>
@@ -867,14 +1144,19 @@ export default function RunPage() {
   const handleShareTokenChange = (batchId: string, token: string | null) =>
     setBatches((prev) => prev.map((b) => b.id === batchId ? { ...b, shareToken: token } : b))
 
-  const totalUnrun = batches.reduce((sum, b) => sum + b.unrunCount, 0)
+  const handleDeleteSession = (batchId: string, sessionId: string) =>
+    setBatches((prev) => prev.map((b) => b.id === batchId
+      ? { ...b, recentSessions: (b.recentSessions ?? []).filter((s) => s.id !== sessionId) }
+      : b))
+
+  const totalUnrun = batches.filter((b) => b.canWrite).reduce((sum, b) => sum + b.unrunCount, 0)
 
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Run Prompts</h1>
-          <p className="text-[#5a7a85] mt-1 text-sm">Send prompts to 6 AI platforms and capture responses</p>
+          <p className="text-[#5a7a85] mt-1 text-sm">Send prompts to 5 AI platforms and capture responses</p>
         </div>
         <div className="flex items-center gap-3">
           <Button variant="outline" onClick={fetchBatches} size="sm">
@@ -935,7 +1217,7 @@ export default function RunPage() {
           <div>
             <p className="text-sm font-medium text-emerald-800">
               {done.processed > 0
-                ? `Ran ${done.processed} prompt${done.processed !== 1 ? 's' : ''} across all 6 platforms${done.errors > 0 ? ` (${done.errors} errors)` : ''}`
+                ? `Ran ${done.processed} prompt${done.processed !== 1 ? 's' : ''} across all 5 platforms${done.errors > 0 ? ` (${done.errors} errors)` : ''}`
                 : 'No prompts to run'}
             </p>
             {done.processed > 0 && (
@@ -983,6 +1265,7 @@ export default function RunPage() {
               onShare={(b) => setShareTarget(b)}
               onSchedule={(b) => setScheduleTarget(b)}
               onAddPrompt={(b) => setAddPromptTarget(b)}
+              onDeleteSession={handleDeleteSession}
             />
           ))}
         </div>

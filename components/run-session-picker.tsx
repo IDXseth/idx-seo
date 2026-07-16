@@ -33,7 +33,7 @@ export function RunSessionPicker({
     router.push(id ? `${basePath}?session=${id}` : basePath)
   }
 
-  if (sessions.length < 2) return null
+  if (sessions.length < 1) return null
 
   const current = sessions.find((s) => s.id === currentSessionId)
 
