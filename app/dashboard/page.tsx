@@ -5,6 +5,7 @@ import { Scorecard } from '@/components/scorecard'
 import { PlatformMentionChart } from '@/components/platform-chart'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
+import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { OptimizationPriorityTable } from '@/components/optimization-priority-table'
 import { getSitemapAnalysis, SitemapAnalysis } from '@/lib/sitemap'
 import { getGscMetrics } from '@/lib/gsc'
@@ -27,7 +28,7 @@ async function getSessionList(): Promise<SessionOption[]> {
   }))
 }
 
-async function getTrendData(): Promise<TrendPoint[]> {
+async function getTrendData(promptType?: string): Promise<TrendPoint[]> {
   const sessions = await prisma.runSession.findMany({
     where: { status: 'done' },
     orderBy: { startedAt: 'asc' },
@@ -36,6 +37,7 @@ async function getTrendData(): Promise<TrendPoint[]> {
       startedAt: true,
       triggeredBy: true,
       results: {
+        where: promptType ? { prompt: { promptType } } : undefined,
         select: { platform: true, isMentioned: true, isCited: true, sentiment: true },
       },
     },
@@ -72,11 +74,12 @@ async function getTrendData(): Promise<TrendPoint[]> {
   })
 }
 
-async function getDashboardData(sessionId?: string) {
+async function getDashboardData(sessionId?: string, promptType?: string) {
   // One canonical prompt per unique promptText (first created wins) — prevents cross-batch double-counting
   const canonicalRows = await prisma.prompt.findMany({
     distinct: ['promptText'],
     orderBy: { createdAt: 'asc' },
+    where: promptType ? { promptType } : undefined,
     select: { id: true },
   })
   const canonicalIds = canonicalRows.map((r) => r.id)
@@ -187,7 +190,10 @@ async function getDashboardData(sessionId?: string) {
   )).filter(Boolean) as Array<{ market: string; promptCount: number; mentionRate: number; citationRate: number }>
 
   const rawCitations = await prisma.citation.findMany({
-    where: { ...(sessionId ? { result: { runSessionId: sessionId } } : {}), url: { not: '' } },
+    where: {
+      result: { promptId: { in: canonicalIds }, ...(sessionId ? { runSessionId: sessionId } : {}) },
+      url: { not: '' },
+    },
     select: { url: true, title: true },
   })
   const urlMap = new Map<string, { title: string; count: number }>()
@@ -220,9 +226,11 @@ async function getDashboardData(sessionId?: string) {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ session?: string }>
+  searchParams: Promise<{ session?: string; type?: string }>
 }) {
-  const { session: sessionId } = await searchParams
+  const { session: sessionId, type } = await searchParams
+  const promptTypeParam: PromptTypeFilter = type === 'brand' || type === 'nonbrand' ? type : 'all'
+  const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
 
   let data: Awaited<ReturnType<typeof getDashboardData>> | null = null
   let trendData: TrendPoint[] = []
@@ -230,8 +238,8 @@ export default async function DashboardPage({
   let sitemapAnalysis: SitemapAnalysis | null = null
   try {
     ;[data, trendData, sessions] = await Promise.all([
-      getDashboardData(sessionId),
-      getTrendData(),
+      getDashboardData(sessionId, promptType),
+      getTrendData(promptType),
       getSessionList(),
     ])
   } catch {
@@ -260,6 +268,11 @@ export default async function DashboardPage({
 
   const currentSession = sessions.find((s) => s.id === sessionId)
 
+  const drillParams = new URLSearchParams()
+  if (sessionId) drillParams.set('session', sessionId)
+  if (promptType) drillParams.set('type', promptType)
+  const drillQuery = drillParams.toString() ? `?${drillParams.toString()}` : ''
+
   return (
     <div>
       {/* Page header */}
@@ -272,7 +285,10 @@ export default async function DashboardPage({
               : 'AI mention and citation monitoring across your senior living portfolio'}
           </p>
         </div>
-        <RunSessionPicker sessions={sessions} currentSessionId={sessionId} />
+        <div className="flex items-center gap-3">
+          <PromptTypeToggle value={promptTypeParam} basePath="/dashboard" sessionId={sessionId} />
+          <RunSessionPicker sessions={sessions} currentSessionId={sessionId} />
+        </div>
       </div>
 
       <>
@@ -374,7 +390,7 @@ export default async function DashboardPage({
                   mentionRate={c.mentionRate}
                   citationRate={c.citationRate}
                   promptCount={c.promptCount}
-                  href={`/dashboard/community/${encodeURIComponent(slugify(c.communityName))}${sessionId ? `?session=${sessionId}` : ''}`}
+                  href={`/dashboard/community/${encodeURIComponent(slugify(c.communityName))}${drillQuery}`}
                 />
               )}
               empty="No community data available"
@@ -391,7 +407,7 @@ export default async function DashboardPage({
                   mentionRate={c.mentionRate}
                   citationRate={c.citationRate}
                   promptCount={c.promptCount}
-                  href={`/dashboard/category/${encodeURIComponent(c.category)}${sessionId ? `?session=${sessionId}` : ''}`}
+                  href={`/dashboard/category/${encodeURIComponent(c.category)}${drillQuery}`}
                 />
               )}
               empty="No category data available"
@@ -408,7 +424,7 @@ export default async function DashboardPage({
                   mentionRate={c.mentionRate}
                   citationRate={c.citationRate}
                   promptCount={c.promptCount}
-                  href={`/dashboard/care-level/${encodeURIComponent(c.levelOfCare)}${sessionId ? `?session=${sessionId}` : ''}`}
+                  href={`/dashboard/care-level/${encodeURIComponent(c.levelOfCare)}${drillQuery}`}
                 />
               )}
               empty="No care level data available"
@@ -425,7 +441,7 @@ export default async function DashboardPage({
                   mentionRate={m.mentionRate}
                   citationRate={m.citationRate}
                   promptCount={m.promptCount}
-                  href={`/dashboard/market/${encodeURIComponent(m.market)}${sessionId ? `?session=${sessionId}` : ''}`}
+                  href={`/dashboard/market/${encodeURIComponent(m.market)}${drillQuery}`}
                 />
               )}
               empty="No market data available"
