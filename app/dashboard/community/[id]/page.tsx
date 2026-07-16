@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { PLATFORMS } from '@/lib/utils'
 import { SegmentDetail } from '@/components/segment-detail'
 import { SessionOption } from '@/components/run-session-picker'
+import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
 
 async function getSessionList(): Promise<SessionOption[]> {
@@ -16,9 +17,10 @@ async function getSessionList(): Promise<SessionOption[]> {
 
 export const dynamic = 'force-dynamic'
 
-async function getCommunityData(id: string, sessionId?: string) {
+async function getCommunityData(id: string, sessionId?: string, promptType?: string) {
   const decodedId = decodeURIComponent(id)
   const resultsFilter = sessionId ? { where: { runSessionId: sessionId } } : {}
+  const typeFilter = promptType ? { promptType } : {}
 
   const prompts = await prisma.prompt.findMany({
     where: {
@@ -26,6 +28,7 @@ async function getCommunityData(id: string, sessionId?: string) {
         contains: decodedId.replace(/-/g, ' '),
         mode: 'insensitive',
       },
+      ...typeFilter,
     },
     include: {
       results: { ...resultsFilter, include: { citations: true } },
@@ -41,7 +44,7 @@ async function getCommunityData(id: string, sessionId?: string) {
     if (!matched) return null
 
     finalPrompts = await prisma.prompt.findMany({
-      where: { communityName: matched.communityName },
+      where: { communityName: matched.communityName, ...typeFilter },
       include: { results: { ...resultsFilter, include: { citations: true } } },
     })
   }
@@ -74,7 +77,7 @@ async function getCommunityData(id: string, sessionId?: string) {
     .sort((a, b) => b[1] - a[1]).slice(0, 10)
     .map(([domain, count]) => ({ domain, count, percentage: totalResults > 0 ? count / totalResults : 0 }))
 
-  const trendData = sessionId ? [] : await getSegmentTrendData({ communityName })
+  const trendData = sessionId ? [] : await getSegmentTrendData({ communityName, ...typeFilter })
 
   return {
     communityName, prompts: finalPrompts,
@@ -87,19 +90,25 @@ export default async function CommunityDetailPage({
   params, searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ session?: string }>
+  searchParams: Promise<{ session?: string; type?: string }>
 }) {
-  const [{ id }, { session: sessionId }] = await Promise.all([params, searchParams])
+  const [{ id }, { session: sessionId, type }] = await Promise.all([params, searchParams])
+  const promptTypeParam: PromptTypeFilter = type === 'brand' || type === 'nonbrand' ? type : 'all'
+  const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
   let data: Awaited<ReturnType<typeof getCommunityData>> = null
   let sessions: SessionOption[] = []
-  try { ;[data, sessions] = await Promise.all([getCommunityData(id, sessionId), getSessionList()]) } catch { /* DB not configured */ }
+  try { ;[data, sessions] = await Promise.all([getCommunityData(id, sessionId, promptType), getSessionList()]) } catch { /* DB not configured */ }
 
   if (!data) notFound()
+
+  const dashboardQuery = new URLSearchParams()
+  if (sessionId) dashboardQuery.set('session', sessionId)
+  if (promptType) dashboardQuery.set('type', promptType)
 
   return (
     <SegmentDetail
       title={data.communityName}
-      backHref={`/dashboard${sessionId ? `?session=${sessionId}` : ''}`}
+      backHref={`/dashboard${dashboardQuery.toString() ? `?${dashboardQuery.toString()}` : ''}`}
       backLabel="Dashboard"
       overview={data.overview}
       platformStats={data.platformStats}
@@ -109,6 +118,7 @@ export default async function CommunityDetailPage({
       sessions={sessions}
       basePath={`/dashboard/community/${id}`}
       trendData={data.trendData}
+      promptTypeFilter={promptTypeParam}
     />
   )
 }

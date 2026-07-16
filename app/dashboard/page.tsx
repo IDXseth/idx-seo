@@ -5,12 +5,12 @@ import { Scorecard } from '@/components/scorecard'
 import { PlatformMentionChart } from '@/components/platform-chart'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
+import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { OptimizationPriorityTable } from '@/components/optimization-priority-table'
 import { getSitemapAnalysis, SitemapAnalysis } from '@/lib/sitemap'
 import { getGscMetrics, getPageCrawlResults } from '@/lib/gsc'
 import { slugify } from '@/lib/utils'
 import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink, Download } from 'lucide-react'
-import { PromptTypeFilter } from '@/components/prompt-type-filter'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,7 +28,7 @@ async function getSessionList(): Promise<SessionOption[]> {
   }))
 }
 
-async function getTrendData(): Promise<TrendPoint[]> {
+async function getTrendData(promptType?: string): Promise<TrendPoint[]> {
   const sessions = await prisma.runSession.findMany({
     where: { status: 'done', results: { some: {} } },
     orderBy: { startedAt: 'asc' },
@@ -37,6 +37,7 @@ async function getTrendData(): Promise<TrendPoint[]> {
       startedAt: true,
       triggeredBy: true,
       results: {
+        where: promptType ? { prompt: { promptType } } : undefined,
         select: { platform: true, isMentioned: true, isCited: true, sentiment: true },
       },
     },
@@ -78,8 +79,8 @@ async function getDashboardData(sessionId?: string, promptType?: string) {
   const canonicalRows = await prisma.prompt.findMany({
     distinct: ['promptText'],
     orderBy: { createdAt: 'asc' },
-    select: { id: true },
     where: promptType ? { promptType } : undefined,
+    select: { id: true },
   })
   const canonicalIds = canonicalRows.map((r) => r.id)
 
@@ -189,7 +190,10 @@ async function getDashboardData(sessionId?: string, promptType?: string) {
   )).filter(Boolean) as Array<{ market: string; promptCount: number; mentionRate: number; citationRate: number }>
 
   const rawCitations = await prisma.citation.findMany({
-    where: { ...(sessionId ? { result: { runSessionId: sessionId } } : {}), url: { not: '' } },
+    where: {
+      result: { promptId: { in: canonicalIds }, ...(sessionId ? { runSessionId: sessionId } : {}) },
+      url: { not: '' },
+    },
     select: { url: true, title: true },
   })
   const urlMap = new Map<string, { title: string; count: number }>()
@@ -224,7 +228,9 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<{ session?: string; type?: string }>
 }) {
-  const { session: sessionId, type: promptType } = await searchParams
+  const { session: sessionId, type } = await searchParams
+  const promptTypeParam: PromptTypeFilter = type === 'brand' || type === 'nonbrand' ? type : 'all'
+  const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
 
   let data: Awaited<ReturnType<typeof getDashboardData>> | null = null
   let trendData: TrendPoint[] = []
@@ -233,7 +239,7 @@ export default async function DashboardPage({
   try {
     ;[data, trendData, sessions] = await Promise.all([
       getDashboardData(sessionId, promptType),
-      getTrendData(),
+      getTrendData(promptType),
       getSessionList(),
     ])
   } catch {
@@ -265,8 +271,11 @@ export default async function DashboardPage({
 
   const currentSession = sessions.find((s) => s.id === sessionId)
   const exportSessionId = sessionId ?? (sessions.length === 1 ? sessions[0]?.id : undefined)
-  const detailQs = [sessionId && `session=${sessionId}`, promptType && `type=${promptType}`].filter(Boolean).join('&')
-  const dqs = detailQs ? `?${detailQs}` : ''
+
+  const drillParams = new URLSearchParams()
+  if (sessionId) drillParams.set('session', sessionId)
+  if (promptType) drillParams.set('type', promptType)
+  const drillQuery = drillParams.toString() ? `?${drillParams.toString()}` : ''
 
   return (
     <div>
@@ -280,7 +289,10 @@ export default async function DashboardPage({
               : 'AI mention and citation monitoring across your senior living portfolio'}
           </p>
         </div>
-        <RunSessionPicker sessions={sessions} currentSessionId={sessionId} />
+        <div className="flex items-center gap-3">
+          <PromptTypeToggle value={promptTypeParam} basePath="/dashboard" sessionId={sessionId} />
+          <RunSessionPicker sessions={sessions} currentSessionId={sessionId} />
+        </div>
       </div>
 
       <>
@@ -331,9 +343,8 @@ export default async function DashboardPage({
 
           <TabsContent value="overview">
             <div className="space-y-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <PromptTypeFilter current={promptType ?? ''} sessionId={sessionId} />
-                {exportSessionId && (
+              {exportSessionId && (
+                <div className="flex items-center justify-end">
                   <a
                     href={`/api/export?session=${exportSessionId}`}
                     download
@@ -342,8 +353,8 @@ export default async function DashboardPage({
                     <Download className="h-3.5 w-3.5" />
                     Export run
                   </a>
-                )}
-              </div>
+                </div>
+              )}
               <SectionCard title="Mention & Citation Rate by Platform">
                 <PlatformMentionChart data={data.platformStats} />
               </SectionCard>
@@ -385,84 +396,72 @@ export default async function DashboardPage({
           </TabsContent>
 
           <TabsContent value="community">
-            <div className="space-y-4">
-              <PromptTypeFilter current={promptType ?? ''} sessionId={sessionId} />
-              <TabGrid
-                items={data.communityStats}
-                renderCard={(c) => (
-                  <Scorecard
-                    key={c.communityName}
-                    title={c.communityName}
-                    subtitle={c.city}
-                    mentionRate={c.mentionRate}
-                    citationRate={c.citationRate}
-                    promptCount={c.promptCount}
-                    href={`/dashboard/community/${encodeURIComponent(slugify(c.communityName))}${dqs}`}
-                  />
-                )}
-                empty="No community data available"
-              />
-            </div>
+            <TabGrid
+              items={data.communityStats}
+              renderCard={(c) => (
+                <Scorecard
+                  key={c.communityName}
+                  title={c.communityName}
+                  subtitle={c.city}
+                  mentionRate={c.mentionRate}
+                  citationRate={c.citationRate}
+                  promptCount={c.promptCount}
+                  href={`/dashboard/community/${encodeURIComponent(slugify(c.communityName))}${drillQuery}`}
+                />
+              )}
+              empty="No community data available"
+            />
           </TabsContent>
 
           <TabsContent value="category">
-            <div className="space-y-4">
-              <PromptTypeFilter current={promptType ?? ''} sessionId={sessionId} />
-              <TabGrid
-                items={data.categoryStats}
-                renderCard={(c) => (
-                  <Scorecard
-                    key={c.category}
-                    title={c.category}
-                    mentionRate={c.mentionRate}
-                    citationRate={c.citationRate}
-                    promptCount={c.promptCount}
-                    href={`/dashboard/category/${encodeURIComponent(c.category)}${dqs}`}
-                  />
-                )}
-                empty="No category data available"
-              />
-            </div>
+            <TabGrid
+              items={data.categoryStats}
+              renderCard={(c) => (
+                <Scorecard
+                  key={c.category}
+                  title={c.category}
+                  mentionRate={c.mentionRate}
+                  citationRate={c.citationRate}
+                  promptCount={c.promptCount}
+                  href={`/dashboard/category/${encodeURIComponent(c.category)}${drillQuery}`}
+                />
+              )}
+              empty="No category data available"
+            />
           </TabsContent>
 
           <TabsContent value="careLevel">
-            <div className="space-y-4">
-              <PromptTypeFilter current={promptType ?? ''} sessionId={sessionId} />
-              <TabGrid
-                items={data.careLevelStats}
-                renderCard={(c) => (
-                  <Scorecard
-                    key={c.levelOfCare}
-                    title={c.levelOfCare}
-                    mentionRate={c.mentionRate}
-                    citationRate={c.citationRate}
-                    promptCount={c.promptCount}
-                    href={`/dashboard/care-level/${encodeURIComponent(c.levelOfCare)}${dqs}`}
-                  />
-                )}
-                empty="No care level data available"
-              />
-            </div>
+            <TabGrid
+              items={data.careLevelStats}
+              renderCard={(c) => (
+                <Scorecard
+                  key={c.levelOfCare}
+                  title={c.levelOfCare}
+                  mentionRate={c.mentionRate}
+                  citationRate={c.citationRate}
+                  promptCount={c.promptCount}
+                  href={`/dashboard/care-level/${encodeURIComponent(c.levelOfCare)}${drillQuery}`}
+                />
+              )}
+              empty="No care level data available"
+            />
           </TabsContent>
 
           <TabsContent value="market">
-            <div className="space-y-4">
-              <PromptTypeFilter current={promptType ?? ''} sessionId={sessionId} />
-              <TabGrid
-                items={data.marketStats}
-                renderCard={(m) => (
-                  <Scorecard
-                    key={m.market}
-                    title={m.market}
-                    mentionRate={m.mentionRate}
-                    citationRate={m.citationRate}
-                    promptCount={m.promptCount}
-                    href={`/dashboard/market/${encodeURIComponent(m.market)}${dqs}`}
-                  />
-                )}
-                empty="No market data available"
-              />
-            </div>
+            <TabGrid
+              items={data.marketStats}
+              renderCard={(m) => (
+                <Scorecard
+                  key={m.market}
+                  title={m.market}
+                  mentionRate={m.mentionRate}
+                  citationRate={m.citationRate}
+                  promptCount={m.promptCount}
+                  href={`/dashboard/market/${encodeURIComponent(m.market)}${drillQuery}`}
+                />
+              )}
+              empty="No market data available"
+            />
           </TabsContent>
 
           <TabsContent value="optimization">
