@@ -5,13 +5,14 @@ import { usePathname } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
 import { useState, useRef, useEffect } from 'react'
 import { cn } from '@/lib/utils'
-import { BarChart3, Upload, Play, ChevronDown, LogOut, User } from 'lucide-react'
+import { BarChart3, Upload, Play, ChevronDown, LogOut, User, ListChecks } from 'lucide-react'
 import { GscSiteSelector } from './gsc-site-selector'
 
 const links = [
   { href: '/dashboard', label: 'Dashboard', icon: BarChart3 },
   { href: '/upload', label: 'Upload', icon: Upload },
   { href: '/run', label: 'Run Prompts', icon: Play },
+  { href: '/crawl', label: 'Page Recommendations', icon: ListChecks },
 ]
 
 function UserMenu() {

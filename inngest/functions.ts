@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { queryPlatform } from '@/lib/ai-clients'
 import { PLATFORMS } from '@/lib/utils'
 import { sendRunCompleteEmail } from '@/lib/email'
-import { refreshGscCache } from '@/lib/gsc'
+import { refreshGscCache, getGscMetrics } from '@/lib/gsc'
+import { generatePageRecommendation } from '@/lib/page-recommendations'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -243,6 +244,84 @@ export const refreshGsc = inngest.createFunction(
     return result
   }
 )
+
+// ─── Screaming Frog crawl: fan-out one event per page ────────────────────────
+
+export const crawlFanOut = inngest.createFunction(
+  { id: 'crawl-fan-out', triggers: [{ event: 'crawl/uploaded' }] },
+  async ({ event, step }) => {
+    const { crawlBatchId } = event.data as { crawlBatchId: string }
+
+    const pages = await step.run('fetch-pages', async () => {
+      return prisma.crawlPage.findMany({
+        where: { crawlBatchId },
+        select: { id: true },
+      })
+    })
+
+    if (pages.length === 0) return { queued: 0 }
+
+    await step.run('mark-analyzing', async () => {
+      await prisma.crawlBatch.update({ where: { id: crawlBatchId }, data: { status: 'analyzing' } })
+    })
+
+    await step.sendEvent(
+      'fan-out-pages',
+      pages.map((p) => ({
+        name: 'page/analyze.requested' as const,
+        data: { crawlPageId: p.id, crawlBatchId },
+      }))
+    )
+
+    return { queued: pages.length }
+  }
+)
+
+// ─── Screaming Frog crawl: per-page recommendation (max 5 concurrent) ────────
+
+export const generatePageRecommendationJob = inngest.createFunction(
+  {
+    id: 'generate-page-recommendation',
+    triggers: [{ event: 'page/analyze.requested' }],
+    concurrency: { limit: 5 },
+  },
+  async ({ event, step }) => {
+    const { crawlPageId, crawlBatchId } = event.data as { crawlPageId: string; crawlBatchId: string }
+
+    const page = await step.run('fetch-page', async () => {
+      return prisma.crawlPage.findUnique({ where: { id: crawlPageId } })
+    })
+
+    if (!page) {
+      await step.run('skip-missing', async () => checkAndFinalizeCrawl(crawlBatchId))
+      return
+    }
+
+    await step.run('analyze-and-save', async () => {
+      const gscMetrics = await getGscMetrics()
+      const gsc = gscMetrics.get(page.url) ?? null
+
+      const result = await generatePageRecommendation(page, gsc)
+
+      await prisma.pageRecommendation.upsert({
+        where: { crawlPageId },
+        create: { crawlPageId, ...result },
+        update: result,
+      })
+
+      await prisma.$executeRaw`UPDATE "CrawlBatch" SET "donePages" = "donePages" + 1 WHERE id = ${crawlBatchId}`
+      await checkAndFinalizeCrawl(crawlBatchId)
+    })
+  }
+)
+
+async function checkAndFinalizeCrawl(crawlBatchId: string) {
+  const batch = await prisma.crawlBatch.findUnique({ where: { id: crawlBatchId } })
+  if (!batch || batch.status === 'done') return
+  if (batch.donePages >= batch.totalPages) {
+    await prisma.crawlBatch.update({ where: { id: crawlBatchId }, data: { status: 'done' } })
+  }
+}
 
 // ─── Finalize when all prompts done ──────────────────────────────────────────
 

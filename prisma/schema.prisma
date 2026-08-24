@@ -22,6 +22,7 @@ model User {
   sessions      Session[]
   batches       Batch[]
   sharedBatches ProjectShare[]
+  crawlBatches  CrawlBatch[]
 }
 
 model Account {
@@ -185,4 +186,56 @@ model GscMetric {
   position    Float?
   fetchedAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+// One imported Screaming Frog crawl export.
+// SQL: CREATE TABLE IF NOT EXISTS "CrawlBatch" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL, "fileName" TEXT NOT NULL, "userId" TEXT NOT NULL REFERENCES "User"("id") ON DELETE CASCADE, "status" TEXT NOT NULL DEFAULT 'pending', "totalPages" INTEGER NOT NULL DEFAULT 0, "donePages" INTEGER NOT NULL DEFAULT 0, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+model CrawlBatch {
+  id         String      @id @default(cuid())
+  name       String
+  fileName   String
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pages      CrawlPage[]
+  status     String      @default("pending")  // "pending" | "analyzing" | "done"
+  totalPages Int         @default(0)
+  donePages  Int         @default(0)
+  createdAt  DateTime    @default(now())
+}
+
+// One page row from a Screaming Frog "Internal:All" export.
+// SQL: CREATE TABLE IF NOT EXISTS "CrawlPage" ("id" TEXT NOT NULL PRIMARY KEY, "crawlBatchId" TEXT NOT NULL REFERENCES "CrawlBatch"("id") ON DELETE CASCADE, "url" TEXT NOT NULL, "statusCode" INTEGER, "indexability" TEXT, "indexabilityStatus" TEXT, "title" TEXT, "titleLength" INTEGER, "metaDescription" TEXT, "metaDescriptionLength" INTEGER, "h1" TEXT, "wordCount" INTEGER, "canonicalUrl" TEXT, "inlinks" INTEGER, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE ("crawlBatchId", "url"));
+model CrawlPage {
+  id                    String              @id @default(cuid())
+  crawlBatchId          String
+  crawlBatch            CrawlBatch          @relation(fields: [crawlBatchId], references: [id], onDelete: Cascade)
+  url                   String
+  statusCode            Int?
+  indexability          String?             // "Indexable" | "Non-Indexable"
+  indexabilityStatus    String?             // e.g. "Canonicalised", "Redirect"
+  title                 String?
+  titleLength           Int?
+  metaDescription       String?
+  metaDescriptionLength Int?
+  h1                    String?
+  wordCount             Int?
+  canonicalUrl          String?
+  inlinks               Int?
+  recommendation        PageRecommendation?
+  createdAt             DateTime            @default(now())
+
+  @@unique([crawlBatchId, url])
+}
+
+// Claude-generated recommendation for a single crawled page.
+// SQL: CREATE TABLE IF NOT EXISTS "PageRecommendation" ("id" TEXT NOT NULL PRIMARY KEY, "crawlPageId" TEXT NOT NULL UNIQUE REFERENCES "CrawlPage"("id") ON DELETE CASCADE, "priority" TEXT NOT NULL, "summary" TEXT NOT NULL, "issues" TEXT[] NOT NULL DEFAULT '{}', "recommendations" TEXT[] NOT NULL DEFAULT '{}', "generatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+model PageRecommendation {
+  id              String    @id @default(cuid())
+  crawlPageId     String    @unique
+  crawlPage       CrawlPage @relation(fields: [crawlPageId], references: [id], onDelete: Cascade)
+  priority        String    // "high" | "medium" | "low"
+  summary         String
+  issues          String[]  @default([])
+  recommendations String[]  @default([])
+  generatedAt     DateTime  @default(now())
 }
