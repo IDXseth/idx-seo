@@ -84,12 +84,16 @@ async function queryChatGPT(
   const response = await (client as any).responses.create({
     model: 'gpt-4o',
     tools: [{ type: 'web_search_preview' }],
+    // Without this, the web_search_call output item never carries its own
+    // source list — only inline url_citation annotations come through, which
+    // is just the subset of retrieved pages the model happened to quote from.
+    include: ['web_search_call.action.sources'],
     input: promptText || ' ',
   })
 
   const text: string = response.output_text ?? ''
 
-  // Extract URL citations from output annotations
+  // Inline citations: the specific sources the model quoted/referenced in its answer text.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const annotations: any[] = (response.output ?? []).flatMap((item: any) =>
     item.type === 'message'
@@ -99,14 +103,28 @@ async function queryChatGPT(
         )
       : []
   )
-  const citations = annotations
-    .filter((a) => a.type === 'url_citation')
-    .map((a) => ({
-      url: a.url ?? '',
-      title: a.title ?? '',
-      domain: extractDomain(a.url ?? ''),
-    }))
-    .filter((c) => c.url)
+  // Retrieved sources: every page the web_search tool call actually matched,
+  // whether or not the model went on to quote it inline. Real data the search
+  // already returned — just not requested/read before now.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const searchedSources: any[] = (response.output ?? []).flatMap((item: any) =>
+    item.type === 'web_search_call' ? (item.action?.sources ?? []) : []
+  )
+
+  const citationMap = new Map<string, { url: string; title: string; domain: string }>()
+  for (const a of annotations) {
+    const url: string = a.url ?? ''
+    if (a.type === 'url_citation' && url) {
+      citationMap.set(url, { url, title: a.title ?? '', domain: extractDomain(url) })
+    }
+  }
+  for (const s of searchedSources) {
+    const url: string = s.url ?? ''
+    if (url && !citationMap.has(url)) {
+      citationMap.set(url, { url, title: '', domain: extractDomain(url) })
+    }
+  }
+  const citations = [...citationMap.values()]
 
   const isMentioned = checkMention(text, communityName)
   const isCited = checkCited(citations, communityName)
@@ -362,10 +380,18 @@ async function queryPerplexity(
 
   const data = await response.json()
   const text = data.choices?.[0]?.message?.content ?? ''
-  const rawCitations: unknown[] = data.citations ?? []
-  const citations = (rawCitations as string[])
-    .filter((url) => typeof url === 'string' && url.startsWith('http'))
-    .map((url) => ({ url, title: extractDomain(url), domain: extractDomain(url) }))
+
+  // search_results is Perplexity's fuller, verified source list (title/url/date) —
+  // prefer it over the plain citations array, which is only the URLs the model
+  // happened to number-reference inline and can be sparser for the same answer.
+  const searchResults: unknown[] = data.search_results ?? []
+  const citations = searchResults.length > 0
+    ? (searchResults as Array<Record<string, string>>)
+        .map((r) => ({ url: r.url ?? '', title: r.title ?? extractDomain(r.url ?? ''), domain: extractDomain(r.url ?? '') }))
+        .filter((c) => c.url)
+    : ((data.citations ?? []) as unknown[])
+        .filter((url): url is string => typeof url === 'string' && url.startsWith('http'))
+        .map((url) => ({ url, title: extractDomain(url), domain: extractDomain(url) }))
 
   const isMentioned = checkMention(text, communityName)
   const isCited = checkCited(citations, communityName)
