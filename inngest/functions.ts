@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { queryPlatform } from '@/lib/ai-clients'
 import { PLATFORMS } from '@/lib/utils'
 import { sendRunCompleteEmail } from '@/lib/email'
-import { refreshGscCache } from '@/lib/gsc'
+import { refreshGscCache, refreshGscQueryCache } from '@/lib/gsc'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -239,8 +239,9 @@ export const checkSchedules = inngest.createFunction(
 export const refreshGsc = inngest.createFunction(
   { id: 'refresh-gsc-cache', triggers: [{ cron: '0 3 * * *' }] },
   async ({ step }) => {
-    const result = await step.run('fetch-gsc-metrics', () => refreshGscCache())
-    return result
+    const pages = await step.run('fetch-gsc-metrics', () => refreshGscCache())
+    const queries = await step.run('fetch-gsc-queries', () => refreshGscQueryCache())
+    return { pages, queries }
   }
 )
 
