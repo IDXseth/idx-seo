@@ -48,18 +48,20 @@ export async function getActiveCompetitors(userId: string): Promise<CompetitorIn
 // in ai-clients.ts, but generalized across an arbitrary competitor list.
 export async function matchCompetitors(
   responseText: string,
-  citations: Array<{ domain: string }>,
+  citations: Array<{ domain: string; isExplicitCitation: boolean }>,
   competitors: CompetitorInput[]
 ): Promise<CompetitorMatchResult[]> {
   if (competitors.length === 0) return []
   const lower = responseText.toLowerCase()
+  // Only explicitly-cited sources count toward isCited — same rule as checkCited().
+  const explicitCitations = citations.filter((c) => c.isExplicitCitation)
 
   const matches = competitors.map((competitor) => {
     const names = [competitor.brandName, ...competitor.aliases.split(',')]
       .map((n) => n.trim())
       .filter(Boolean)
     const isMentioned = !!lower && names.some((n) => lower.includes(n.toLowerCase()))
-    const isCited = citations.some((c) => domainMatches(c.domain, competitor.domain))
+    const isCited = explicitCitations.some((c) => domainMatches(c.domain, competitor.domain))
     return { competitor, isMentioned, isCited }
   })
 

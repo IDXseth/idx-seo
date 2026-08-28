@@ -173,6 +173,10 @@ model Citation {
   url      String
   title    String
   domain   String
+  // true: the platform explicitly cited/quoted this source in its answer text.
+  // false: the source was retrieved by the platform's web search but not directly
+  // cited — surfaced separately so it isn't counted toward isMentioned/isCited stats.
+  isExplicitCitation Boolean @default(true)
 }
 
 // A named competitor tracked against the user's existing prompt set.

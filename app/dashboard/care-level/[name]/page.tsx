@@ -40,7 +40,7 @@ async function getCareLevelData(name: string, sessionId?: string, promptType?: s
     }
   })
 
-  const allCitations = prompts.flatMap((p) => p.results.flatMap((r) => r.citations))
+  const allCitations = prompts.flatMap((p) => p.results.flatMap((r) => r.citations)).filter((c) => c.isExplicitCitation)
   const domainCounts: Record<string, number> = {}
   for (const c of allCitations) domainCounts[c.domain] = (domainCounts[c.domain] || 0) + 1
   const topDomains = Object.entries(domainCounts)

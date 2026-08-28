@@ -168,6 +168,7 @@ export const runSinglePrompt = inngest.createFunction(
               url: c.url,
               title: c.title,
               domain: c.domain,
+              isExplicitCitation: c.isExplicitCitation,
             })),
           })
         }

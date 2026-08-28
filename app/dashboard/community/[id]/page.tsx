@@ -63,7 +63,7 @@ async function getCommunityData(id: string, sessionId?: string, promptType?: str
     }
   })
 
-  const allCitations = finalPrompts.flatMap((p) => p.results.flatMap((r) => r.citations))
+  const allCitations = finalPrompts.flatMap((p) => p.results.flatMap((r) => r.citations)).filter((c) => c.isExplicitCitation)
   const domainCounts: Record<string, number> = {}
   for (const c of allCitations) domainCounts[c.domain] = (domainCounts[c.domain] || 0) + 1
   const topDomains = Object.entries(domainCounts)

@@ -114,6 +114,7 @@ export async function POST(req: Request) {
                 url: c.url,
                 title: c.title,
                 domain: c.domain,
+                isExplicitCitation: c.isExplicitCitation,
               })),
             })
           }

@@ -18,6 +18,7 @@ interface Citation {
   url: string
   title: string
   domain: string
+  isExplicitCitation: boolean
 }
 
 interface Result {
@@ -235,7 +236,7 @@ export function SegmentDetail({
 
       {/* Top Citation Pages */}
       {(() => {
-        const allCitations = prompts.flatMap((p) => p.results.flatMap((r) => r.citations))
+        const allCitations = prompts.flatMap((p) => p.results.flatMap((r) => r.citations)).filter((c) => c.isExplicitCitation)
         const urlMap = new Map<string, { title: string; domain: string; count: number }>()
         for (const c of allCitations) {
           if (!c.url) continue

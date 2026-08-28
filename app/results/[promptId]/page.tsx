@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { Badge } from '@/components/ui/badge'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PLATFORM_LABELS, PLATFORM_COLORS, YOUR_BRAND_NAME, YOUR_BRAND_DOMAIN } from '@/lib/utils'
-import { getActiveCompetitors, domainMatches } from '@/lib/competitors'
+import { getActiveCompetitors, domainMatches, CompetitorInput } from '@/lib/competitors'
 import { ChevronLeft, ExternalLink, MapPin, Building2, Tag, Heart, Info } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -138,7 +138,7 @@ export default async function ResultsDetailPage({
         <Info className="h-4 w-4 text-[#177e89] flex-shrink-0 mt-0.5" />
         <div className="text-sm text-[#084c61] leading-relaxed">
           <span className="font-semibold">AI Visibility Results — </span>
-          This report shows how each AI platform responded to the prompt below. For each platform we record whether Senior Lifestyle was <span className="font-semibold">mentioned</span> by name, whether a <span className="font-semibold">seniorlifestyle.com link was cited</span> in the response, the overall <span className="font-semibold">sentiment</span> of the response, and any <span className="font-semibold">source URLs</span> the platform referenced.
+          This report shows how each AI platform responded to the prompt below. For each platform we record whether Senior Lifestyle was <span className="font-semibold">mentioned</span> by name, whether a <span className="font-semibold">seniorlifestyle.com link was cited</span> in the response, the overall <span className="font-semibold">sentiment</span> of the response, and the source URLs involved — split into <span className="font-semibold">Citations</span> the platform explicitly referenced in its answer and sources <span className="font-semibold">also surfaced in search</span> that it retrieved but didn&apos;t directly cite.
         </div>
       </div>
 
@@ -315,53 +315,41 @@ export default async function ResultsDetailPage({
                 </div>
 
                 {/* Citations */}
-                {result.citations.length > 0 && (
-                  <div className="px-5 pb-4 border-t border-[#eef3f5] pt-3">
-                    <p className="text-[10px] font-semibold text-[#8aadb8] uppercase tracking-wider mb-2">
-                      Citations ({result.citations.length})
-                    </p>
-                    <div className="space-y-1.5">
-                      {result.citations.map((citation) => {
-                        const owner = domainMatches(citation.domain, YOUR_BRAND_DOMAIN)
-                          ? { label: YOUR_BRAND_NAME, isYou: true }
-                          : (() => {
-                              const c = competitors.find((c) => domainMatches(citation.domain, c.domain))
-                              return c ? { label: c.brandName, isYou: false } : null
-                            })()
-                        return (
-                          <a
-                            key={citation.id}
-                            href={citation.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={`flex items-start gap-2 p-2 rounded-lg transition-colors group ${
-                              owner
-                                ? owner.isYou
-                                  ? 'bg-[#e6f2f5] ring-1 ring-inset ring-[#177e89] hover:bg-[#d9edf1]'
-                                  : 'bg-sky-50 ring-1 ring-inset ring-sky-200 hover:bg-sky-100'
-                                : 'bg-[#f5f8fa] hover:bg-[#e6f2f5]'
-                            }`}
+                {result.citations.length > 0 && (() => {
+                  const explicitCitations = result.citations.filter((c) => c.isExplicitCitation)
+                  const additionalSources = result.citations.filter((c) => !c.isExplicitCitation)
+                  return (
+                    <div className="px-5 pb-4 border-t border-[#eef3f5] pt-3 space-y-3">
+                      {explicitCitations.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-semibold text-[#8aadb8] uppercase tracking-wider mb-2">
+                            Citations ({explicitCitations.length})
+                          </p>
+                          <div className="space-y-1.5">
+                            {explicitCitations.map((citation) => (
+                              <CitationLink key={citation.id} citation={citation} competitors={competitors} />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {additionalSources.length > 0 && (
+                        <div>
+                          <p
+                            className="text-[10px] font-semibold text-[#b8cdd3] uppercase tracking-wider mb-2"
+                            title="Pages the platform's web search retrieved but did not directly cite in its answer"
                           >
-                            <ExternalLink className="h-3 w-3 text-[#8aadb8] mt-0.5 flex-shrink-0 group-hover:text-[#177e89] transition-colors" />
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-medium text-[#084c61] truncate">{citation.title}</p>
-                              <p className="text-[10px] text-[#8aadb8]">{citation.domain}</p>
-                            </div>
-                            {owner && (
-                              <span
-                                className={`flex-shrink-0 inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
-                                  owner.isYou ? 'bg-[#177e89] text-white' : 'bg-sky-600 text-white'
-                                }`}
-                              >
-                                {owner.isYou ? 'You' : owner.label}
-                              </span>
-                            )}
-                          </a>
-                        )
-                      })}
+                            Also Surfaced in Search ({additionalSources.length})
+                          </p>
+                          <div className="space-y-1.5 opacity-75">
+                            {additionalSources.map((citation) => (
+                              <CitationLink key={citation.id} citation={citation} competitors={competitors} />
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
+                  )
+                })()}
               </div>
             )
           })}
@@ -417,6 +405,50 @@ function highlightTerms(
       </mark>
     )
   })
+}
+
+function CitationLink({
+  citation,
+  competitors,
+}: {
+  citation: { id: string; url: string; title: string; domain: string }
+  competitors: CompetitorInput[]
+}) {
+  const owner = domainMatches(citation.domain, YOUR_BRAND_DOMAIN)
+    ? { label: YOUR_BRAND_NAME, isYou: true }
+    : (() => {
+        const c = competitors.find((c) => domainMatches(citation.domain, c.domain))
+        return c ? { label: c.brandName, isYou: false } : null
+      })()
+  return (
+    <a
+      href={citation.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`flex items-start gap-2 p-2 rounded-lg transition-colors group ${
+        owner
+          ? owner.isYou
+            ? 'bg-[#e6f2f5] ring-1 ring-inset ring-[#177e89] hover:bg-[#d9edf1]'
+            : 'bg-sky-50 ring-1 ring-inset ring-sky-200 hover:bg-sky-100'
+          : 'bg-[#f5f8fa] hover:bg-[#e6f2f5]'
+      }`}
+    >
+      <ExternalLink className="h-3 w-3 text-[#8aadb8] mt-0.5 flex-shrink-0 group-hover:text-[#177e89] transition-colors" />
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium text-[#084c61] truncate">{citation.title}</p>
+        <p className="text-[10px] text-[#8aadb8]">{citation.domain}</p>
+      </div>
+      {owner && (
+        <span
+          className={`flex-shrink-0 inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+            owner.isYou ? 'bg-[#177e89] text-white' : 'bg-sky-600 text-white'
+          }`}
+        >
+          {owner.isYou ? 'You' : owner.label}
+        </span>
+      )}
+    </a>
+  )
 }
 
 function MetaItem({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {

@@ -8,12 +8,22 @@ async function resolveRedirect(url: string): Promise<string> {
   }
 }
 
+export interface PlatformCitation {
+  url: string
+  title: string
+  domain: string
+  // true: explicitly cited/quoted in the platform's answer text.
+  // false: retrieved by the platform's web search step but not directly cited —
+  // real data the platform's own tools returned, just not quoted inline.
+  isExplicitCitation: boolean
+}
+
 export interface PlatformResult {
   responseText: string
   isMentioned: boolean
   isCited: boolean
   sentiment: 'positive' | 'neutral' | 'negative'
-  citations: Array<{ url: string; title: string; domain: string }>
+  citations: PlatformCitation[]
   error?: string
 }
 
@@ -63,13 +73,16 @@ function extractDomain(url: string): string {
 }
 
 function checkCited(
-  citations: Array<{ url: string; title: string; domain: string }>,
+  citations: Array<{ url: string; title: string; domain: string; isExplicitCitation: boolean }>,
   _communityName: string
 ): boolean {
+  // Only sources explicitly cited in the answer text count toward "Cited" —
+  // sources merely surfaced by a search step don't move this stat.
   return citations.some(
     (c) =>
-      c.url.toLowerCase().includes('seniorlifestyle.com') ||
-      c.domain.toLowerCase().includes('seniorlifestyle.com')
+      c.isExplicitCitation &&
+      (c.url.toLowerCase().includes('seniorlifestyle.com') ||
+        c.domain.toLowerCase().includes('seniorlifestyle.com'))
   )
 }
 
@@ -111,17 +124,17 @@ async function queryChatGPT(
     item.type === 'web_search_call' ? (item.action?.sources ?? []) : []
   )
 
-  const citationMap = new Map<string, { url: string; title: string; domain: string }>()
+  const citationMap = new Map<string, PlatformCitation>()
   for (const a of annotations) {
     const url: string = a.url ?? ''
     if (a.type === 'url_citation' && url) {
-      citationMap.set(url, { url, title: a.title ?? '', domain: extractDomain(url) })
+      citationMap.set(url, { url, title: a.title ?? '', domain: extractDomain(url), isExplicitCitation: true })
     }
   }
   for (const s of searchedSources) {
     const url: string = s.url ?? ''
     if (url && !citationMap.has(url)) {
-      citationMap.set(url, { url, title: '', domain: extractDomain(url) })
+      citationMap.set(url, { url, title: '', domain: extractDomain(url), isExplicitCitation: false })
     }
   }
   const citations = [...citationMap.values()]
@@ -191,27 +204,29 @@ async function queryClaude(
   }
 
   let text = ''
-  const citations: Array<{ url: string; title: string; domain: string }> = []
+  const citationMap = new Map<string, PlatformCitation>()
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const block of response.content as any[]) {
     if (block.type === 'text') {
       text += block.text
-      // Inline citations on text blocks (beta SDK web_search_result_location format)
+      // Inline citations on text blocks (beta SDK web_search_result_location format) —
+      // these are sources Claude explicitly quoted/referenced in its answer.
       if (Array.isArray(block.citations)) {
         for (const c of block.citations) {
           const url: string = c.url ?? ''
-          if (url && !citations.some((x) => x.url === url)) {
-            citations.push({ url, title: c.title ?? '', domain: extractDomain(url) })
+          if (url) {
+            citationMap.set(url, { url, title: c.title ?? '', domain: extractDomain(url), isExplicitCitation: true })
           }
         }
       }
     }
-    // Top-level web_search_result blocks
+    // Top-level web_search_result blocks — sources the tool retrieved, not
+    // necessarily quoted inline. Don't downgrade a URL already marked explicit.
     if (block.type === 'web_search_result') {
       const url: string = block.url ?? ''
-      if (url && !citations.some((x) => x.url === url)) {
-        citations.push({ url, title: block.title ?? '', domain: extractDomain(url) })
+      if (url && !citationMap.has(url)) {
+        citationMap.set(url, { url, title: block.title ?? '', domain: extractDomain(url), isExplicitCitation: false })
       }
     }
     // web_search_tool_result — the actual block type returned by web_search_20250305
@@ -220,12 +235,13 @@ async function queryClaude(
       const content: any[] = Array.isArray(block.content) ? block.content : []
       for (const item of content) {
         const url: string = item.url ?? ''
-        if (url && !citations.some((x) => x.url === url)) {
-          citations.push({ url, title: item.title ?? '', domain: extractDomain(url) })
+        if (url && !citationMap.has(url)) {
+          citationMap.set(url, { url, title: item.title ?? '', domain: extractDomain(url), isExplicitCitation: false })
         }
       }
     }
   }
+  const citations = [...citationMap.values()]
 
   const isMentioned = checkMention(text, communityName)
   const isCited = checkCited(citations, communityName)
@@ -260,7 +276,9 @@ async function queryGemini(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .map(async (c: any) => {
         const url = await resolveRedirect(c.web.uri as string)
-        return { url, title: (c.web.title as string) ?? '', domain: extractDomain(url) }
+        // groundingChunks are the sources Google Search grounding says actually
+        // support the generated answer, so they count as explicit citations.
+        return { url, title: (c.web.title as string) ?? '', domain: extractDomain(url), isExplicitCitation: true }
       })
   )
 
@@ -271,12 +289,13 @@ async function queryGemini(
   return { responseText: text, isMentioned, isCited, sentiment, citations }
 }
 
-function extractCitationsFromSources(sources: unknown[]): Array<{ url: string; title: string; domain: string }> {
+function extractCitationsFromSources(sources: unknown[]): PlatformCitation[] {
   return (sources as Array<Record<string, string>>)
     .map((s) => ({
       url: s.link ?? s.url ?? '',
       title: s.title ?? s.name ?? '',
       domain: extractDomain(s.link ?? s.url ?? ''),
+      isExplicitCitation: true,
     }))
     .filter((c) => c.url)
 }
@@ -284,7 +303,7 @@ function extractCitationsFromSources(sources: unknown[]): Array<{ url: string; t
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function parseSearchAPIResponse(data: any, communityName: string, engine?: string): Promise<PlatformResult> {
   let text = ''
-  let citations: Array<{ url: string; title: string; domain: string }> = []
+  let citations: PlatformCitation[] = []
 
   // engine=google_ai_overview with page_token returns root-level markdown/text_blocks/reference_links
   if (!text && typeof data.markdown === 'string' && data.markdown.length > 0) {
@@ -307,6 +326,7 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
         url: r.link ?? r.url ?? '',
         title: r.title ?? r.name ?? '',
         domain: extractDomain(r.link ?? r.url ?? ''),
+        isExplicitCitation: true,
       }))
       .filter((c) => c.url)
   }
@@ -326,6 +346,7 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
         url: r.url ?? r.link ?? '',
         title: r.title ?? r.name ?? '',
         domain: extractDomain(r.url ?? r.link ?? ''),
+        isExplicitCitation: true,
       }))
       .filter((c) => c.url)
   }
@@ -339,6 +360,7 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
         url: s.link ?? s.url ?? '',
         title: s.title ?? '',
         domain: extractDomain(s.link ?? s.url ?? ''),
+        isExplicitCitation: true,
       }))
       .filter((c) => c.url)
   }
@@ -381,17 +403,29 @@ async function queryPerplexity(
   const data = await response.json()
   const text = data.choices?.[0]?.message?.content ?? ''
 
-  // search_results is Perplexity's fuller, verified source list (title/url/date) —
-  // prefer it over the plain citations array, which is only the URLs the model
-  // happened to number-reference inline and can be sparser for the same answer.
-  const searchResults: unknown[] = data.search_results ?? []
-  const citations = searchResults.length > 0
-    ? (searchResults as Array<Record<string, string>>)
-        .map((r) => ({ url: r.url ?? '', title: r.title ?? extractDomain(r.url ?? ''), domain: extractDomain(r.url ?? '') }))
-        .filter((c) => c.url)
-    : ((data.citations ?? []) as unknown[])
-        .filter((url): url is string => typeof url === 'string' && url.startsWith('http'))
-        .map((url) => ({ url, title: extractDomain(url), domain: extractDomain(url) }))
+  // `citations` is the plain URL list corresponding to the model's [N] inline
+  // references — the explicitly-cited set. `search_results` is Perplexity's
+  // fuller, verified source list (title/url/date): every page the search step
+  // actually pulled, whether or not the model went on to number-reference it.
+  const rawCitedUrls = ((data.citations ?? []) as unknown[])
+    .filter((url): url is string => typeof url === 'string' && url.startsWith('http'))
+  const searchResults = (data.search_results ?? []) as Array<Record<string, string>>
+  const searchResultByUrl = new Map(searchResults.map((r) => [r.url ?? '', r]))
+
+  const citations: PlatformCitation[] = []
+  const seenUrls = new Set<string>()
+  for (const url of rawCitedUrls) {
+    if (seenUrls.has(url)) continue
+    seenUrls.add(url)
+    const r = searchResultByUrl.get(url)
+    citations.push({ url, title: r?.title ?? extractDomain(url), domain: extractDomain(url), isExplicitCitation: true })
+  }
+  for (const r of searchResults) {
+    const url = r.url ?? ''
+    if (!url || seenUrls.has(url)) continue
+    seenUrls.add(url)
+    citations.push({ url, title: r.title ?? extractDomain(url), domain: extractDomain(url), isExplicitCitation: false })
+  }
 
   const isMentioned = checkMention(text, communityName)
   const isCited = checkCited(citations, communityName)
@@ -402,7 +436,7 @@ async function queryPerplexity(
 
 async function fetchFallbackCitations(
   promptText: string
-): Promise<Array<{ url: string; title: string; domain: string }>> {
+): Promise<PlatformCitation[]> {
   const apiKey = process.env.SEARCHAPI_KEY
   if (!apiKey) return []
   try {
@@ -418,11 +452,16 @@ async function fetchFallbackCitations(
     })
     if (!response.ok) return []
     const data = await response.json()
+    // These are organic search results we fetched ourselves as a last-resort
+    // supplement, not sources the platform actually cited or retrieved — never
+    // explicit, and fetchFallbackCitations only runs after isCited/isMentioned
+    // are already computed, so they can't move those stats either.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (data.organic_results ?? []).slice(0, 5).map((r: any) => ({
       url: r.link ?? '',
       title: r.title ?? '',
       domain: extractDomain(r.link ?? ''),
+      isExplicitCitation: false,
     })).filter((c: { url: string }) => c.url)
   } catch {
     return []

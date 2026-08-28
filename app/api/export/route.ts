@@ -37,7 +37,8 @@ export async function GET(req: NextRequest) {
     Mentioned: r.isMentioned ? 'Yes' : 'No',
     Cited: r.isCited ? 'Yes' : 'No',
     Sentiment: r.sentiment,
-    'Citation URLs': r.citations.map((c) => c.url).join('; '),
+    'Citation URLs': r.citations.filter((c) => c.isExplicitCitation).map((c) => c.url).join('; '),
+    'Also Surfaced in Search': r.citations.filter((c) => !c.isExplicitCitation).map((c) => c.url).join('; '),
     Response: r.responseText.slice(0, 1000),
   }))
 
