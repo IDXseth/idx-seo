@@ -1,9 +1,11 @@
 import { notFound } from 'next/navigation'
+import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PLATFORMS } from '@/lib/utils'
 import { SegmentDetail } from '@/components/segment-detail'
 import { SessionOption } from '@/components/run-session-picker'
 import { getSegmentTrendData } from '@/lib/segment-trend'
+import { getCompetitorLeaderboard, CompetitorLeaderboardEntry } from '@/lib/competitor-stats'
 
 async function getSessionList(): Promise<SessionOption[]> {
   const sessions = await prisma.runSession.findMany({
@@ -16,7 +18,7 @@ async function getSessionList(): Promise<SessionOption[]> {
 
 export const dynamic = 'force-dynamic'
 
-async function getCategoryData(name: string, sessionId?: string) {
+async function getCategoryData(name: string, sessionId?: string, userId?: string) {
   const decodedName = decodeURIComponent(name)
   const resultsFilter = sessionId ? { where: { runSessionId: sessionId } } : {}
 
@@ -53,11 +55,14 @@ async function getCategoryData(name: string, sessionId?: string) {
     .map(([domain, count]) => ({ domain, count, percentage: totalResults > 0 ? count / totalResults : 0 }))
 
   const trendData = sessionId ? [] : await getSegmentTrendData({ category: decodedName })
+  const competitorLeaderboard = userId
+    ? await getCompetitorLeaderboard(prompts.map((p) => p.id), userId, sessionId)
+    : null
 
   return {
     name: decodedName, prompts,
     overview: { promptCount: prompts.length, mentionRate: totalResults > 0 ? mentioned / totalResults : 0, citationRate: totalResults > 0 ? cited / totalResults : 0 },
-    platformStats, topDomains, trendData,
+    platformStats, topDomains, trendData, competitorLeaderboard,
   }
 }
 
@@ -68,9 +73,12 @@ export default async function CategoryDetailPage({
   searchParams: Promise<{ session?: string }>
 }) {
   const [{ name }, { session: sessionId }] = await Promise.all([params, searchParams])
+  const session = await auth().catch(() => null)
+  const userId = session?.user?.id
+
   let data: Awaited<ReturnType<typeof getCategoryData>> = null
   let sessions: SessionOption[] = []
-  try { ;[data, sessions] = await Promise.all([getCategoryData(name, sessionId), getSessionList()]) } catch { /* DB not configured */ }
+  try { ;[data, sessions] = await Promise.all([getCategoryData(name, sessionId, userId), getSessionList()]) } catch { /* DB not configured */ }
 
   if (!data) notFound()
 
@@ -88,6 +96,7 @@ export default async function CategoryDetailPage({
       sessions={sessions}
       basePath={`/dashboard/category/${encodeURIComponent(name)}`}
       trendData={data.trendData}
+      competitorLeaderboard={data.competitorLeaderboard as CompetitorLeaderboardEntry[] | null}
     />
   )
 }

@@ -22,6 +22,7 @@ model User {
   sessions      Session[]
   batches       Batch[]
   sharedBatches ProjectShare[]
+  competitors   Competitor[]
 }
 
 model Account {
@@ -161,6 +162,7 @@ model Result {
   isCited      Boolean     @default(false)
   sentiment    String      @default("neutral")  // "positive" | "neutral" | "negative"
   citations    Citation[]
+  competitorMentions CompetitorMention[]
   runAt        DateTime    @default(now())
 }
 
@@ -171,6 +173,34 @@ model Citation {
   url      String
   title    String
   domain   String
+}
+
+// A named competitor tracked against the user's existing prompt set.
+model Competitor {
+  id        String              @id @default(cuid())
+  userId    String
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brandName String
+  domain    String              // used to match citation domains (e.g. "brookdale.com")
+  aliases   String              @default("")  // comma-separated alternate names scanned in response text
+  active    Boolean             @default(true)
+  mentions  CompetitorMention[]
+  createdAt DateTime            @default(now())
+}
+
+// One row per (Result, Competitor) — mirrors Result.isMentioned/isCited/sentiment
+// so competitor mention/citation rates can be computed the same way as the user's own.
+model CompetitorMention {
+  id           String     @id @default(cuid())
+  resultId     String
+  result       Result     @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  competitorId String
+  competitor   Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  isMentioned  Boolean    @default(false)
+  isCited      Boolean    @default(false)
+  sentiment    String     @default("neutral")  // "positive" | "neutral" | "negative"
+
+  @@unique([resultId, competitorId])
 }
 
 // Cache for Google Search Console metrics per page URL.
