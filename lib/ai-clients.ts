@@ -17,7 +17,7 @@ export interface PlatformResult {
   error?: string
 }
 
-async function analyzeSentiment(
+export async function analyzeSentiment(
   responseText: string,
   communityName: string
 ): Promise<'positive' | 'neutral' | 'negative'> {

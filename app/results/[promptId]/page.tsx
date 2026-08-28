@@ -1,9 +1,11 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { Badge } from '@/components/ui/badge'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
-import { PLATFORM_LABELS, PLATFORM_COLORS } from '@/lib/utils'
+import { PLATFORM_LABELS, PLATFORM_COLORS, YOUR_BRAND_NAME } from '@/lib/utils'
+import { getActiveCompetitors } from '@/lib/competitors'
 import { ChevronLeft, ExternalLink, MapPin, Building2, Tag, Heart, Info } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -20,6 +22,33 @@ async function getPromptData(promptId: string, sessionId: string | null) {
       },
     },
   })
+}
+
+interface DetectedBrand {
+  competitorId: string
+  brandName: string
+  isMentioned: boolean
+  isCited: boolean
+  sentiment: string
+}
+
+// Fetched separately from the core prompt query (and always fails soft) so a
+// not-yet-migrated CompetitorMention table can never break this page's core data.
+async function getCompetitorMentionsByResult(resultIds: string[]): Promise<Map<string, DetectedBrand[]>> {
+  const map = new Map<string, DetectedBrand[]>()
+  if (resultIds.length === 0) return map
+  try {
+    const mentions = await prisma.competitorMention.findMany({
+      where: { resultId: { in: resultIds } },
+      include: { competitor: { select: { brandName: true } } },
+    })
+    for (const m of mentions) {
+      const list = map.get(m.resultId) ?? []
+      list.push({ competitorId: m.competitorId, brandName: m.competitor.brandName, isMentioned: m.isMentioned, isCited: m.isCited, sentiment: m.sentiment })
+      map.set(m.resultId, list)
+    }
+  } catch { /* CompetitorMention table not migrated yet, or DB unreachable */ }
+  return map
 }
 
 async function getSessionsForPrompt(promptId: string): Promise<SessionOption[]> {
@@ -66,6 +95,31 @@ export default async function ResultsDetailPage({
     .sort((a, b) => PLATFORM_ORDER.indexOf(a.platform) - PLATFORM_ORDER.indexOf(b.platform))
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
+
+  // Competitor summary — how many of this prompt's platform results mention each tracked brand
+  let competitors: Awaited<ReturnType<typeof getActiveCompetitors>> = []
+  try {
+    const session = await auth()
+    if (session?.user?.id) competitors = await getActiveCompetitors(session.user.id)
+  } catch { /* not signed in / DB not configured */ }
+
+  const mentionsByResult = await getCompetitorMentionsByResult(sortedResults.map((r) => r.id))
+
+  const brandSummary = [
+    {
+      id: 'you',
+      brandName: YOUR_BRAND_NAME,
+      isYou: true,
+      mentionedCount: sortedResults.filter((r) => r.isMentioned).length,
+    },
+    ...competitors.map((c) => ({
+      id: c.id,
+      brandName: c.brandName,
+      isYou: false,
+      mentionedCount: sortedResults.filter((r) => (mentionsByResult.get(r.id) ?? []).some((m) => m.competitorId === c.id && m.isMentioned)).length,
+    })),
+  ]
+  const platformCount = sortedResults.length
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -129,6 +183,41 @@ export default async function ResultsDetailPage({
         </div>
       )}
 
+      {/* Competitor summary strip */}
+      {competitors.length > 0 && platformCount > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {brandSummary.map((b) => (
+            <div
+              key={b.id}
+              className={
+                b.isYou
+                  ? 'bg-[#e6f2f5] border border-[#b8d8e0] rounded-xl p-3.5'
+                  : 'bg-white border border-[#dde6ea] rounded-xl p-3.5'
+              }
+            >
+              <p className={`text-xs font-semibold mb-2 truncate ${b.isYou ? 'text-[#084c61]' : 'text-[#1a1a1a]'}`}>
+                {b.brandName}{b.isYou && ' (You)'}
+              </p>
+              <p className="text-xl font-extrabold text-[#084c61] leading-none mb-2">
+                {b.mentionedCount}<span className="text-xs font-semibold text-[#5a7a85]"> / {platformCount} platforms</span>
+              </p>
+              <div className="flex gap-1">
+                {sortedResults.map((r) => {
+                  const filled = b.isYou ? r.isMentioned : (mentionsByResult.get(r.id) ?? []).some((m) => m.competitorId === b.id && m.isMentioned)
+                  return (
+                    <div
+                      key={r.id}
+                      className="h-1.5 flex-1 rounded-sm"
+                      style={{ backgroundColor: filled ? (b.isYou ? '#177e89' : '#8aadb8') : '#eef3f5' }}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Platform results */}
       {sortedResults.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#dde6ea] py-16 text-center">
@@ -181,6 +270,39 @@ export default async function ResultsDetailPage({
                     ) : null)}
                   </div>
                 </div>
+
+                {/* Brands detected (yours + tracked competitors) */}
+                {competitors.length > 0 && (() => {
+                  const detected = [
+                    ...(result.isMentioned ? [{ id: 'you', brandName: YOUR_BRAND_NAME, isYou: true, sentiment: result.sentiment }] : []),
+                    ...(mentionsByResult.get(result.id) ?? [])
+                      .filter((m) => m.isMentioned)
+                      .map((m) => ({ id: m.competitorId, brandName: m.brandName, isYou: false, sentiment: m.sentiment })),
+                  ]
+                  if (detected.length === 0) return null
+                  return (
+                    <div className="px-5 pt-4">
+                      <p className="text-[10px] font-semibold text-[#8aadb8] uppercase tracking-wider mb-2">Brands Detected</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {detected.map((d) => {
+                          const tone = d.sentiment === 'positive'
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                            : d.sentiment === 'negative'
+                            ? 'bg-rose-50 border-rose-200 text-rose-800'
+                            : 'bg-[#f5f8fa] border-[#eef3f5] text-[#5a7a85]'
+                          return (
+                            <span
+                              key={d.id}
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10.5px] font-semibold ${tone} ${d.isYou ? 'ring-1 ring-inset ring-[#177e89]' : ''}`}
+                            >
+                              {d.brandName}{d.isYou && ' · You'}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {/* Response text */}
                 <div className="px-5 py-4 flex-1">
