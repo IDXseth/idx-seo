@@ -14,6 +14,7 @@ import { getSitemapAnalysis, SitemapAnalysis } from '@/lib/sitemap'
 import { getGscMetrics, getPageCrawlResults } from '@/lib/gsc'
 import { getSessionList } from '@/lib/run-sessions'
 import { getProjectList } from '@/lib/projects'
+import { getBrandSeries } from '@/lib/competitor-stats'
 import { slugify } from '@/lib/utils'
 import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink, Download, Users } from 'lucide-react'
 
@@ -427,20 +428,10 @@ async function getCompetitorTrendData(competitorId: string, promptType?: string,
 }
 
 // ─── Brand comparison (all brands, one chart) ──────────────────────────────
-// Everything the Overview tab's comparison chart needs, in one pass: your own
-// brand plus every active tracked competitor, each with the same shape, plus
-// an "any brand" aggregate (did *this* result mention/cite you OR any tracked
-// competitor). One query — Result already carries its own isMentioned/isCited
-// and its nested CompetitorMentions — so every brand's numbers come from
-// exactly the same rows, which is what makes them comparable.
-
-export interface BrandSeries {
-  id: string
-  label: string
-  overallMentionRate: number
-  overallCitationRate: number
-  platformStats: Array<{ platform: string; mentionRate: number; citationRate: number }>
-}
+// The Overview tab's comparison chart needs every brand's numbers scoped to
+// the dashboard's own canonical-prompt dedup — segment detail pages (category,
+// market, etc.) have their own already-scoped prompt list and call
+// getBrandSeries directly instead. See lib/competitor-stats.ts.
 
 async function getBrandComparisonData(sessionId?: string, promptType?: string, projectId?: string) {
   const canonicalWhere = {
@@ -455,90 +446,10 @@ async function getBrandComparisonData(sessionId?: string, promptType?: string, p
     })
   ).map((r) => r.id)
 
-  const results = await prisma.result.findMany({
-    where: {
-      promptId: { in: canonicalIds },
-      ...(sessionId ? { runSessionId: sessionId } : {}),
-    },
-    select: {
-      platform: true,
-      isMentioned: true,
-      isCited: true,
-      competitorMentions: {
-        select: {
-          competitorId: true,
-          isMentioned: true,
-          isCited: true,
-          competitor: { select: { brandName: true, active: true } },
-        },
-      },
-    },
+  return getBrandSeries({
+    promptId: { in: canonicalIds },
+    ...(sessionId ? { runSessionId: sessionId } : {}),
   })
-
-  type ResultRow = (typeof results)[number]
-  type Flags = { isMentioned: boolean; isCited: boolean } | null
-
-  function buildSeries(id: string, label: string, getFlags: (r: ResultRow) => Flags): BrandSeries {
-    let total = 0
-    let mentioned = 0
-    let cited = 0
-    const byPlatform = new Map<string, { total: number; mentioned: number; cited: number }>(
-      PLATFORMS.map((p) => [p, { total: 0, mentioned: 0, cited: 0 }])
-    )
-
-    for (const r of results) {
-      const flags = getFlags(r)
-      if (!flags) continue
-      total++
-      if (flags.isMentioned) mentioned++
-      if (flags.isCited) cited++
-      const bucket = byPlatform.get(r.platform)
-      if (bucket) {
-        bucket.total++
-        if (flags.isMentioned) bucket.mentioned++
-        if (flags.isCited) bucket.cited++
-      }
-    }
-
-    return {
-      id,
-      label,
-      overallMentionRate: total > 0 ? mentioned / total : 0,
-      overallCitationRate: total > 0 ? cited / total : 0,
-      platformStats: PLATFORMS.map((platform) => {
-        const b = byPlatform.get(platform)!
-        return {
-          platform,
-          mentionRate: b.total > 0 ? b.mentioned / b.total : 0,
-          citationRate: b.total > 0 ? b.cited / b.total : 0,
-        }
-      }),
-    }
-  }
-
-  const yourBrand = buildSeries('you', 'Your Brand', (r) => ({ isMentioned: r.isMentioned, isCited: r.isCited }))
-
-  const competitorNames = new Map<string, string>()
-  for (const r of results) {
-    for (const cm of r.competitorMentions) {
-      if (cm.competitor.active) competitorNames.set(cm.competitorId, cm.competitor.brandName)
-    }
-  }
-  const competitorSeries = [...competitorNames.entries()]
-    .map(([id, brandName]) =>
-      buildSeries(id, brandName, (r) => {
-        const cm = r.competitorMentions.find((c) => c.competitorId === id)
-        return cm ? { isMentioned: cm.isMentioned, isCited: cm.isCited } : null
-      })
-    )
-    .sort((a, b) => a.label.localeCompare(b.label))
-
-  const anyBrand = buildSeries('any', 'Any Brand', (r) => ({
-    isMentioned: r.isMentioned || r.competitorMentions.some((cm) => cm.isMentioned),
-    isCited: r.isCited || r.competitorMentions.some((cm) => cm.isCited),
-  }))
-
-  return { brands: [yourBrand, ...competitorSeries], anyBrand }
 }
 
 export default async function DashboardPage({

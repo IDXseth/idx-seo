@@ -4,8 +4,8 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { Badge } from '@/components/ui/badge'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
-import { PLATFORM_LABELS, PLATFORM_COLORS, YOUR_BRAND_NAME } from '@/lib/utils'
-import { getActiveCompetitors } from '@/lib/competitors'
+import { PLATFORM_LABELS, PLATFORM_COLORS, YOUR_BRAND_NAME, YOUR_BRAND_DOMAIN } from '@/lib/utils'
+import { getActiveCompetitors, domainMatches } from '@/lib/competitors'
 import { ChevronLeft, ExternalLink, MapPin, Building2, Tag, Heart, Info } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -310,7 +310,7 @@ export default async function ResultsDetailPage({
                   {isNoAIO ? (
                     <p className="text-xs text-[#8aadb8] italic">No AI Overview was served for this query.</p>
                   ) : (
-                    <p className="text-xs text-[#1a1a1a] leading-relaxed">{highlightTerms(result.responseText ?? '', prompt.communityName)}</p>
+                    <p className="text-xs text-[#1a1a1a] leading-relaxed">{highlightTerms(result.responseText ?? '', prompt.communityName, competitors)}</p>
                   )}
                 </div>
 
@@ -321,21 +321,44 @@ export default async function ResultsDetailPage({
                       Citations ({result.citations.length})
                     </p>
                     <div className="space-y-1.5">
-                      {result.citations.map((citation) => (
-                        <a
-                          key={citation.id}
-                          href={citation.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-start gap-2 p-2 rounded-lg bg-[#f5f8fa] hover:bg-[#e6f2f5] transition-colors group"
-                        >
-                          <ExternalLink className="h-3 w-3 text-[#8aadb8] mt-0.5 flex-shrink-0 group-hover:text-[#177e89] transition-colors" />
-                          <div className="min-w-0">
-                            <p className="text-xs font-medium text-[#084c61] truncate">{citation.title}</p>
-                            <p className="text-[10px] text-[#8aadb8]">{citation.domain}</p>
-                          </div>
-                        </a>
-                      ))}
+                      {result.citations.map((citation) => {
+                        const owner = domainMatches(citation.domain, YOUR_BRAND_DOMAIN)
+                          ? { label: YOUR_BRAND_NAME, isYou: true }
+                          : (() => {
+                              const c = competitors.find((c) => domainMatches(citation.domain, c.domain))
+                              return c ? { label: c.brandName, isYou: false } : null
+                            })()
+                        return (
+                          <a
+                            key={citation.id}
+                            href={citation.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`flex items-start gap-2 p-2 rounded-lg transition-colors group ${
+                              owner
+                                ? owner.isYou
+                                  ? 'bg-[#e6f2f5] ring-1 ring-inset ring-[#177e89] hover:bg-[#d9edf1]'
+                                  : 'bg-sky-50 ring-1 ring-inset ring-sky-200 hover:bg-sky-100'
+                                : 'bg-[#f5f8fa] hover:bg-[#e6f2f5]'
+                            }`}
+                          >
+                            <ExternalLink className="h-3 w-3 text-[#8aadb8] mt-0.5 flex-shrink-0 group-hover:text-[#177e89] transition-colors" />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-medium text-[#084c61] truncate">{citation.title}</p>
+                              <p className="text-[10px] text-[#8aadb8]">{citation.domain}</p>
+                            </div>
+                            {owner && (
+                              <span
+                                className={`flex-shrink-0 inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+                                  owner.isYou ? 'bg-[#177e89] text-white' : 'bg-sky-600 text-white'
+                                }`}
+                              >
+                                {owner.isYou ? 'You' : owner.label}
+                              </span>
+                            )}
+                          </a>
+                        )
+                      })}
                     </div>
                   </div>
                 )}
@@ -350,17 +373,50 @@ export default async function ResultsDetailPage({
 
 const BRAND_TERMS = ['Senior Lifestyle Corporation', 'Senior Lifestyle']
 
-function highlightTerms(text: string, communityName: string): React.ReactNode {
-  const terms = [...new Set([communityName, ...BRAND_TERMS].filter(Boolean))]
-  // Sort longest-first so "Senior Lifestyle Corporation" matches before "Senior Lifestyle"
-  terms.sort((a, b) => b.length - a.length)
-  const pattern = new RegExp(`(${terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi')
-  const parts = text.split(pattern)
-  return parts.map((part, i) =>
-    terms.some((t) => t.toLowerCase() === part.toLowerCase())
-      ? <mark key={i} className="bg-yellow-100 text-yellow-900 rounded px-0.5">{part}</mark>
-      : part
+interface HighlightTerm {
+  term: string
+  brandName: string
+  isYou: boolean
+}
+
+// Highlights every occurrence of your brand's name (or the specific community's
+// name) in yellow, and every occurrence of a tracked competitor's brand name or
+// alias in blue — the same substring match matchCompetitors() uses to compute
+// isMentioned, so a highlighted mention here always agrees with the "Mentioned"
+// badge and the Brands Detected row above.
+function highlightTerms(
+  text: string,
+  communityName: string,
+  competitors: Array<{ id: string; brandName: string; aliases: string }>
+): React.ReactNode {
+  const yourTerms: HighlightTerm[] = [...new Set([communityName, ...BRAND_TERMS].filter(Boolean))]
+    .map((term) => ({ term, brandName: YOUR_BRAND_NAME, isYou: true }))
+  const competitorTerms: HighlightTerm[] = competitors.flatMap((c) =>
+    [c.brandName, ...c.aliases.split(',')]
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .map((term) => ({ term, brandName: c.brandName, isYou: false }))
   )
+  const terms = [...yourTerms, ...competitorTerms]
+  if (terms.length === 0) return text
+
+  // Sort longest-first so e.g. "Senior Lifestyle Corporation" matches before "Senior Lifestyle"
+  terms.sort((a, b) => b.term.length - a.term.length)
+  const pattern = new RegExp(`(${terms.map((t) => t.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi')
+  const parts = text.split(pattern)
+  return parts.map((part, i) => {
+    const match = terms.find((t) => t.term.toLowerCase() === part.toLowerCase())
+    if (!match) return part
+    return (
+      <mark
+        key={i}
+        title={match.isYou ? 'Your brand' : `Tracked competitor: ${match.brandName}`}
+        className={match.isYou ? 'bg-yellow-100 text-yellow-900 rounded px-0.5' : 'bg-sky-100 text-sky-900 rounded px-0.5'}
+      >
+        {part}
+      </mark>
+    )
+  })
 }
 
 function MetaItem({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {

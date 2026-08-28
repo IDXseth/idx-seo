@@ -24,7 +24,7 @@ function normalizeDomain(domain: string): string {
     .replace(/\/.*$/, '')
 }
 
-function domainMatches(citationDomain: string, competitorDomain: string): boolean {
+export function domainMatches(citationDomain: string, competitorDomain: string): boolean {
   const cited = citationDomain.toLowerCase().replace(/^www\./, '')
   const known = normalizeDomain(competitorDomain)
   if (!known) return false

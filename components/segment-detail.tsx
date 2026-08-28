@@ -3,13 +3,14 @@
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { PlatformMentionChart } from '@/components/platform-chart'
+import { BrandComparisonChart } from '@/components/brand-comparison-chart'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { ProjectPicker, ProjectOption } from '@/components/project-picker'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { PLATFORM_LABELS, PLATFORM_COLORS, formatPercent, cn } from '@/lib/utils'
 import { ChevronLeft, Target, Quote, FileText, ExternalLink, Trophy } from 'lucide-react'
-import type { CompetitorLeaderboardEntry } from '@/lib/competitor-stats'
+import type { CompetitorLeaderboardEntry, BrandComparison } from '@/lib/competitor-stats'
 
 interface Citation {
   id: string
@@ -73,6 +74,7 @@ interface SegmentDetailProps {
   basePath?: string
   trendData?: TrendPoint[]
   competitorLeaderboard?: CompetitorLeaderboardEntry[] | null
+  brandComparison?: BrandComparison | null
   promptTypeFilter?: PromptTypeFilter
   projectId?: string
   projects?: ProjectOption[]
@@ -92,6 +94,7 @@ export function SegmentDetail({
   basePath,
   trendData,
   competitorLeaderboard,
+  brandComparison,
   promptTypeFilter = 'all',
   projectId,
   projects,
@@ -185,8 +188,14 @@ export function SegmentDetail({
 
       {/* Platform Chart */}
       <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
-        <h2 className="text-sm font-semibold text-[#084c61] mb-4">Performance by Platform</h2>
-        <PlatformMentionChart data={platformStats} />
+        <h2 className="text-sm font-semibold text-[#084c61] mb-4">
+          {brandComparison && brandComparison.brands.length > 1 ? 'Performance by Platform — All Brands' : 'Performance by Platform'}
+        </h2>
+        {brandComparison && brandComparison.brands.length > 1 ? (
+          <BrandComparisonChart brands={brandComparison.brands} anyBrand={brandComparison.anyBrand} />
+        ) : (
+          <PlatformMentionChart data={platformStats} />
+        )}
       </div>
 
       {/* Top Citation Sources */}

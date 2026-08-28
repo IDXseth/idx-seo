@@ -6,7 +6,7 @@ import { SegmentDetail } from '@/components/segment-detail'
 import { SessionOption } from '@/components/run-session-picker'
 import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
-import { getCompetitorLeaderboard, CompetitorLeaderboardEntry } from '@/lib/competitor-stats'
+import { getCompetitorLeaderboard, getBrandSeries, CompetitorLeaderboardEntry, BrandComparison } from '@/lib/competitor-stats'
 import { getSessionList } from '@/lib/run-sessions'
 import { getProjectList } from '@/lib/projects'
 
@@ -50,14 +50,19 @@ async function getCategoryData(name: string, sessionId?: string, promptType?: st
     .map(([domain, count]) => ({ domain, count, percentage: totalResults > 0 ? count / totalResults : 0 }))
 
   const trendData = sessionId ? [] : await getSegmentTrendData({ category: decodedName, ...scopeFilter })
+  const promptIds = prompts.map((p) => p.id)
   const competitorLeaderboard = userId
-    ? await getCompetitorLeaderboard(prompts.map((p) => p.id), userId, sessionId)
+    ? await getCompetitorLeaderboard(promptIds, userId, sessionId)
     : null
+  const brandComparison = await getBrandSeries({
+    promptId: { in: promptIds },
+    ...(sessionId ? { runSessionId: sessionId } : {}),
+  }).catch(() => null)
 
   return {
     name: decodedName, prompts,
     overview: { promptCount: prompts.length, mentionRate: totalResults > 0 ? mentioned / totalResults : 0, citationRate: totalResults > 0 ? cited / totalResults : 0 },
-    platformStats, topDomains, trendData, competitorLeaderboard,
+    platformStats, topDomains, trendData, competitorLeaderboard, brandComparison,
   }
 }
 
@@ -106,6 +111,7 @@ export default async function CategoryDetailPage({
       basePath={`/dashboard/category/${encodeURIComponent(name)}`}
       trendData={data.trendData}
       competitorLeaderboard={data.competitorLeaderboard as CompetitorLeaderboardEntry[] | null}
+      brandComparison={data.brandComparison as BrandComparison | null}
       promptTypeFilter={promptTypeParam}
       projectId={projectId}
       projects={projects}

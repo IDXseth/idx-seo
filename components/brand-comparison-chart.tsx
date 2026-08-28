@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { PLATFORM_LABELS, formatPercent } from '@/lib/utils'
-import type { BrandSeries } from '@/app/dashboard/page'
+import type { BrandSeries } from '@/lib/competitor-stats'
 
 // Validated categorical palette (dataviz skill default order) — "Your Brand"
 // always takes slot 1, competitors take the next slots in stable order.
@@ -102,6 +102,7 @@ export function BrandComparisonChart({ brands, anyBrand }: { brands: BrandSeries
                   style={{ background: on ? colorOf(b.id) : '#dde6ea' }}
                 />
                 {b.label}
+                {b.id === 'you' && <span className="text-[9px] font-bold text-[#177e89]">YOU</span>}
                 <span className={on ? 'text-[#5a7a85]' : 'text-[#c5d3d8]'}>{formatPercent(rateOf(b))}</span>
               </button>
             )
