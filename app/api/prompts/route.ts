@@ -37,7 +37,7 @@ export async function POST(req: Request) {
   const {
     batchId,
     promptText,
-    communityName,
+    communityName = '',
     promptType = 'brand',
     category = '',
     city = '',
@@ -45,9 +45,9 @@ export async function POST(req: Request) {
     levelOfCare = '',
   } = body
 
-  if (!batchId || !promptText || !communityName) {
+  if (!batchId || !promptText) {
     return NextResponse.json(
-      { error: 'batchId, promptText, and communityName are required' },
+      { error: 'batchId and promptText are required' },
       { status: 400 }
     )
   }

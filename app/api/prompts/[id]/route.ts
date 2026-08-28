@@ -54,8 +54,8 @@ export async function PATCH(
       levelOfCare,
     } = body
 
-    if (!promptText?.trim() || !communityName?.trim()) {
-      return NextResponse.json({ error: 'Prompt text and community name are required' }, { status: 400 })
+    if (!promptText?.trim()) {
+      return NextResponse.json({ error: 'Prompt text is required' }, { status: 400 })
     }
 
     const existing = await prisma.prompt.findUnique({
@@ -73,7 +73,7 @@ export async function PATCH(
       where: { id },
       data: {
         promptText: promptText.trim(),
-        communityName: communityName.trim(),
+        communityName: (communityName ?? existing.communityName ?? '').trim(),
         promptType: promptType ?? existing.promptType,
         category: (category ?? existing.category ?? '').trim(),
         city: (city ?? existing.city ?? '').trim(),

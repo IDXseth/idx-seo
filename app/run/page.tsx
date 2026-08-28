@@ -296,8 +296,8 @@ function AddPromptModal({
   const [error, setError] = useState<string | null>(null)
 
   const handleSave = async () => {
-    if (!promptText.trim() || !communityName.trim()) {
-      setError('Prompt text and community name are required')
+    if (!promptText.trim()) {
+      setError('Prompt text is required')
       return
     }
     setSaving(true)
@@ -349,12 +349,12 @@ function AddPromptModal({
           </div>
 
           <div>
-            <label className="text-xs font-medium text-[#5a7a85] block mb-1">Community name <span className="text-rose-500">*</span></label>
+            <label className="text-xs font-medium text-[#5a7a85] block mb-1">Community name <span className="text-[#8aadb8] font-normal">(optional)</span></label>
             <input
               type="text"
               value={communityName}
               onChange={(e) => setCommunityName(e.target.value)}
-              placeholder="e.g. The Glen at Lakewood"
+              placeholder="Leave blank for a general, non-community-specific prompt"
               className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
             />
           </div>
@@ -614,7 +614,7 @@ function PromptEditForm({
       <input
         value={communityName}
         onChange={(e) => setCommunityName(e.target.value)}
-        placeholder="Community name"
+        placeholder="Community name (optional)"
         className="w-full px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]"
       />
       <div className="grid grid-cols-2 gap-2">
@@ -634,7 +634,7 @@ function PromptEditForm({
       <div className="flex gap-2 pt-1">
         <button
           onClick={() => onSave({ promptText, communityName, promptType, category, city, market, levelOfCare })}
-          disabled={saving || !promptText.trim() || !communityName.trim()}
+          disabled={saving || !promptText.trim()}
           className="text-[11px] font-semibold text-white bg-[#084c61] hover:bg-[#063a4a] px-2.5 py-1 rounded-md transition-colors disabled:opacity-50"
         >
           {saving ? 'Saving…' : 'Save'}
@@ -781,7 +781,7 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
           <div key={p.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-[#f5f8fa] group">
             <div className="min-w-0">
               <p className="text-xs text-[#084c61] truncate">{p.promptText}</p>
-              <p className="text-[10px] text-[#8aadb8] truncate">{p.communityName}</p>
+              <p className="text-[10px] text-[#8aadb8] truncate">{p.communityName || '(no community)'}</p>
             </div>
             {canWrite && (
               <div className="flex items-center gap-1 flex-shrink-0">

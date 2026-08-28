@@ -33,9 +33,6 @@ export async function POST(req: Request) {
     prompts?: CommitSuggestion[]
   }
 
-  if (!communityName || !String(communityName).trim()) {
-    return NextResponse.json({ error: 'communityName is required' }, { status: 400 })
-  }
   if (!Array.isArray(prompts) || prompts.length === 0) {
     return NextResponse.json({ error: 'At least one prompt is required' }, { status: 400 })
   }

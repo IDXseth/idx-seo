@@ -126,7 +126,6 @@ export function SuggestPromptsPanel() {
   }
 
   const handleGenerate = async () => {
-    if (!communityName.trim()) { setGenerateError('Community name is required'); return }
     setGenerating(true)
     setGenerateError(null)
     setResult(null)
@@ -145,7 +144,8 @@ export function SuggestPromptsPanel() {
       if (!res.ok) throw new Error((data as unknown as { error?: string }).error || 'Failed to generate suggestions')
       setResult(data)
       setSelected(new Set(data.suggestions.map((_, i) => i)))
-      setBatchName(`${communityName} — AI Suggested`)
+      const batchLabel = communityName.trim() || market.trim() || city.trim() || 'General'
+      setBatchName(`${batchLabel} — AI Suggested`)
     } catch (err) {
       setGenerateError(err instanceof Error ? err.message : 'Failed to generate suggestions')
     } finally {
@@ -208,8 +208,8 @@ export function SuggestPromptsPanel() {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-medium text-[#5a7a85] block mb-1">Community name <span className="text-rose-500">*</span></label>
-            <input type="text" value={communityName} onChange={(e) => setCommunityName(e.target.value)} placeholder="e.g. The Glen at Lakewood"
+            <label className="text-xs font-medium text-[#5a7a85] block mb-1">Community name <span className="text-[#8aadb8] font-normal">(optional)</span></label>
+            <input type="text" value={communityName} onChange={(e) => setCommunityName(e.target.value)} placeholder="Leave blank for general, portfolio-wide prompts"
               className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
           </div>
           <div>
