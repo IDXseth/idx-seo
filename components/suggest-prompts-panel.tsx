@@ -39,6 +39,22 @@ interface PromptSuggestion {
   promptText: string
 }
 
+// A crashed/timed-out serverless function returns an HTML error page, not
+// JSON — parse defensively so that shows up as a readable message instead
+// of a raw "Unexpected token '<'" (or similar) parse error.
+async function parseJsonResponse(res: Response): Promise<Record<string, unknown>> {
+  const text = await res.text()
+  try {
+    return JSON.parse(text)
+  } catch {
+    throw new Error(
+      res.ok
+        ? 'The server returned an unexpected response. Please try again.'
+        : `Request failed (${res.status}). This can happen when generation takes too long — try again with fewer competitors or a smaller prompt count.`
+    )
+  }
+}
+
 interface SuggestionResult {
   suggestions: PromptSuggestion[]
   groundedInGsc: boolean
@@ -140,10 +156,11 @@ export function SuggestPromptsPanel() {
           count,
         }),
       })
-      const data: SuggestionResult = await res.json()
-      if (!res.ok) throw new Error((data as unknown as { error?: string }).error || 'Failed to generate suggestions')
-      setResult(data)
-      setSelected(new Set(data.suggestions.map((_, i) => i)))
+      const data = await parseJsonResponse(res)
+      if (!res.ok) throw new Error((data as { error?: string }).error || 'Failed to generate suggestions')
+      const suggestionResult = data as unknown as SuggestionResult
+      setResult(suggestionResult)
+      setSelected(new Set(suggestionResult.suggestions.map((_, i) => i)))
       const batchLabel = communityName.trim() || market.trim() || city.trim() || 'General'
       setBatchName(`${batchLabel} — AI Suggested`)
     } catch (err) {
@@ -177,9 +194,9 @@ export function SuggestPromptsPanel() {
           prompts: chosen,
         }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to save prompts')
-      setCommitSuccess({ promptCount: data.promptCount, skippedCount: data.skippedCount })
+      const data = await parseJsonResponse(res)
+      if (!res.ok) throw new Error((data.error as string | undefined) || 'Failed to save prompts')
+      setCommitSuccess({ promptCount: data.promptCount as number, skippedCount: data.skippedCount as number })
       setTimeout(() => router.push('/run'), 2000)
     } catch (err) {
       setCommitError(err instanceof Error ? err.message : 'Failed to save prompts')

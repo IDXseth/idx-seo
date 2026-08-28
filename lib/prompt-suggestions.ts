@@ -20,6 +20,13 @@ export type SuggestionCategory = typeof SUGGESTION_CATEGORIES[number]
 
 const MAX_COUNT = 60
 
+// Must stay comfortably under the /api/suggestions route's `maxDuration` (60s).
+// Without this, a slow web_search round trip can run past the platform's own
+// execution ceiling — the function gets killed externally with no JS
+// exception thrown, so the try/catch around this call never runs and the
+// caller gets the platform's HTML crash page instead of a JSON fallback.
+const CLAUDE_TIMEOUT_MS = 45_000
+
 export interface SuggestionInput {
   userId: string
   communityName: string
@@ -127,19 +134,22 @@ Ground your prompts in the ACTUAL topics/questions you find on those competitor 
 Respond with ONLY a JSON array (no markdown code fences, no commentary before or after), where each item has this exact shape:
 {"category": "<one of the categories above>", "levelOfCare": "<a level of care above, or empty string>", "promptText": "<the question>"}`
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
-    tools: competitors.length > 0
-      ? [{
-          type: 'web_search_20250305',
-          name: 'web_search',
-          allowed_domains: competitors.map((c) => c.domain),
-          max_uses: Math.min(10, competitors.length * 2 + 2),
-        }]
-      : undefined,
-    messages: [{ role: 'user', content: prompt }],
-  })
+  const response = await client.messages.create(
+    {
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4096,
+      tools: competitors.length > 0
+        ? [{
+            type: 'web_search_20250305',
+            name: 'web_search',
+            allowed_domains: competitors.map((c) => c.domain),
+            max_uses: Math.min(6, competitors.length * 2 + 2),
+          }]
+        : undefined,
+      messages: [{ role: 'user', content: prompt }],
+    },
+    { timeout: CLAUDE_TIMEOUT_MS }
+  )
 
   const text = response.content
     .filter((block): block is Anthropic.Messages.TextBlock => block.type === 'text')
