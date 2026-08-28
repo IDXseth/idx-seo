@@ -6,37 +6,23 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
 }
 
 model User {
-  id              String           @id @default(cuid())
-  name            String?
-  email           String           @unique
-  emailVerified   DateTime?
-  image           String?
-  password        String? // null for OAuth users
-  gscSiteUrl      String? // selected Google Search Console property URL — SQL: ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "gscSiteUrl" TEXT;
-  createdAt       DateTime         @default(now())
-  accounts        Account[]
-  sessions        Session[]
-  batches         Batch[]
-  sharedBatches   ProjectShare[]
-  competitorSites CompetitorSite[]
-}
-
-// A competitor senior living operator's website, added by the user so the
-// prompt-suggestion generator can ground its research in that site's real
-// content (FAQ/blog topics) via a domain-restricted web search.
-model CompetitorSite {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name      String
-  domain    String // bare hostname, e.g. "brookdale.com" — no protocol/path
-  createdAt DateTime @default(now())
-
-  @@unique([userId, domain])
+  id            String         @id @default(cuid())
+  name          String?
+  email         String         @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?        // null for OAuth users
+  gscSiteUrl    String?        // selected Google Search Console property URL — SQL: ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "gscSiteUrl" TEXT;
+  createdAt     DateTime       @default(now())
+  accounts      Account[]
+  sessions      Session[]
+  batches       Batch[]
+  sharedBatches ProjectShare[]
+  competitors   Competitor[]
 }
 
 model Account {
@@ -77,8 +63,8 @@ model ProjectShare {
   id        String   @id @default(cuid())
   batchId   String
   batch     Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  email     String // invited email
-  userId    String? // set when the invited user signs up/logs in
+  email     String   // invited email
+  userId    String?  // set when the invited user signs up/logs in
   user      User?    @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
 
@@ -111,7 +97,7 @@ model BatchRun {
   doneCount    Int         @default(0)
   failCount    Int         @default(0)
   notifyEmail  String?
-  status       String      @default("running") // "running" | "done"
+  status       String      @default("running")  // "running" | "done"
   startedAt    DateTime    @default(now())
   finishedAt   DateTime?
 }
@@ -120,10 +106,10 @@ model RunSession {
   id          String     @id @default(cuid())
   batchId     String?
   batch       Batch?     @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  triggeredBy String     @default("manual") // "manual" | "scheduled"
+  triggeredBy String     @default("manual")  // "manual" | "scheduled"
   scheduleId  String?
   schedule    Schedule?  @relation(fields: [scheduleId], references: [id])
-  status      String     @default("running") // "running" | "done"
+  status      String     @default("running")  // "running" | "done"
   batchRuns   BatchRun[]
   results     Result[]
   startedAt   DateTime   @default(now())
@@ -134,10 +120,10 @@ model Schedule {
   id          String       @id @default(cuid())
   batchId     String
   batch       Batch        @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  frequency   String // "daily" | "weekly" | "monthly" | "custom"
-  customDays  Int? // days between runs, for "custom"
-  dayOfWeek   Int? // 0–6 (Sun=0), for "weekly"
-  dayOfMonth  Int? // 1–31, for "monthly"
+  frequency   String       // "daily" | "weekly" | "monthly" | "custom"
+  customDays  Int?         // days between runs, for "custom"
+  dayOfWeek   Int?         // 0–6 (Sun=0), for "weekly"
+  dayOfMonth  Int?         // 1–31, for "monthly"
   hour        Int          @default(9)
   timezone    String       @default("America/Chicago")
   enabled     Boolean      @default(true)
@@ -151,14 +137,14 @@ model Prompt {
   id            String   @id @default(cuid())
   batchId       String
   batch         Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  promptType    String // "brand" | "nonbrand"
+  promptType    String   // "brand" | "nonbrand"
   category      String
   communityName String
   city          String
   market        String
-  levelOfCare   String // "Assisted Living" | "Independent Living" | "Memory Care" | "Skilled Nursing" | "Short Term Care" | ""
+  levelOfCare   String   // "Assisted Living" | "Independent Living" | "Memory Care" | "Skilled Nursing" | "Short Term Care" | ""
   promptText    String
-  jobStatus     String   @default("pending") // "pending" | "running" | "done" | "failed"
+  jobStatus     String   @default("pending")  // "pending" | "running" | "done" | "failed"
   jobError      String?
   results       Result[]
   createdAt     DateTime @default(now())
@@ -170,12 +156,13 @@ model Result {
   prompt       Prompt      @relation(fields: [promptId], references: [id], onDelete: Cascade)
   runSessionId String?
   runSession   RunSession? @relation(fields: [runSessionId], references: [id])
-  platform     String // "chatgpt" | "claude" | "perplexity" | "gemini" | "google_aio" | "google_ai_mode"
+  platform     String      // "chatgpt" | "claude" | "perplexity" | "gemini" | "google_aio" | "google_ai_mode"
   responseText String
   isMentioned  Boolean     @default(false)
   isCited      Boolean     @default(false)
-  sentiment    String      @default("neutral") // "positive" | "neutral" | "negative"
+  sentiment    String      @default("neutral")  // "positive" | "neutral" | "negative"
   citations    Citation[]
+  competitorMentions CompetitorMention[]
   runAt        DateTime    @default(now())
 }
 
@@ -186,6 +173,34 @@ model Citation {
   url      String
   title    String
   domain   String
+}
+
+// A named competitor tracked against the user's existing prompt set.
+model Competitor {
+  id        String              @id @default(cuid())
+  userId    String
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brandName String
+  domain    String              // used to match citation domains (e.g. "brookdale.com")
+  aliases   String              @default("")  // comma-separated alternate names scanned in response text
+  active    Boolean             @default(true)
+  mentions  CompetitorMention[]
+  createdAt DateTime            @default(now())
+}
+
+// One row per (Result, Competitor) — mirrors Result.isMentioned/isCited/sentiment
+// so competitor mention/citation rates can be computed the same way as the user's own.
+model CompetitorMention {
+  id           String     @id @default(cuid())
+  resultId     String
+  result       Result     @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  competitorId String
+  competitor   Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  isMentioned  Boolean    @default(false)
+  isCited      Boolean    @default(false)
+  sentiment    String     @default("neutral")  // "positive" | "neutral" | "negative"
+
+  @@unique([resultId, competitorId])
 }
 
 // Cache for Google Search Console metrics per page URL.
@@ -214,4 +229,16 @@ model GscQuery {
   position    Float?
   fetchedAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+// Cache for page-level schema markup detection.
+// Populated by crawlCommunityPages() after each GSC sync.
+// SQL: CREATE TABLE IF NOT EXISTS "PageCrawlResult" ("id" TEXT NOT NULL PRIMARY KEY, "pageUrl" TEXT NOT NULL UNIQUE, "hasLocalBusiness" BOOLEAN, "hasSeniorCare" BOOLEAN, "crawledAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL);
+model PageCrawlResult {
+  id               String   @id @default(cuid())
+  pageUrl          String   @unique
+  hasLocalBusiness Boolean?
+  hasSeniorCare    Boolean?
+  crawledAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }

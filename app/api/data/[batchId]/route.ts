@@ -17,16 +17,10 @@ export async function GET(
 
     const batch = await prisma.batch.findUnique({
       where: { id: batchId },
-      select: { id: true, name: true, userId: true, shares: { select: { email: true } } },
+      select: { id: true, name: true },
     })
 
     if (!batch) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
-    const canAccess =
-      batch.userId === session.user.id ||
-      batch.shares.some((s) => s.email === session.user.email)
-
-    if (!canAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const prompts = await prisma.prompt.findMany({
       where: { batchId },

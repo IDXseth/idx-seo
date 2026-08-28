@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { canWrite } from '@/lib/access'
 
 export async function GET() {
   try {
@@ -9,22 +10,14 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = session.user.id
-    const userEmail = session.user.email
+    const { id: currentUserId, email: currentUserEmail } = session.user
 
-    // Get batches owned by user OR shared with user (by email)
     const batches = await prisma.batch.findMany({
-      where: {
-        OR: [
-          { userId },
-          ...(userEmail
-            ? [{ shares: { some: { email: userEmail } } }]
-            : []),
-        ],
-      },
+      where: {},
       orderBy: { createdAt: 'desc' },
       include: {
         _count: { select: { prompts: true } },
+        user: { select: { email: true } },
       },
     })
 
@@ -43,7 +36,7 @@ export async function GET() {
           select: { finishedAt: true },
         })
         const recentSessions = await prisma.runSession.findMany({
-          where: { batchId: batch.id },
+          where: { batchId: batch.id, results: { some: {} } },
           orderBy: { startedAt: 'desc' },
           take: 20,
           select: {
@@ -56,6 +49,8 @@ export async function GET() {
         })
         return {
           ...batch,
+          userEmail: batch.user.email,
+          canWrite: canWrite(currentUserId, currentUserEmail, batch.userId),
           unrunCount,
           lastRunAt: lastRun?.finishedAt?.toISOString() ?? null,
           recentSessions: recentSessions.map((s) => ({

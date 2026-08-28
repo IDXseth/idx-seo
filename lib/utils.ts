@@ -16,6 +16,10 @@ export function formatPercent(value: number): string {
   return `${Math.round(value * 100)}%`
 }
 
+// The account's own brand — used to label "You" in competitor comparisons.
+export const YOUR_BRAND_NAME = 'Senior Lifestyle'
+export const YOUR_BRAND_DOMAIN = 'seniorlifestyle.com'
+
 export const PLATFORMS = [
   'chatgpt',
   'claude',

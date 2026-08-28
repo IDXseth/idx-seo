@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { prisma } from './prisma'
 import { normalizeLevelOfCare } from './normalize'
 import { getTopGscQueries } from './gsc'
+import { getActiveCompetitors } from './competitors'
 
 export const SUGGESTION_CATEGORIES = [
   'General Discovery',
@@ -51,7 +51,7 @@ export async function generatePromptSuggestions(input: SuggestionInput): Promise
 
   const [topQueries, competitors] = await Promise.all([
     getTopGscQueries(40).catch(() => []),
-    prisma.competitorSite.findMany({ where: { userId: input.userId }, orderBy: { createdAt: 'asc' } }),
+    getActiveCompetitors(input.userId),
   ])
   const competitorDomains = competitors.map((c) => c.domain)
 
@@ -92,7 +92,7 @@ async function generateWithClaude(
   categories: string[],
   count: number,
   topQueries: string[],
-  competitors: Array<{ name: string; domain: string }>
+  competitors: Array<{ brandName: string; domain: string }>
 ): Promise<PromptSuggestion[]> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -104,7 +104,7 @@ async function generateWithClaude(
     : 'No Search Console query data is available yet — skip this grounding source.'
 
   const competitorBlock = competitors.length > 0
-    ? `Research these competitor senior living operator websites with web search (they are the ONLY sites the search tool is allowed to reach) to see what topics, FAQs, and questions they address in their own content:\n${competitors.map((c) => `- ${c.name} (${c.domain})`).join('\n')}`
+    ? `Research these competitor senior living operator websites with web search (they are the ONLY sites the search tool is allowed to reach) to see what topics, FAQs, and questions they address in their own content:\n${competitors.map((c) => `- ${c.brandName} (${c.domain})`).join('\n')}`
     : 'No competitor sites have been added — generate from general knowledge of senior-living search behavior instead.'
 
   const prompt = `You are building a research set of prompts for an AI-visibility tracking tool used by a senior living operator. The tool sends each prompt to ChatGPT, Claude, Gemini, Perplexity, and Google AI Overviews, and checks whether specific senior living communities get mentioned or cited in the answer.

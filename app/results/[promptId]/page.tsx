@@ -1,9 +1,11 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { Badge } from '@/components/ui/badge'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
-import { PLATFORM_LABELS, PLATFORM_COLORS } from '@/lib/utils'
+import { PLATFORM_LABELS, PLATFORM_COLORS, YOUR_BRAND_NAME } from '@/lib/utils'
+import { getActiveCompetitors } from '@/lib/competitors'
 import { ChevronLeft, ExternalLink, MapPin, Building2, Tag, Heart, Info } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -22,6 +24,33 @@ async function getPromptData(promptId: string, sessionId: string | null) {
   })
 }
 
+interface DetectedBrand {
+  competitorId: string
+  brandName: string
+  isMentioned: boolean
+  isCited: boolean
+  sentiment: string
+}
+
+// Fetched separately from the core prompt query (and always fails soft) so a
+// not-yet-migrated CompetitorMention table can never break this page's core data.
+async function getCompetitorMentionsByResult(resultIds: string[]): Promise<Map<string, DetectedBrand[]>> {
+  const map = new Map<string, DetectedBrand[]>()
+  if (resultIds.length === 0) return map
+  try {
+    const mentions = await prisma.competitorMention.findMany({
+      where: { resultId: { in: resultIds } },
+      include: { competitor: { select: { brandName: true } } },
+    })
+    for (const m of mentions) {
+      const list = map.get(m.resultId) ?? []
+      list.push({ competitorId: m.competitorId, brandName: m.competitor.brandName, isMentioned: m.isMentioned, isCited: m.isCited, sentiment: m.sentiment })
+      map.set(m.resultId, list)
+    }
+  } catch { /* CompetitorMention table not migrated yet, or DB unreachable */ }
+  return map
+}
+
 async function getSessionsForPrompt(promptId: string): Promise<SessionOption[]> {
   const sessions = await prisma.runSession.findMany({
     where: { results: { some: { promptId } } },
@@ -37,6 +66,7 @@ async function getSessionsForPrompt(promptId: string): Promise<SessionOption[]> 
 }
 
 const PLATFORM_ORDER = ['chatgpt', 'claude', 'perplexity', 'gemini', 'google_aio']
+const EXCLUDED_PLATFORMS = new Set(['google_ai_mode'])
 
 export default async function ResultsDetailPage({
   params,
@@ -60,11 +90,36 @@ export default async function ResultsDetailPage({
   try { prompt = await getPromptData(promptId, activeSessionId) } catch { /* DB not configured */ }
   if (!prompt) notFound()
 
-  const sortedResults = [...prompt.results].sort(
-    (a, b) => PLATFORM_ORDER.indexOf(a.platform) - PLATFORM_ORDER.indexOf(b.platform)
-  )
+  const sortedResults = [...prompt.results]
+    .filter((r) => !EXCLUDED_PLATFORMS.has(r.platform))
+    .sort((a, b) => PLATFORM_ORDER.indexOf(a.platform) - PLATFORM_ORDER.indexOf(b.platform))
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
+
+  // Competitor summary — how many of this prompt's platform results mention each tracked brand
+  let competitors: Awaited<ReturnType<typeof getActiveCompetitors>> = []
+  try {
+    const session = await auth()
+    if (session?.user?.id) competitors = await getActiveCompetitors(session.user.id)
+  } catch { /* not signed in / DB not configured */ }
+
+  const mentionsByResult = await getCompetitorMentionsByResult(sortedResults.map((r) => r.id))
+
+  const brandSummary = [
+    {
+      id: 'you',
+      brandName: YOUR_BRAND_NAME,
+      isYou: true,
+      mentionedCount: sortedResults.filter((r) => r.isMentioned).length,
+    },
+    ...competitors.map((c) => ({
+      id: c.id,
+      brandName: c.brandName,
+      isYou: false,
+      mentionedCount: sortedResults.filter((r) => (mentionsByResult.get(r.id) ?? []).some((m) => m.competitorId === c.id && m.isMentioned)).length,
+    })),
+  ]
+  const platformCount = sortedResults.length
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -128,6 +183,41 @@ export default async function ResultsDetailPage({
         </div>
       )}
 
+      {/* Competitor summary strip */}
+      {competitors.length > 0 && platformCount > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {brandSummary.map((b) => (
+            <div
+              key={b.id}
+              className={
+                b.isYou
+                  ? 'bg-[#e6f2f5] border border-[#b8d8e0] rounded-xl p-3.5'
+                  : 'bg-white border border-[#dde6ea] rounded-xl p-3.5'
+              }
+            >
+              <p className={`text-xs font-semibold mb-2 truncate ${b.isYou ? 'text-[#084c61]' : 'text-[#1a1a1a]'}`}>
+                {b.brandName}{b.isYou && ' (You)'}
+              </p>
+              <p className="text-xl font-extrabold text-[#084c61] leading-none mb-2">
+                {b.mentionedCount}<span className="text-xs font-semibold text-[#5a7a85]"> / {platformCount} platforms</span>
+              </p>
+              <div className="flex gap-1">
+                {sortedResults.map((r) => {
+                  const filled = b.isYou ? r.isMentioned : (mentionsByResult.get(r.id) ?? []).some((m) => m.competitorId === b.id && m.isMentioned)
+                  return (
+                    <div
+                      key={r.id}
+                      className="h-1.5 flex-1 rounded-sm"
+                      style={{ backgroundColor: filled ? (b.isYou ? '#177e89' : '#8aadb8') : '#eef3f5' }}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Platform results */}
       {sortedResults.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#dde6ea] py-16 text-center">
@@ -141,6 +231,7 @@ export default async function ResultsDetailPage({
           {sortedResults.map((result) => {
             const color = PLATFORM_COLORS[result.platform] || '#084c61'
             const label = PLATFORM_LABELS[result.platform] || result.platform
+            const isNoAIO = result.responseText?.startsWith('[No AI Overview]')
             return (
               <div key={result.id} className="bg-white rounded-xl border border-[#dde6ea] flex flex-col overflow-hidden">
                 {/* Platform header */}
@@ -150,7 +241,7 @@ export default async function ResultsDetailPage({
                     <span className="font-semibold text-[#084c61] text-sm">{label}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    {result.isMentioned ? (
+                    {!isNoAIO && (result.isMentioned ? (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                         Mentioned
                       </span>
@@ -158,13 +249,13 @@ export default async function ResultsDetailPage({
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#f0f4f7] text-[#8aadb8]">
                         Not Mentioned
                       </span>
-                    )}
-                    {result.isCited && (
+                    ))}
+                    {!isNoAIO && result.isCited && (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#e6f2f5] text-[#084c61] border border-[#b8d8e0]">
                         Cited
                       </span>
                     )}
-                    {result.sentiment === 'positive' ? (
+                    {!isNoAIO && (result.sentiment === 'positive' ? (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                         Positive
                       </span>
@@ -176,14 +267,51 @@ export default async function ResultsDetailPage({
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#f0f4f7] text-[#8aadb8]">
                         Neutral
                       </span>
-                    ) : null}
+                    ) : null)}
                   </div>
                 </div>
+
+                {/* Brands detected (yours + tracked competitors) */}
+                {competitors.length > 0 && (() => {
+                  const detected = [
+                    ...(result.isMentioned ? [{ id: 'you', brandName: YOUR_BRAND_NAME, isYou: true, sentiment: result.sentiment }] : []),
+                    ...(mentionsByResult.get(result.id) ?? [])
+                      .filter((m) => m.isMentioned)
+                      .map((m) => ({ id: m.competitorId, brandName: m.brandName, isYou: false, sentiment: m.sentiment })),
+                  ]
+                  if (detected.length === 0) return null
+                  return (
+                    <div className="px-5 pt-4">
+                      <p className="text-[10px] font-semibold text-[#8aadb8] uppercase tracking-wider mb-2">Brands Detected</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {detected.map((d) => {
+                          const tone = d.sentiment === 'positive'
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                            : d.sentiment === 'negative'
+                            ? 'bg-rose-50 border-rose-200 text-rose-800'
+                            : 'bg-[#f5f8fa] border-[#eef3f5] text-[#5a7a85]'
+                          return (
+                            <span
+                              key={d.id}
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10.5px] font-semibold ${tone} ${d.isYou ? 'ring-1 ring-inset ring-[#177e89]' : ''}`}
+                            >
+                              {d.brandName}{d.isYou && ' · You'}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {/* Response text */}
                 <div className="px-5 py-4 flex-1">
                   <p className="text-[10px] font-semibold text-[#8aadb8] uppercase tracking-wider mb-2">Response</p>
-                  <p className="text-xs text-[#1a1a1a] leading-relaxed">{result.responseText}</p>
+                  {isNoAIO ? (
+                    <p className="text-xs text-[#8aadb8] italic">No AI Overview was served for this query.</p>
+                  ) : (
+                    <p className="text-xs text-[#1a1a1a] leading-relaxed">{highlightTerms(result.responseText ?? '', prompt.communityName)}</p>
+                  )}
                 </div>
 
                 {/* Citations */}
@@ -217,6 +345,21 @@ export default async function ResultsDetailPage({
         </div>
       )}
     </div>
+  )
+}
+
+const BRAND_TERMS = ['Senior Lifestyle Corporation', 'Senior Lifestyle']
+
+function highlightTerms(text: string, communityName: string): React.ReactNode {
+  const terms = [...new Set([communityName, ...BRAND_TERMS].filter(Boolean))]
+  // Sort longest-first so "Senior Lifestyle Corporation" matches before "Senior Lifestyle"
+  terms.sort((a, b) => b.length - a.length)
+  const pattern = new RegExp(`(${terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi')
+  const parts = text.split(pattern)
+  return parts.map((part, i) =>
+    terms.some((t) => t.toLowerCase() === part.toLowerCase())
+      ? <mark key={i} className="bg-yellow-100 text-yellow-900 rounded px-0.5">{part}</mark>
+      : part
   )
 }
 

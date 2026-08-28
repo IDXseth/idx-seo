@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import { PLATFORM_LABELS, PLATFORM_COLORS } from '@/lib/utils'
+import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { ChevronLeft, Target, Quote, Smile } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -11,10 +12,12 @@ export default async function PlatformDrillDownPage({
   searchParams,
 }: {
   params: Promise<{ name: string }>
-  searchParams: Promise<{ session?: string }>
+  searchParams: Promise<{ session?: string; type?: string }>
 }) {
   const { name } = await params
-  const { session: sessionId } = await searchParams
+  const { session: sessionId, type } = await searchParams
+  const promptTypeParam: PromptTypeFilter = type === 'brand' || type === 'nonbrand' ? type : 'all'
+  const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
 
   if (!PLATFORM_LABELS[name]) {
     notFound()
@@ -22,10 +25,14 @@ export default async function PlatformDrillDownPage({
 
   const platformLabel = PLATFORM_LABELS[name]
   const platformColor = PLATFORM_COLORS[name] || '#084c61'
-  const backHref = `/dashboard${sessionId ? '?session=' + sessionId : ''}`
+  const dashboardQuery = new URLSearchParams()
+  if (sessionId) dashboardQuery.set('session', sessionId)
+  if (promptType) dashboardQuery.set('type', promptType)
+  const backHref = `/dashboard${dashboardQuery.toString() ? `?${dashboardQuery.toString()}` : ''}`
 
   let results: Array<{
     id: string
+    responseText: string
     isMentioned: boolean
     isCited: boolean
     sentiment: string
@@ -45,6 +52,7 @@ export default async function PlatformDrillDownPage({
       where: {
         platform: name,
         ...(sessionId ? { runSessionId: sessionId } : {}),
+        ...(promptType ? { prompt: { promptType } } : {}),
       },
       include: {
         prompt: {
@@ -96,14 +104,17 @@ export default async function PlatformDrillDownPage({
       </div>
 
       {/* Page title */}
-      <div className="flex items-center gap-3">
-        <div className="h-3 w-3 rounded-full" style={{ backgroundColor: platformColor }} />
-        <h1
-          className="text-2xl font-bold text-[#084c61]"
-          style={{ fontFamily: 'var(--font-noto-serif), serif' }}
-        >
-          {platformLabel}
-        </h1>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="h-3 w-3 rounded-full" style={{ backgroundColor: platformColor }} />
+          <h1
+            className="text-2xl font-bold text-[#084c61]"
+            style={{ fontFamily: 'var(--font-noto-serif), serif' }}
+          >
+            {platformLabel}
+          </h1>
+        </div>
+        <PromptTypeToggle value={promptTypeParam} basePath={`/dashboard/platform/${name}`} sessionId={sessionId} />
       </div>
 
       {/* Stat cards */}
@@ -194,7 +205,11 @@ export default async function PlatformDrillDownPage({
                     <td className="px-4 py-4 text-[#5a7a85] text-xs">{result.prompt.category || '—'}</td>
                     <td className="px-4 py-4 text-[#5a7a85] text-xs">{result.prompt.levelOfCare || '—'}</td>
                     <td className="px-4 py-4">
-                      {result.isMentioned ? (
+                      {result.responseText?.startsWith('[No AI Overview]') ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#f0f4f7] text-[#b8cdd3] italic">
+                          No AI Overview
+                        </span>
+                      ) : result.isMentioned ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                           Mentioned
                         </span>

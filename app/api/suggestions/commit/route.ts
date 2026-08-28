@@ -60,9 +60,9 @@ export async function POST(req: Request) {
       })
     )
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const uniqueRows = rows
     .filter((r) => !existingTexts.has(r.promptText))
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     .map(({ isUnknownCare: _isUnknownCare, ...r }) => r)
   const skippedCount = rows.length - uniqueRows.length
 

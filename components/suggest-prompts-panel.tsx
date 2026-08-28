@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Sparkles, Plus, X, Info, Globe2, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
+import { Sparkles, Info, Globe2, CheckCircle2, AlertCircle, Loader2, ArrowRight } from 'lucide-react'
 import { KNOWN_LEVELS_OF_CARE } from '@/lib/normalize'
 
 const SUGGESTION_CATEGORIES = [
@@ -21,10 +22,15 @@ const SUGGESTION_CATEGORIES = [
   'Reviews & Reputation',
 ]
 
-interface CompetitorSite {
+// Shape returned by GET /api/competitors — the same Competitor records used
+// for AI-mention tracking on the /competitors page. Reused here (rather than
+// a second competitor list) as the domain-restricted web-search source for
+// suggestion research.
+interface Competitor {
   id: string
-  name: string
+  brandName: string
   domain: string
+  active: boolean
 }
 
 interface PromptSuggestion {
@@ -41,89 +47,44 @@ interface SuggestionResult {
   note?: string
 }
 
-// ─── Competitor site manager ────────────────────────────────────────────────
+// ─── Competitor sites summary ───────────────────────────────────────────────
+// Read-only here — competitors are managed once on /competitors (the same
+// list used for AI-mention tracking) and reused as the domain-restricted
+// web-search source for suggestion research, rather than keeping a second
+// competitor list just for this feature.
 
-function CompetitorSiteManager({
-  competitors,
-  onChange,
-}: {
-  competitors: CompetitorSite[]
-  onChange: (sites: CompetitorSite[]) => void
-}) {
-  const [name, setName] = useState('')
-  const [domain, setDomain] = useState('')
-  const [adding, setAdding] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const handleAdd = async () => {
-    if (!domain.trim()) { setError('Domain is required'); return }
-    setAdding(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/competitors', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), domain: domain.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to add site')
-      onChange([...competitors.filter((c) => c.id !== data.id), data])
-      setName('')
-      setDomain('')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add site')
-    } finally {
-      setAdding(false)
-    }
-  }
-
-  const handleRemove = async (id: string) => {
-    onChange(competitors.filter((c) => c.id !== id))
-    try {
-      await fetch(`/api/competitors/${id}`, { method: 'DELETE' })
-    } catch {}
-  }
+function CompetitorSitesSummary({ competitors }: { competitors: Competitor[] }) {
+  const active = competitors.filter((c) => c.active)
 
   return (
     <div>
-      <div className="flex items-center gap-2 mb-2">
-        <Globe2 className="h-4 w-4 text-[#177e89]" />
-        <p className="text-sm font-semibold text-[#084c61]">Competitor sites for research</p>
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <div className="flex items-center gap-2">
+          <Globe2 className="h-4 w-4 text-[#177e89]" />
+          <p className="text-sm font-semibold text-[#084c61]">Competitor sites used for research</p>
+        </div>
+        <Link href="/competitors" className="flex items-center gap-1 text-xs text-[#177e89] hover:underline whitespace-nowrap">
+          Manage competitors <ArrowRight className="h-3 w-3" />
+        </Link>
       </div>
       <p className="text-xs text-[#5a7a85] mb-3">
-        Added sites are researched with a domain-restricted web search when generating suggestions — the model can only search these exact domains for real FAQ/blog topics.
+        Active competitors from your competitor list are researched with a domain-restricted web search when generating suggestions — the model can only search these exact domains for real FAQ/blog topics.
       </p>
 
-      {competitors.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-3">
-          {competitors.map((c) => (
+      {active.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {active.map((c) => (
             <span key={c.id} className="inline-flex items-center gap-1.5 bg-[#e6f2f5] border border-[#b8d8e0] text-[#084c61] text-xs px-2.5 py-1 rounded-full">
-              {c.name} <span className="text-[#5a7a85]">({c.domain})</span>
-              <button onClick={() => handleRemove(c.id)} className="text-[#8aadb8] hover:text-rose-500 transition-colors">
-                <X className="h-3 w-3" />
-              </button>
+              {c.brandName} <span className="text-[#5a7a85]">({c.domain})</span>
             </span>
           ))}
         </div>
+      ) : (
+        <p className="text-xs text-[#8aadb8]">
+          No active competitors yet — suggestions will be generated from general knowledge instead. Add some on the{' '}
+          <Link href="/competitors" className="text-[#177e89] hover:underline">Competitors</Link> page to ground research in their real content.
+        </p>
       )}
-
-      <div className="flex gap-2">
-        <input
-          type="text" value={name} onChange={(e) => setName(e.target.value)}
-          placeholder="Name (e.g. Brookdale)"
-          className="w-40 px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
-        />
-        <input
-          type="text" value={domain} onChange={(e) => setDomain(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-          placeholder="Domain (e.g. brookdale.com)"
-          className="flex-1 px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
-        />
-        <Button size="sm" variant="outline" onClick={handleAdd} disabled={adding}>
-          <Plus className="h-4 w-4 mr-1" />{adding ? 'Adding…' : 'Add'}
-        </Button>
-      </div>
-      {error && <p className="text-xs text-rose-500 mt-1.5">{error}</p>}
     </div>
   )
 }
@@ -132,7 +93,7 @@ function CompetitorSiteManager({
 
 export function SuggestPromptsPanel() {
   const router = useRouter()
-  const [competitors, setCompetitors] = useState<CompetitorSite[]>([])
+  const [competitors, setCompetitors] = useState<Competitor[]>([])
   const [loadingCompetitors, setLoadingCompetitors] = useState(true)
 
   const [communityName, setCommunityName] = useState('')
@@ -234,7 +195,7 @@ export function SuggestPromptsPanel() {
         {loadingCompetitors ? (
           <p className="text-sm text-[#8aadb8]">Loading competitor sites…</p>
         ) : (
-          <CompetitorSiteManager competitors={competitors} onChange={setCompetitors} />
+          <CompetitorSitesSummary competitors={competitors} />
         )}
       </div>
 

@@ -3,25 +3,20 @@ import { prisma } from '@/lib/prisma'
 import { PLATFORMS } from '@/lib/utils'
 import { SegmentDetail } from '@/components/segment-detail'
 import { SessionOption } from '@/components/run-session-picker'
+import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
-
-async function getSessionList(): Promise<SessionOption[]> {
-  const sessions = await prisma.runSession.findMany({
-    where: { status: 'done' },
-    orderBy: { startedAt: 'asc' },
-    select: { id: true, startedAt: true, triggeredBy: true, _count: { select: { results: true } } },
-  })
-  return sessions.map((s) => ({ id: s.id, startedAt: s.startedAt.toISOString(), triggeredBy: s.triggeredBy, resultCount: s._count.results }))
-}
+import { getSessionList } from '@/lib/run-sessions'
+import { getProjectList } from '@/lib/projects'
 
 export const dynamic = 'force-dynamic'
 
-async function getCareLevelData(name: string, sessionId?: string) {
+async function getCareLevelData(name: string, sessionId?: string, promptType?: string, projectId?: string) {
   const decodedName = decodeURIComponent(name)
   const resultsFilter = sessionId ? { where: { runSessionId: sessionId } } : {}
+  const scopeFilter = { ...(promptType ? { promptType } : {}), ...(projectId ? { batchId: projectId } : {}) }
 
   const prompts = await prisma.prompt.findMany({
-    where: { levelOfCare: decodedName },
+    where: { levelOfCare: decodedName, ...scopeFilter },
     include: { results: { ...resultsFilter, include: { citations: true } } },
   })
 
@@ -52,7 +47,7 @@ async function getCareLevelData(name: string, sessionId?: string) {
     .sort((a, b) => b[1] - a[1]).slice(0, 10)
     .map(([domain, count]) => ({ domain, count, percentage: totalResults > 0 ? count / totalResults : 0 }))
 
-  const trendData = sessionId ? [] : await getSegmentTrendData({ levelOfCare: decodedName })
+  const trendData = sessionId ? [] : await getSegmentTrendData({ levelOfCare: decodedName, ...scopeFilter })
 
   return {
     name: decodedName, prompts,
@@ -65,19 +60,33 @@ export default async function CareLevelDetailPage({
   params, searchParams,
 }: {
   params: Promise<{ name: string }>
-  searchParams: Promise<{ session?: string }>
+  searchParams: Promise<{ session?: string; type?: string; project?: string }>
 }) {
-  const [{ name }, { session: sessionId }] = await Promise.all([params, searchParams])
+  const [{ name }, { session: sessionId, type, project: projectId }] = await Promise.all([params, searchParams])
+  const promptTypeParam: PromptTypeFilter = type === 'brand' || type === 'nonbrand' ? type : 'all'
+  const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
   let data: Awaited<ReturnType<typeof getCareLevelData>> = null
   let sessions: SessionOption[] = []
-  try { ;[data, sessions] = await Promise.all([getCareLevelData(name, sessionId), getSessionList()]) } catch { /* DB not configured */ }
+  let projects: Awaited<ReturnType<typeof getProjectList>> = []
+  try {
+    ;[data, sessions, projects] = await Promise.all([
+      getCareLevelData(name, sessionId, promptType, projectId),
+      getSessionList(projectId),
+      getProjectList(),
+    ])
+  } catch { /* DB not configured */ }
 
   if (!data) notFound()
+
+  const dashboardQuery = new URLSearchParams()
+  if (projectId) dashboardQuery.set('project', projectId)
+  if (sessionId) dashboardQuery.set('session', sessionId)
+  if (promptType) dashboardQuery.set('type', promptType)
 
   return (
     <SegmentDetail
       title={data.name}
-      backHref={`/dashboard${sessionId ? `?session=${sessionId}` : ''}`}
+      backHref={`/dashboard${dashboardQuery.toString() ? `?${dashboardQuery.toString()}` : ''}`}
       backLabel="Dashboard"
       overview={data.overview}
       platformStats={data.platformStats}
@@ -88,6 +97,9 @@ export default async function CareLevelDetailPage({
       sessions={sessions}
       basePath={`/dashboard/care-level/${encodeURIComponent(name)}`}
       trendData={data.trendData}
+      promptTypeFilter={promptTypeParam}
+      projectId={projectId}
+      projects={projects}
     />
   )
 }
