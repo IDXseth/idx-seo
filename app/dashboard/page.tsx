@@ -3,6 +3,7 @@ import { PLATFORMS, formatPercent } from '@/lib/utils'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Scorecard } from '@/components/scorecard'
 import { PlatformMentionChart } from '@/components/platform-chart'
+import { BrandComparisonChart } from '@/components/brand-comparison-chart'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
@@ -425,6 +426,121 @@ async function getCompetitorTrendData(competitorId: string, promptType?: string,
   })
 }
 
+// ─── Brand comparison (all brands, one chart) ──────────────────────────────
+// Everything the Overview tab's comparison chart needs, in one pass: your own
+// brand plus every active tracked competitor, each with the same shape, plus
+// an "any brand" aggregate (did *this* result mention/cite you OR any tracked
+// competitor). One query — Result already carries its own isMentioned/isCited
+// and its nested CompetitorMentions — so every brand's numbers come from
+// exactly the same rows, which is what makes them comparable.
+
+export interface BrandSeries {
+  id: string
+  label: string
+  overallMentionRate: number
+  overallCitationRate: number
+  platformStats: Array<{ platform: string; mentionRate: number; citationRate: number }>
+}
+
+async function getBrandComparisonData(sessionId?: string, promptType?: string, projectId?: string) {
+  const canonicalWhere = {
+    ...(promptType ? { promptType } : {}),
+    ...(projectId ? { batchId: projectId } : {}),
+  }
+  const canonicalIds = (
+    await prisma.prompt.findMany({
+      distinct: ['promptText'],
+      where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
+      select: { id: true },
+    })
+  ).map((r) => r.id)
+
+  const results = await prisma.result.findMany({
+    where: {
+      promptId: { in: canonicalIds },
+      ...(sessionId ? { runSessionId: sessionId } : {}),
+    },
+    select: {
+      platform: true,
+      isMentioned: true,
+      isCited: true,
+      competitorMentions: {
+        select: {
+          competitorId: true,
+          isMentioned: true,
+          isCited: true,
+          competitor: { select: { brandName: true, active: true } },
+        },
+      },
+    },
+  })
+
+  type ResultRow = (typeof results)[number]
+  type Flags = { isMentioned: boolean; isCited: boolean } | null
+
+  function buildSeries(id: string, label: string, getFlags: (r: ResultRow) => Flags): BrandSeries {
+    let total = 0
+    let mentioned = 0
+    let cited = 0
+    const byPlatform = new Map<string, { total: number; mentioned: number; cited: number }>(
+      PLATFORMS.map((p) => [p, { total: 0, mentioned: 0, cited: 0 }])
+    )
+
+    for (const r of results) {
+      const flags = getFlags(r)
+      if (!flags) continue
+      total++
+      if (flags.isMentioned) mentioned++
+      if (flags.isCited) cited++
+      const bucket = byPlatform.get(r.platform)
+      if (bucket) {
+        bucket.total++
+        if (flags.isMentioned) bucket.mentioned++
+        if (flags.isCited) bucket.cited++
+      }
+    }
+
+    return {
+      id,
+      label,
+      overallMentionRate: total > 0 ? mentioned / total : 0,
+      overallCitationRate: total > 0 ? cited / total : 0,
+      platformStats: PLATFORMS.map((platform) => {
+        const b = byPlatform.get(platform)!
+        return {
+          platform,
+          mentionRate: b.total > 0 ? b.mentioned / b.total : 0,
+          citationRate: b.total > 0 ? b.cited / b.total : 0,
+        }
+      }),
+    }
+  }
+
+  const yourBrand = buildSeries('you', 'Your Brand', (r) => ({ isMentioned: r.isMentioned, isCited: r.isCited }))
+
+  const competitorNames = new Map<string, string>()
+  for (const r of results) {
+    for (const cm of r.competitorMentions) {
+      if (cm.competitor.active) competitorNames.set(cm.competitorId, cm.competitor.brandName)
+    }
+  }
+  const competitorSeries = [...competitorNames.entries()]
+    .map(([id, brandName]) =>
+      buildSeries(id, brandName, (r) => {
+        const cm = r.competitorMentions.find((c) => c.competitorId === id)
+        return cm ? { isMentioned: cm.isMentioned, isCited: cm.isCited } : null
+      })
+    )
+    .sort((a, b) => a.label.localeCompare(b.label))
+
+  const anyBrand = buildSeries('any', 'Any Brand', (r) => ({
+    isMentioned: r.isMentioned || r.competitorMentions.some((cm) => cm.isMentioned),
+    isCited: r.isCited || r.competitorMentions.some((cm) => cm.isCited),
+  }))
+
+  return { brands: [yourBrand, ...competitorSeries], anyBrand }
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -439,9 +555,10 @@ export default async function DashboardPage({
   let sessions: SessionOption[] = []
   let projects: Awaited<ReturnType<typeof getProjectList>> = []
   let competitorOptions: Awaited<ReturnType<typeof getCompetitorOptions>> = []
+  let brandComparison: Awaited<ReturnType<typeof getBrandComparisonData>> | null = null
   let sitemapAnalysis: SitemapAnalysis | null = null
   try {
-    ;[data, trendData, sessions, projects, competitorOptions] = await Promise.all([
+    ;[data, trendData, sessions, projects, competitorOptions, brandComparison] = await Promise.all([
       competitorId
         ? getCompetitorDashboardData(competitorId, sessionId, promptType, projectId)
         : getDashboardData(sessionId, promptType, projectId),
@@ -451,6 +568,7 @@ export default async function DashboardPage({
       getSessionList(projectId),
       getProjectList(),
       getCompetitorOptions(promptType, projectId).catch(() => []),
+      getBrandComparisonData(sessionId, promptType, projectId).catch(() => null),
     ])
   } catch {
     // DB not configured — show empty state
@@ -592,8 +710,12 @@ export default async function DashboardPage({
                   </a>
                 </div>
               )}
-              <SectionCard title="Mention & Citation Rate by Platform">
-                <PlatformMentionChart data={data.platformStats} />
+              <SectionCard title={brandComparison && brandComparison.brands.length > 1 ? 'Mention & Citation Rate by Platform — All Brands' : 'Mention & Citation Rate by Platform'}>
+                {brandComparison && brandComparison.brands.length > 1 ? (
+                  <BrandComparisonChart brands={brandComparison.brands} anyBrand={brandComparison.anyBrand} />
+                ) : (
+                  <PlatformMentionChart data={data.platformStats} />
+                )}
               </SectionCard>
               <SectionCard title="Top Citation URLs">
                 {competitorId ? (
