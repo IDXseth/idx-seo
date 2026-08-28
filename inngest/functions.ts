@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { queryPlatform } from '@/lib/ai-clients'
 import { PLATFORMS } from '@/lib/utils'
 import { sendRunCompleteEmail } from '@/lib/email'
-import { refreshGscCache } from '@/lib/gsc'
+import { refreshGscCache, crawlCommunityPages } from '@/lib/gsc'
 import { getActiveCompetitors, matchCompetitors, saveCompetitorMentions } from '@/lib/competitors'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -142,7 +142,7 @@ export const runSinglePrompt = inngest.createFunction(
       const [platformResults, competitors] = await Promise.all([
         Promise.all(
           PLATFORMS.map(async (platform) => {
-            const result = await queryPlatform(platform, prompt.promptText, prompt.communityName)
+            const result = await queryPlatform(platform, prompt.promptText, prompt.communityName, prompt.city ?? undefined)
             return { platform, result }
           })
         ),
@@ -248,6 +248,7 @@ export const refreshGsc = inngest.createFunction(
   { id: 'refresh-gsc-cache', triggers: [{ cron: '0 3 * * *' }] },
   async ({ step }) => {
     const result = await step.run('fetch-gsc-metrics', () => refreshGscCache())
+    await step.run('crawl-community-pages', () => crawlCommunityPages())
     return result
   }
 )

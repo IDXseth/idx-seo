@@ -3,11 +3,12 @@ import { prisma } from '@/lib/prisma'
 import { PLATFORMS } from '@/lib/utils'
 import { SegmentDetail } from '@/components/segment-detail'
 import { SessionOption } from '@/components/run-session-picker'
+import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
 
 async function getSessionList(): Promise<SessionOption[]> {
   const sessions = await prisma.runSession.findMany({
-    where: { status: 'done' },
+    where: { status: 'done', results: { some: {} } },
     orderBy: { startedAt: 'asc' },
     select: { id: true, startedAt: true, triggeredBy: true, _count: { select: { results: true } } },
   })
@@ -16,12 +17,13 @@ async function getSessionList(): Promise<SessionOption[]> {
 
 export const dynamic = 'force-dynamic'
 
-async function getCareLevelData(name: string, sessionId?: string) {
+async function getCareLevelData(name: string, sessionId?: string, promptType?: string) {
   const decodedName = decodeURIComponent(name)
   const resultsFilter = sessionId ? { where: { runSessionId: sessionId } } : {}
+  const typeFilter = promptType ? { promptType } : {}
 
   const prompts = await prisma.prompt.findMany({
-    where: { levelOfCare: decodedName },
+    where: { levelOfCare: decodedName, ...typeFilter },
     include: { results: { ...resultsFilter, include: { citations: true } } },
   })
 
@@ -52,7 +54,7 @@ async function getCareLevelData(name: string, sessionId?: string) {
     .sort((a, b) => b[1] - a[1]).slice(0, 10)
     .map(([domain, count]) => ({ domain, count, percentage: totalResults > 0 ? count / totalResults : 0 }))
 
-  const trendData = sessionId ? [] : await getSegmentTrendData({ levelOfCare: decodedName })
+  const trendData = sessionId ? [] : await getSegmentTrendData({ levelOfCare: decodedName, ...typeFilter })
 
   return {
     name: decodedName, prompts,
@@ -65,19 +67,25 @@ export default async function CareLevelDetailPage({
   params, searchParams,
 }: {
   params: Promise<{ name: string }>
-  searchParams: Promise<{ session?: string }>
+  searchParams: Promise<{ session?: string; type?: string }>
 }) {
-  const [{ name }, { session: sessionId }] = await Promise.all([params, searchParams])
+  const [{ name }, { session: sessionId, type }] = await Promise.all([params, searchParams])
+  const promptTypeParam: PromptTypeFilter = type === 'brand' || type === 'nonbrand' ? type : 'all'
+  const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
   let data: Awaited<ReturnType<typeof getCareLevelData>> = null
   let sessions: SessionOption[] = []
-  try { ;[data, sessions] = await Promise.all([getCareLevelData(name, sessionId), getSessionList()]) } catch { /* DB not configured */ }
+  try { ;[data, sessions] = await Promise.all([getCareLevelData(name, sessionId, promptType), getSessionList()]) } catch { /* DB not configured */ }
 
   if (!data) notFound()
+
+  const dashboardQuery = new URLSearchParams()
+  if (sessionId) dashboardQuery.set('session', sessionId)
+  if (promptType) dashboardQuery.set('type', promptType)
 
   return (
     <SegmentDetail
       title={data.name}
-      backHref={`/dashboard${sessionId ? `?session=${sessionId}` : ''}`}
+      backHref={`/dashboard${dashboardQuery.toString() ? `?${dashboardQuery.toString()}` : ''}`}
       backLabel="Dashboard"
       overview={data.overview}
       platformStats={data.platformStats}
@@ -88,6 +96,7 @@ export default async function CareLevelDetailPage({
       sessions={sessions}
       basePath={`/dashboard/care-level/${encodeURIComponent(name)}`}
       trendData={data.trendData}
+      promptTypeFilter={promptTypeParam}
     />
   )
 }

@@ -14,20 +14,14 @@ export async function GET(
 
   const batch = await prisma.batch.findUnique({
     where: { id: batchId },
-    select: { userId: true, shares: { select: { email: true } } },
+    select: { userId: true },
   })
 
   if (!batch) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const canAccess =
-    batch.userId === session.user.id ||
-    batch.shares.some((s) => s.email === session.user?.email)
-
-  if (!canAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-
   // Fetch all completed run sessions for this batch, oldest first
   const sessions = await prisma.runSession.findMany({
-    where: { batchId, status: 'done' },
+    where: { batchId, status: 'done', results: { some: {} } },
     orderBy: { startedAt: 'asc' },
   })
 

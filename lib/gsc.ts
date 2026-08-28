@@ -54,11 +54,15 @@ export async function listGscSites(): Promise<{ siteUrl: string; permissionLevel
   if (!auth) return []
 
   const sc = google.searchconsole({ version: 'v1', auth })
-  const res = await sc.sites.list()
-  return (res.data.siteEntry ?? []).map((s) => ({
-    siteUrl: s.siteUrl ?? '',
-    permissionLevel: s.permissionLevel ?? 'unknown',
-  }))
+  try {
+    const res = await sc.sites.list()
+    return (res.data.siteEntry ?? []).map((s) => ({
+      siteUrl: s.siteUrl ?? '',
+      permissionLevel: s.permissionLevel ?? 'unknown',
+    }))
+  } catch {
+    return []
+  }
 }
 
 export async function refreshGscCache(): Promise<{ pagesUpdated: number; error?: string }> {
@@ -144,5 +148,86 @@ export async function getGscMetrics(): Promise<Map<string, GscData>> {
         fetchedAt: r.fetchedAt,
       },
     ])
+  )
+}
+
+function detectJsonLdSchema(html: string): { hasLocalBusiness: boolean; hasSeniorCare: boolean } {
+  const scriptRe = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
+  let hasLocalBusiness = false
+  let hasSeniorCare = false
+  let match
+  while ((match = scriptRe.exec(html)) !== null) {
+    try {
+      const data = JSON.parse(match[1]) as Record<string, unknown>
+      const nodes: unknown[] = Array.isArray(data['@graph']) ? (data['@graph'] as unknown[]) : [data]
+      for (const node of nodes) {
+        if (typeof node !== 'object' || node === null) continue
+        const type = (node as Record<string, unknown>)['@type']
+        const typeStr = (Array.isArray(type) ? type.join(',') : String(type ?? '')).toLowerCase()
+        if (typeStr.includes('localbusiness')) hasLocalBusiness = true
+        if (typeStr.includes('seniorcare')) hasSeniorCare = true
+      }
+    } catch {
+      // skip malformed JSON-LD
+    }
+  }
+  return { hasLocalBusiness, hasSeniorCare }
+}
+
+export async function crawlCommunityPages(): Promise<void> {
+  const metrics = await prisma.gscMetric.findMany({ select: { pageUrl: true } })
+
+  // Collect unique base URLs: /property/[state]/[community]/ (exactly 3 path segments)
+  const baseUrls = new Set<string>()
+  for (const { pageUrl } of metrics) {
+    try {
+      const parsed = new URL(pageUrl)
+      const parts = parsed.pathname.split('/').filter(Boolean)
+      if (parts.length >= 3 && parts[0] === 'property') {
+        baseUrls.add(`${parsed.origin}/${parts[0]}/${parts[1]}/${parts[2]}/`)
+      }
+    } catch {
+      // skip malformed URLs
+    }
+  }
+
+  await Promise.allSettled(
+    Array.from(baseUrls).map(async (pageUrl) => {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 8000)
+      try {
+        const res = await fetch(pageUrl, { signal: controller.signal, cache: 'no-store' })
+        if (res.ok) {
+          const html = await res.text()
+          const { hasLocalBusiness, hasSeniorCare } = detectJsonLdSchema(html)
+          await prisma.pageCrawlResult.upsert({
+            where: { pageUrl },
+            create: { pageUrl, hasLocalBusiness, hasSeniorCare },
+            update: { hasLocalBusiness, hasSeniorCare },
+          })
+        } else {
+          await prisma.pageCrawlResult.upsert({
+            where: { pageUrl },
+            create: { pageUrl, hasLocalBusiness: null, hasSeniorCare: null },
+            update: { hasLocalBusiness: null, hasSeniorCare: null },
+          })
+        }
+      } catch {
+        await prisma.pageCrawlResult.upsert({
+          where: { pageUrl },
+          create: { pageUrl, hasLocalBusiness: null, hasSeniorCare: null },
+          update: { hasLocalBusiness: null, hasSeniorCare: null },
+        })
+      } finally {
+        clearTimeout(timer)
+      }
+    })
+  )
+}
+
+export async function getPageCrawlResults(): Promise<Map<string, { hasLocalBusiness: boolean | null; hasSeniorCare: boolean | null }>> {
+  const records = await prisma.pageCrawlResult.findMany()
+  return new Map(
+    records.map((r) => [r.pageUrl, { hasLocalBusiness: r.hasLocalBusiness, hasSeniorCare: r.hasSeniorCare }])
   )
 }

@@ -21,7 +21,7 @@ export async function analyzeSentiment(
   responseText: string,
   communityName: string
 ): Promise<'positive' | 'neutral' | 'negative'> {
-  if (!responseText || responseText.startsWith('[Error]') || responseText.startsWith('[Timeout]')) {
+  if (!responseText || responseText.startsWith('[Error]') || responseText.startsWith('[Timeout]') || responseText.startsWith('[No AI Overview]')) {
     return 'neutral'
   }
   try {
@@ -122,47 +122,88 @@ async function queryClaude(
   const { default: Anthropic } = await import('@anthropic-ai/sdk')
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-  const response = await client.messages.create({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let response: any = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
     tools: [{ type: 'web_search_20250305' as const, name: 'web_search' }],
     messages: [{ role: 'user', content: promptText }],
   })
 
-  // Collect final text and citations from search result blocks
+  // If Claude returned stop_reason=tool_use, the web_search tool requires us to
+  // execute the search and send results back in a follow-up turn.
+  if (response.stop_reason === 'tool_use') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const toolUseBlock = response.content.find((b: any) => b.type === 'tool_use' && b.name === 'web_search')
+    const query: string = toolUseBlock?.input?.query ?? promptText.slice(0, 120)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let searchResults: any[] = []
+    try {
+      const searchRes = await fetch(
+        `https://www.searchapi.io/api/v1/search?engine=google&q=${encodeURIComponent(query)}&api_key=${process.env.SEARCHAPI_KEY}`,
+        { signal: AbortSignal.timeout(15_000) }
+      )
+      if (searchRes.ok) {
+        const d = await searchRes.json()
+        searchResults = (d.organic_results ?? []).slice(0, 5).map((r: Record<string, string>) => ({
+          url: r.link ?? '',
+          title: r.title ?? '',
+          snippet: r.snippet ?? '',
+        }))
+      }
+    } catch { /* ignore */ }
+
+    response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      tools: [{ type: 'web_search_20250305' as const, name: 'web_search' }],
+      messages: [
+        { role: 'user', content: promptText },
+        { role: 'assistant', content: response.content },
+        {
+          role: 'user',
+          content: [{
+            type: 'tool_result' as const,
+            tool_use_id: toolUseBlock?.id ?? '',
+            content: JSON.stringify(searchResults),
+          }],
+        },
+      ],
+    })
+  }
+
   let text = ''
   const citations: Array<{ url: string; title: string; domain: string }> = []
 
-  for (const block of response.content) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const block of response.content as any[]) {
     if (block.type === 'text') {
       text += block.text
-    } else if (block.type === 'tool_result') {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const content: any[] = Array.isArray((block as any).content) ? (block as any).content : []
-      for (const item of content) {
-        if (item.type === 'web_search_result') {
-          const url: string = item.url ?? ''
-          if (url) {
-            citations.push({
-              url,
-              title: item.title ?? '',
-              domain: extractDomain(url),
-            })
+      // Inline citations on text blocks (beta SDK web_search_result_location format)
+      if (Array.isArray(block.citations)) {
+        for (const c of block.citations) {
+          const url: string = c.url ?? ''
+          if (url && !citations.some((x) => x.url === url)) {
+            citations.push({ url, title: c.title ?? '', domain: extractDomain(url) })
           }
         }
       }
     }
-  }
-
-  // If no citations from tool results, scan tool_use result blocks (alternate shape)
-  if (citations.length === 0) {
-    for (const block of response.content) {
+    // Top-level web_search_result blocks
+    if (block.type === 'web_search_result') {
+      const url: string = block.url ?? ''
+      if (url && !citations.some((x) => x.url === url)) {
+        citations.push({ url, title: block.title ?? '', domain: extractDomain(url) })
+      }
+    }
+    // web_search_tool_result — the actual block type returned by web_search_20250305
+    if (block.type === 'web_search_tool_result' || block.type === 'tool_result' || block.type === 'server_tool_result') {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const b = block as any
-      if (b.type === 'tool_use' && b.name === 'web_search' && Array.isArray(b.input?.results)) {
-        for (const r of b.input.results) {
-          const url: string = r.url ?? ''
-          if (url) citations.push({ url, title: r.title ?? '', domain: extractDomain(url) })
+      const content: any[] = Array.isArray(block.content) ? block.content : []
+      for (const item of content) {
+        const url: string = item.url ?? ''
+        if (url && !citations.some((x) => x.url === url)) {
+          citations.push({ url, title: item.title ?? '', domain: extractDomain(url) })
         }
       }
     }
@@ -217,7 +258,32 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
   let text = ''
   let citations: Array<{ url: string; title: string; domain: string }> = []
 
-  // AI Overviews response shape
+  // engine=google_ai_overview with page_token returns root-level markdown/text_blocks/reference_links
+  if (!text && typeof data.markdown === 'string' && data.markdown.length > 0) {
+    // Strip inline citation markers like [1], [2] before storing
+    text = data.markdown.replace(/\[\d+\]/g, '').trim()
+  }
+  if (!text && Array.isArray(data.text_blocks) && data.text_blocks.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    text = (data.text_blocks as Array<any>)
+      .map((b) => (b.snippet ?? b.text ?? b.content ?? '').replace(/\[\d+\]/g, ''))
+      .filter(Boolean)
+      .join('\n\n')
+      .trim()
+  }
+  if (text && !citations.length) {
+    // reference_links[].link is the canonical citation URL per SearchAPI's google_ai_overview response
+    const refs: unknown[] = data.reference_links ?? []
+    citations = (refs as Array<Record<string, string>>)
+      .map((r) => ({
+        url: r.link ?? r.url ?? '',
+        title: r.title ?? r.name ?? '',
+        domain: extractDomain(r.link ?? r.url ?? ''),
+      }))
+      .filter((c) => c.url)
+  }
+
+  // engine=google / engine=google_ai_overview: nested ai_overview object
   if (!text && data.ai_overview) {
     const aio = data.ai_overview
     text = aio.answer ?? aio.text ?? aio.snippet ?? ''
@@ -256,26 +322,10 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
       .filter((c) => c.url)
   }
 
-  // Always fall back to organic results for both text snippet and citations
-  if (Array.isArray(data.organic_results) && data.organic_results.length > 0) {
-    if (!text) {
-      text = data.organic_results
-        .slice(0, 3)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map((r: any) => r.snippet ?? '')
-        .join(' ')
-    }
-    if (citations.length === 0) {
-      citations = data.organic_results
-        .slice(0, 5)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map((r: any) => ({
-          url: r.link ?? '',
-          title: r.title ?? '',
-          domain: extractDomain(r.link ?? ''),
-        }))
-        .filter((c: { url: string }) => c.url)
-    }
+  // No AI Overview (or answer/answer_box) was served — mark explicitly rather
+  // than falling back to organic snippets which would be misleading as AIO data.
+  if (!text) {
+    return { responseText: '[No AI Overview]', isMentioned: false, isCited: false, sentiment: 'neutral', citations: [] }
   }
 
   const isMentioned = checkMention(text, communityName)
@@ -377,10 +427,72 @@ async function querySearchAPI(
   return await parseSearchAPIResponse(data, communityName, engine)
 }
 
+async function queryGoogleAIO(
+  promptText: string,
+  communityName: string,
+  city?: string
+): Promise<PlatformResult> {
+  const apiKey = process.env.SEARCHAPI_KEY
+
+  // Step 1: standard Google search — returns ai_overview + page_token when Google serves one.
+  // Passing location causes Google to return geo-targeted results, which significantly
+  // increases the chance of ai_overview appearing for local-service queries.
+  const step1Url = new URL('https://www.searchapi.io/api/v1/search')
+  step1Url.searchParams.set('api_key', apiKey!)
+  step1Url.searchParams.set('engine', 'google')
+  step1Url.searchParams.set('q', promptText)
+  step1Url.searchParams.set('gl', 'us')
+  step1Url.searchParams.set('hl', 'en')
+  if (city) step1Url.searchParams.set('location', city)
+
+  const step1Res = await fetch(step1Url.toString(), {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(30_000),
+  })
+  if (!step1Res.ok) {
+    const body = await step1Res.text().catch(() => '')
+    throw new Error(`SearchAPI (google) ${step1Res.status}: ${body.slice(0, 200)}`)
+  }
+  const step1Data = await step1Res.json()
+
+  // If engine=google returned an ai_overview with a page_token, use the dedicated
+  // google_ai_overview engine for the full expanded content
+  const pageToken: string | undefined = step1Data.ai_overview?.page_token
+  if (pageToken) {
+    const step2Url = new URL('https://www.searchapi.io/api/v1/search')
+    step2Url.searchParams.set('api_key', apiKey!)
+    step2Url.searchParams.set('engine', 'google_ai_overview')
+    step2Url.searchParams.set('q', promptText)
+    step2Url.searchParams.set('page_token', pageToken)
+    step2Url.searchParams.set('gl', 'us')
+    step2Url.searchParams.set('hl', 'en')
+
+    try {
+      const step2Res = await fetch(step2Url.toString(), {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(30_000),
+      })
+      if (step2Res.ok) {
+        const step2Data = await step2Res.json()
+        const result = await parseSearchAPIResponse(step2Data, communityName, 'google_ai_overview')
+        if (result.responseText !== '[No AI Overview]') return result
+      }
+    } catch { /* fall through */ }
+  }
+
+  // If engine=google returned ai_overview but no page_token, parse it directly
+  if (step1Data.ai_overview) {
+    return await parseSearchAPIResponse(step1Data, communityName, 'google')
+  }
+
+  return { responseText: '[No AI Overview]', isMentioned: false, isCited: false, sentiment: 'neutral', citations: [] }
+}
+
 export async function queryPlatform(
   platform: string,
   promptText: string,
-  communityName: string
+  communityName: string,
+  city?: string
 ): Promise<PlatformResult> {
   try {
     let result: PlatformResult
@@ -394,7 +506,7 @@ export async function queryPlatform(
       case 'perplexity':
         result = await queryPerplexity(promptText, communityName); break
       case 'google_aio':
-        return await querySearchAPI('google', promptText, communityName)
+        return await queryGoogleAIO(promptText, communityName, city)
       default:
         throw new Error(`Unknown platform: ${platform}`)
     }

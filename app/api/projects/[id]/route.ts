@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { canWrite } from '@/lib/access'
 
 export async function DELETE(
   _req: Request,
@@ -19,7 +20,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    if (batch.userId !== session.user.id) {
+    if (!canWrite(session.user.id, session.user.email, batch.userId)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -54,7 +55,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    if (batch.userId !== session.user.id) {
+    if (!canWrite(session.user.id, session.user.email, batch.userId)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

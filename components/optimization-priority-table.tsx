@@ -1,9 +1,40 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import dynamic from 'next/dynamic'
 import { ExternalLink, ChevronDown, ChevronUp, AlertTriangle, RefreshCw, BarChart2, Info } from 'lucide-react'
 import type { CommunityWithSitemapStatus, SitemapEntry, SitemapAnalysis, ActionItem } from '@/lib/sitemap'
+
+function TooltipIcon({ text }: { text: string }) {
+  const [rect, setRect] = useState<DOMRect | null>(null)
+  const ref = useRef<HTMLSpanElement>(null)
+  return (
+    <span
+      ref={ref}
+      onMouseEnter={() => setRect(ref.current?.getBoundingClientRect() ?? null)}
+      onMouseLeave={() => setRect(null)}
+      className="inline-flex cursor-help"
+    >
+      <Info className="h-3 w-3" />
+      {rect && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            top: rect.top - 8,
+            left: rect.right,
+            transform: 'translate(-100%, -100%)',
+            zIndex: 9999,
+          }}
+          className="w-52 px-2.5 py-1.5 rounded-lg text-xs bg-[#084c61] text-white whitespace-normal text-center leading-snug pointer-events-none"
+        >
+          {text}
+        </div>,
+        document.body
+      )}
+    </span>
+  )
+}
 
 const GscSiteSelector = dynamic(() => import('./gsc-site-selector').then(m => ({ default: m.GscSiteSelector })), { ssr: false })
 
@@ -18,19 +49,6 @@ interface Props {
 
 type FilterTab = 'all' | 'has_page' | 'no_page' | 'not_tracked'
 type SortKey = 'priority' | 'score_asc' | 'score_desc' | 'name'
-
-const CATEGORY_BADGE: Record<ActionItem['category'], string> = {
-  page: 'bg-rose-100 text-rose-700',
-  content: 'bg-teal-100 text-teal-700',
-  technical: 'bg-amber-100 text-amber-700',
-  monitoring: 'bg-gray-100 text-gray-600',
-}
-
-const PRIORITY_BADGE: Record<ActionItem['priority'], string> = {
-  high: 'text-rose-600',
-  medium: 'text-amber-600',
-  low: 'text-gray-400',
-}
 
 function ScorePill({ score }: { score: number }) {
   const color =
@@ -64,30 +82,6 @@ function StatusBadge({ status }: { status: CommunityWithSitemapStatus['sitemapSt
   )
 }
 
-function ActionItemsPanel({ items }: { items: ActionItem[] }) {
-  if (items.length === 0) return <p className="text-xs text-[#8aadb8] py-2">No action items.</p>
-  return (
-    <ul className="space-y-3 py-2">
-      {items.map((item, i) => (
-        <li key={i} className="flex gap-3">
-          <span className={`text-xs font-bold mt-0.5 w-12 flex-shrink-0 ${PRIORITY_BADGE[item.priority]}`}>
-            {item.priority.toUpperCase()}
-          </span>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
-              <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${CATEGORY_BADGE[item.category]}`}>
-                {item.category}
-              </span>
-              <span className="text-xs font-semibold text-[#084c61]">{item.label}</span>
-            </div>
-            <p className="text-xs text-[#5a7a85] leading-relaxed">{item.detail}</p>
-          </div>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
 function GscIndexBadge({ isIndexed }: { isIndexed: boolean }) {
   return isIndexed ? (
     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700">
@@ -109,8 +103,6 @@ function CommunityRow({
   rank?: number
   gscEnabled: boolean
 }) {
-  const [open, setOpen] = useState(false)
-  const colSpan = gscEnabled ? 12 : 9
   return (
     <>
       <tr className="border-b border-[#f0f5f7] hover:bg-[#f9fbfc] transition-colors">
@@ -142,7 +134,7 @@ function CommunityRow({
         <td className="px-4 py-3 text-center">
           {c.sitemapUrl ? (
             <a
-              href={c.sitemapUrl}
+              href={c.sitemapUrl.split('?')[0]}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center text-[#177e89] hover:text-[#084c61] transition-colors"
@@ -170,25 +162,7 @@ function CommunityRow({
             </td>
           </>
         )}
-        <td className="px-4 py-3 text-center">
-          {c.actionItems.length > 0 && (
-            <button
-              onClick={() => setOpen((v) => !v)}
-              className="inline-flex items-center gap-1 text-xs font-medium text-[#177e89] hover:text-[#084c61] transition-colors"
-            >
-              Actions
-              {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            </button>
-          )}
-        </td>
       </tr>
-      {open && (
-        <tr className="bg-[#f9fbfc]">
-          <td colSpan={colSpan} className="px-8 pb-4">
-            <ActionItemsPanel items={c.actionItems} />
-          </td>
-        </tr>
-      )}
     </>
   )
 }
@@ -304,6 +278,7 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
           <span className="text-xs text-emerald-700 font-medium flex-1">
             Search Console connected · scores include index status &amp; impressions
           </span>
+          <GscSiteSelector />
           <button
             onClick={handleSync}
             disabled={syncing}
@@ -396,12 +371,7 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
                     {tooltip ? (
                       <span className="inline-flex items-center justify-center gap-1">
                         {label}
-                        <span className="relative group">
-                          <Info className="h-3 w-3 cursor-help" />
-                          <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-52 px-2.5 py-1.5 rounded-lg text-xs bg-[#084c61] text-white opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-20 whitespace-normal text-center font-normal normal-case tracking-normal leading-snug">
-                            {tooltip}
-                          </span>
-                        </span>
+                        <TooltipIcon text={tooltip} />
                       </span>
                     ) : (
                       label
@@ -414,7 +384,7 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
               {sorted.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={gscEnabled ? 12 : 9}
+                    colSpan={gscEnabled ? 11 : 8}
                     className="px-4 py-10 text-center text-sm text-[#8aadb8]"
                   >
                     No communities match this filter.

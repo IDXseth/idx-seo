@@ -5,17 +5,18 @@ import { Scorecard } from '@/components/scorecard'
 import { PlatformMentionChart } from '@/components/platform-chart'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
+import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { OptimizationPriorityTable } from '@/components/optimization-priority-table'
 import { getSitemapAnalysis, SitemapAnalysis } from '@/lib/sitemap'
-import { getGscMetrics } from '@/lib/gsc'
+import { getGscMetrics, getPageCrawlResults } from '@/lib/gsc'
 import { slugify } from '@/lib/utils'
-import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink } from 'lucide-react'
+import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink, Download } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
 async function getSessionList(): Promise<SessionOption[]> {
   const sessions = await prisma.runSession.findMany({
-    where: { status: 'done' },
+    where: { status: 'done', results: { some: {} } },
     orderBy: { startedAt: 'asc' },
     select: { id: true, startedAt: true, triggeredBy: true, _count: { select: { results: true } } },
   })
@@ -27,15 +28,16 @@ async function getSessionList(): Promise<SessionOption[]> {
   }))
 }
 
-async function getTrendData(): Promise<TrendPoint[]> {
+async function getTrendData(promptType?: string): Promise<TrendPoint[]> {
   const sessions = await prisma.runSession.findMany({
-    where: { status: 'done' },
+    where: { status: 'done', results: { some: {} } },
     orderBy: { startedAt: 'asc' },
     select: {
       id: true,
       startedAt: true,
       triggeredBy: true,
       results: {
+        where: promptType ? { prompt: { promptType } } : undefined,
         select: { platform: true, isMentioned: true, isCited: true, sentiment: true },
       },
     },
@@ -72,11 +74,12 @@ async function getTrendData(): Promise<TrendPoint[]> {
   })
 }
 
-async function getDashboardData(sessionId?: string) {
+async function getDashboardData(sessionId?: string, promptType?: string) {
   // One canonical prompt per unique promptText (first created wins) — prevents cross-batch double-counting
   const canonicalRows = await prisma.prompt.findMany({
     distinct: ['promptText'],
     orderBy: { createdAt: 'asc' },
+    where: promptType ? { promptType } : undefined,
     select: { id: true },
   })
   const canonicalIds = canonicalRows.map((r) => r.id)
@@ -187,7 +190,10 @@ async function getDashboardData(sessionId?: string) {
   )).filter(Boolean) as Array<{ market: string; promptCount: number; mentionRate: number; citationRate: number }>
 
   const rawCitations = await prisma.citation.findMany({
-    where: { ...(sessionId ? { result: { runSessionId: sessionId } } : {}), url: { not: '' } },
+    where: {
+      result: { promptId: { in: canonicalIds }, ...(sessionId ? { runSessionId: sessionId } : {}) },
+      url: { not: '' },
+    },
     select: { url: true, title: true },
   })
   const urlMap = new Map<string, { title: string; count: number }>()
@@ -220,9 +226,11 @@ async function getDashboardData(sessionId?: string) {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ session?: string }>
+  searchParams: Promise<{ session?: string; type?: string }>
 }) {
-  const { session: sessionId } = await searchParams
+  const { session: sessionId, type } = await searchParams
+  const promptTypeParam: PromptTypeFilter = type === 'brand' || type === 'nonbrand' ? type : 'all'
+  const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
 
   let data: Awaited<ReturnType<typeof getDashboardData>> | null = null
   let trendData: TrendPoint[] = []
@@ -230,8 +238,8 @@ export default async function DashboardPage({
   let sitemapAnalysis: SitemapAnalysis | null = null
   try {
     ;[data, trendData, sessions] = await Promise.all([
-      getDashboardData(sessionId),
-      getTrendData(),
+      getDashboardData(sessionId, promptType),
+      getTrendData(promptType),
       getSessionList(),
     ])
   } catch {
@@ -239,8 +247,11 @@ export default async function DashboardPage({
   }
   if (data) {
     try {
-      const gscMetrics = await getGscMetrics().catch(() => undefined)
-      sitemapAnalysis = await getSitemapAnalysis(data.communityStats, gscMetrics)
+      const [gscMetrics, crawlResults] = await Promise.all([
+        getGscMetrics().catch(() => undefined),
+        getPageCrawlResults().catch(() => undefined),
+      ])
+      sitemapAnalysis = await getSitemapAnalysis(data.communityStats, gscMetrics, crawlResults)
     } catch {
       // Tab shows empty state
     }
@@ -259,6 +270,12 @@ export default async function DashboardPage({
   }
 
   const currentSession = sessions.find((s) => s.id === sessionId)
+  const exportSessionId = sessionId ?? (sessions.length === 1 ? sessions[0]?.id : undefined)
+
+  const drillParams = new URLSearchParams()
+  if (sessionId) drillParams.set('session', sessionId)
+  if (promptType) drillParams.set('type', promptType)
+  const drillQuery = drillParams.toString() ? `?${drillParams.toString()}` : ''
 
   return (
     <div>
@@ -272,7 +289,10 @@ export default async function DashboardPage({
               : 'AI mention and citation monitoring across your senior living portfolio'}
           </p>
         </div>
-        <RunSessionPicker sessions={sessions} currentSessionId={sessionId} />
+        <div className="flex items-center gap-3">
+          <PromptTypeToggle value={promptTypeParam} basePath="/dashboard" sessionId={sessionId} />
+          <RunSessionPicker sessions={sessions} currentSessionId={sessionId} />
+        </div>
       </div>
 
       <>
@@ -323,6 +343,18 @@ export default async function DashboardPage({
 
           <TabsContent value="overview">
             <div className="space-y-6">
+              {exportSessionId && (
+                <div className="flex items-center justify-end">
+                  <a
+                    href={`/api/export?session=${exportSessionId}`}
+                    download
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#dde6ea] text-xs font-medium text-[#5a7a85] hover:bg-[#f0f5f7] transition-colors"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Export run
+                  </a>
+                </div>
+              )}
               <SectionCard title="Mention & Citation Rate by Platform">
                 <PlatformMentionChart data={data.platformStats} />
               </SectionCard>
@@ -374,7 +406,7 @@ export default async function DashboardPage({
                   mentionRate={c.mentionRate}
                   citationRate={c.citationRate}
                   promptCount={c.promptCount}
-                  href={`/dashboard/community/${encodeURIComponent(slugify(c.communityName))}${sessionId ? `?session=${sessionId}` : ''}`}
+                  href={`/dashboard/community/${encodeURIComponent(slugify(c.communityName))}${drillQuery}`}
                 />
               )}
               empty="No community data available"
@@ -391,7 +423,7 @@ export default async function DashboardPage({
                   mentionRate={c.mentionRate}
                   citationRate={c.citationRate}
                   promptCount={c.promptCount}
-                  href={`/dashboard/category/${encodeURIComponent(c.category)}${sessionId ? `?session=${sessionId}` : ''}`}
+                  href={`/dashboard/category/${encodeURIComponent(c.category)}${drillQuery}`}
                 />
               )}
               empty="No category data available"
@@ -408,7 +440,7 @@ export default async function DashboardPage({
                   mentionRate={c.mentionRate}
                   citationRate={c.citationRate}
                   promptCount={c.promptCount}
-                  href={`/dashboard/care-level/${encodeURIComponent(c.levelOfCare)}${sessionId ? `?session=${sessionId}` : ''}`}
+                  href={`/dashboard/care-level/${encodeURIComponent(c.levelOfCare)}${drillQuery}`}
                 />
               )}
               empty="No care level data available"
@@ -425,7 +457,7 @@ export default async function DashboardPage({
                   mentionRate={m.mentionRate}
                   citationRate={m.citationRate}
                   promptCount={m.promptCount}
-                  href={`/dashboard/market/${encodeURIComponent(m.market)}${sessionId ? `?session=${sessionId}` : ''}`}
+                  href={`/dashboard/market/${encodeURIComponent(m.market)}${drillQuery}`}
                 />
               )}
               empty="No market data available"
@@ -519,7 +551,7 @@ function EmptyDashboard() {
         </div>
         <h2 className="text-xl font-bold text-white mb-1" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>No data yet</h2>
         <p className="text-white/70 text-sm max-w-sm mx-auto">
-          Upload your prompts spreadsheet and run it against 6 AI platforms to see your mention and citation performance.
+          Upload your prompts spreadsheet and run it against 5 AI platforms to see your mention and citation performance.
         </p>
       </div>
 
