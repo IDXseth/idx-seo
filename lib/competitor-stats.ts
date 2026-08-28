@@ -1,5 +1,6 @@
 import { prisma } from './prisma'
 import { PLATFORMS, YOUR_BRAND_NAME, YOUR_BRAND_DOMAIN } from './utils'
+import type { Prisma } from '@prisma/client'
 
 // ─── Brand comparison series (all brands, one shared shape) ────────────────
 // Used by both the aggregate dashboard and any segment detail page (category,
@@ -213,4 +214,100 @@ export async function getCompetitorLeaderboard(
     // fail soft so the rest of the report still renders.
     return null
   }
+}
+
+// ─── Brand trend series (all brands, over time) ────────────────────────────
+// Same idea as getBrandSeries, but one point per run session instead of one
+// bucket per platform — for the "Mention & Citation Rate Trend" chart broken
+// out by brand. Mirrors getSegmentTrendData's promptWhere shape so callers
+// that already have a category/market/etc. filter can reuse it as-is.
+
+export interface BrandTrendPoint {
+  runSessionId: string
+  startedAt: string
+  mentionRate: number
+  citationRate: number
+}
+
+export interface BrandTrendSeries {
+  id: string
+  label: string
+  points: BrandTrendPoint[]
+}
+
+export async function getBrandTrendSeries(promptWhere: Prisma.PromptWhereInput): Promise<BrandTrendSeries[]> {
+  const sessions = await prisma.runSession.findMany({
+    where: { status: 'done' },
+    orderBy: { startedAt: 'asc' },
+    select: {
+      id: true,
+      startedAt: true,
+      results: {
+        where: { prompt: promptWhere },
+        select: {
+          isMentioned: true,
+          isCited: true,
+          competitorMentions: {
+            select: {
+              competitorId: true,
+              isMentioned: true,
+              isCited: true,
+              competitor: { select: { brandName: true, active: true } },
+            },
+          },
+        },
+      },
+    },
+  })
+
+  const relevantSessions = sessions.filter((s) => s.results.length > 0)
+  type SessionRow = (typeof relevantSessions)[number]
+  type ResultRow = SessionRow['results'][number]
+  type Flags = { isMentioned: boolean; isCited: boolean } | null
+
+  function ratesFor(results: ResultRow[], getFlags: (r: ResultRow) => Flags): { mentionRate: number; citationRate: number } {
+    let total = 0
+    let mentioned = 0
+    let cited = 0
+    for (const r of results) {
+      const flags = getFlags(r)
+      if (!flags) continue
+      total++
+      if (flags.isMentioned) mentioned++
+      if (flags.isCited) cited++
+    }
+    return { mentionRate: total > 0 ? mentioned / total : 0, citationRate: total > 0 ? cited / total : 0 }
+  }
+
+  const yourPoints: BrandTrendPoint[] = relevantSessions.map((s) => ({
+    runSessionId: s.id,
+    startedAt: s.startedAt.toISOString(),
+    ...ratesFor(s.results, (r) => ({ isMentioned: r.isMentioned, isCited: r.isCited })),
+  }))
+
+  const competitorNames = new Map<string, string>()
+  for (const s of relevantSessions) {
+    for (const r of s.results) {
+      for (const cm of r.competitorMentions) {
+        if (cm.competitor.active) competitorNames.set(cm.competitorId, cm.competitor.brandName)
+      }
+    }
+  }
+
+  const competitorSeries: BrandTrendSeries[] = [...competitorNames.entries()]
+    .map(([id, brandName]) => ({
+      id,
+      label: brandName,
+      points: relevantSessions.map((s) => ({
+        runSessionId: s.id,
+        startedAt: s.startedAt.toISOString(),
+        ...ratesFor(s.results, (r) => {
+          const cm = r.competitorMentions.find((c) => c.competitorId === id)
+          return cm ? { isMentioned: cm.isMentioned, isCited: cm.isCited } : null
+        }),
+      })),
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+
+  return [{ id: 'you', label: YOUR_BRAND_NAME, points: yourPoints }, ...competitorSeries]
 }

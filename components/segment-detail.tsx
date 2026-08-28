@@ -4,13 +4,14 @@ import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { PlatformMentionChart } from '@/components/platform-chart'
 import { BrandComparisonChart } from '@/components/brand-comparison-chart'
+import { BrandTrendChart } from '@/components/brand-trend-chart'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { ProjectPicker, ProjectOption } from '@/components/project-picker'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { PLATFORM_LABELS, PLATFORM_COLORS, formatPercent, cn } from '@/lib/utils'
 import { ChevronLeft, Target, Quote, FileText, ExternalLink, Trophy } from 'lucide-react'
-import type { CompetitorLeaderboardEntry, BrandComparison } from '@/lib/competitor-stats'
+import type { CompetitorLeaderboardEntry, BrandComparison, BrandTrendSeries } from '@/lib/competitor-stats'
 
 interface Citation {
   id: string
@@ -75,6 +76,7 @@ interface SegmentDetailProps {
   trendData?: TrendPoint[]
   competitorLeaderboard?: CompetitorLeaderboardEntry[] | null
   brandComparison?: BrandComparison | null
+  brandTrend?: BrandTrendSeries[]
   promptTypeFilter?: PromptTypeFilter
   projectId?: string
   projects?: ProjectOption[]
@@ -95,6 +97,7 @@ export function SegmentDetail({
   trendData,
   competitorLeaderboard,
   brandComparison,
+  brandTrend,
   promptTypeFilter = 'all',
   projectId,
   projects,
@@ -176,6 +179,15 @@ export function SegmentDetail({
       {/* Competitor comparison */}
       {competitorLeaderboard && competitorLeaderboard.length > 0 && (
         <CompetitorComparison entries={competitorLeaderboard} />
+      )}
+
+      {/* Brand trend — all brands, aggregate view only */}
+      {!sessionId && brandTrend && brandTrend.length > 1 && (
+        <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
+          <h2 className="text-sm font-semibold text-[#084c61] mb-1">Mention & Citation Rate Trend — All Brands</h2>
+          <p className="text-xs text-[#8aadb8] mb-4">How each tracked brand&apos;s visibility has moved across run sessions</p>
+          <BrandTrendChart brands={brandTrend} />
+        </div>
       )}
 
       {/* Trend charts — aggregate view only */}

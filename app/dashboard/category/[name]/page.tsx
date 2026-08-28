@@ -6,7 +6,7 @@ import { SegmentDetail } from '@/components/segment-detail'
 import { SessionOption } from '@/components/run-session-picker'
 import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
-import { getCompetitorLeaderboard, getBrandSeries, CompetitorLeaderboardEntry, BrandComparison } from '@/lib/competitor-stats'
+import { getCompetitorLeaderboard, getBrandSeries, getBrandTrendSeries, CompetitorLeaderboardEntry, BrandComparison, BrandTrendSeries } from '@/lib/competitor-stats'
 import { getSessionList } from '@/lib/run-sessions'
 import { getProjectList } from '@/lib/projects'
 
@@ -58,11 +58,14 @@ async function getCategoryData(name: string, sessionId?: string, promptType?: st
     promptId: { in: promptIds },
     ...(sessionId ? { runSessionId: sessionId } : {}),
   }).catch(() => null)
+  const brandTrend = sessionId
+    ? []
+    : await getBrandTrendSeries({ category: decodedName, ...scopeFilter }).catch(() => [])
 
   return {
     name: decodedName, prompts,
     overview: { promptCount: prompts.length, mentionRate: totalResults > 0 ? mentioned / totalResults : 0, citationRate: totalResults > 0 ? cited / totalResults : 0 },
-    platformStats, topDomains, trendData, competitorLeaderboard, brandComparison,
+    platformStats, topDomains, trendData, competitorLeaderboard, brandComparison, brandTrend,
   }
 }
 
@@ -112,6 +115,7 @@ export default async function CategoryDetailPage({
       trendData={data.trendData}
       competitorLeaderboard={data.competitorLeaderboard as CompetitorLeaderboardEntry[] | null}
       brandComparison={data.brandComparison as BrandComparison | null}
+      brandTrend={data.brandTrend as BrandTrendSeries[]}
       promptTypeFilter={promptTypeParam}
       projectId={projectId}
       projects={projects}

@@ -5,12 +5,7 @@ import { useRouter } from 'next/navigation'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { PLATFORM_LABELS, formatPercent } from '@/lib/utils'
 import type { BrandSeries } from '@/lib/competitor-stats'
-
-// Validated categorical palette (dataviz skill default order) — "Your Brand"
-// always takes slot 1, competitors take the next slots in stable order.
-// Fixed per-brand assignment (never re-indexed by which brands are toggled
-// on) so a brand keeps its color no matter what else is shown or hidden.
-const BRAND_PALETTE = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948']
+import { brandColorMap } from '@/lib/brand-palette'
 
 type Metric = 'mention' | 'citation'
 
@@ -48,7 +43,7 @@ export function BrandComparisonChart({ brands, anyBrand }: { brands: BrandSeries
   const [metric, setMetric] = useState<Metric>('mention')
 
   const colorOf = useMemo(() => {
-    const map = new Map(brands.map((b, i) => [b.id, BRAND_PALETTE[i % BRAND_PALETTE.length]]))
+    const map = brandColorMap(brands.map((b) => b.id))
     return (id: string) => map.get(id) ?? '#8aadb8'
   }, [brands])
 
