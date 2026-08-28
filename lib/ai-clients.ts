@@ -289,6 +289,25 @@ async function queryGemini(
   return { responseText: text, isMentioned, isCited, sentiment, citations }
 }
 
+// AI Overview text_blocks (and their nested `items`, where present) each carry a
+// reference_indexes array pointing into reference_links[].index — the set of
+// sources actually referenced somewhere in the overview's visible text. A
+// reference_links entry whose index never appears in any block was returned by
+// Google's AI Overview source list but never actually cited in the text.
+function collectReferencedIndexes(blocks: unknown[]): Set<number> {
+  const indexes = new Set<number>()
+  const visit = (nodes: unknown[]) => {
+    for (const node of nodes as Array<Record<string, unknown>>) {
+      if (Array.isArray(node.reference_indexes)) {
+        for (const i of node.reference_indexes as number[]) indexes.add(i)
+      }
+      if (Array.isArray(node.items)) visit(node.items)
+    }
+  }
+  visit(blocks)
+  return indexes
+}
+
 function extractCitationsFromSources(sources: unknown[]): PlatformCitation[] {
   return (sources as Array<Record<string, string>>)
     .map((s) => ({
@@ -321,13 +340,24 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
   if (text && !citations.length) {
     // reference_links[].link is the canonical citation URL per SearchAPI's google_ai_overview response
     const refs: unknown[] = data.reference_links ?? []
-    citations = (refs as Array<Record<string, string>>)
-      .map((r) => ({
-        url: r.link ?? r.url ?? '',
-        title: r.title ?? r.name ?? '',
-        domain: extractDomain(r.link ?? r.url ?? ''),
-        isExplicitCitation: true,
-      }))
+    // If text_blocks carry reference_indexes, use them to tell sources actually
+    // cited in the overview text apart from ones only listed in the source panel.
+    // If no block declares any indexes (older/simpler response shapes), fall back
+    // to treating every reference link as explicit, same as before this split.
+    const referencedIndexes = Array.isArray(data.text_blocks)
+      ? collectReferencedIndexes(data.text_blocks)
+      : new Set<number>()
+    citations = (refs as Array<Record<string, unknown>>)
+      .map((r, i) => {
+        const url = (r.link as string) ?? (r.url as string) ?? ''
+        const refIndex = typeof r.index === 'number' ? r.index : i
+        return {
+          url,
+          title: (r.title as string) ?? (r.name as string) ?? '',
+          domain: extractDomain(url),
+          isExplicitCitation: referencedIndexes.size === 0 || referencedIndexes.has(refIndex),
+        }
+      })
       .filter((c) => c.url)
   }
 
