@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { PlatformMentionChart } from '@/components/platform-chart'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
+import { ProjectPicker, ProjectOption } from '@/components/project-picker'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { PLATFORM_LABELS, PLATFORM_COLORS, formatPercent, cn } from '@/lib/utils'
 import { ChevronLeft, Target, Quote, FileText, ExternalLink, Trophy } from 'lucide-react'
@@ -73,6 +74,8 @@ interface SegmentDetailProps {
   trendData?: TrendPoint[]
   competitorLeaderboard?: CompetitorLeaderboardEntry[] | null
   promptTypeFilter?: PromptTypeFilter
+  projectId?: string
+  projects?: ProjectOption[]
 }
 
 export function SegmentDetail({
@@ -90,6 +93,8 @@ export function SegmentDetail({
   trendData,
   competitorLeaderboard,
   promptTypeFilter = 'all',
+  projectId,
+  projects,
 }: SegmentDetailProps) {
   const platforms = platformStats.map((p) => p.platform)
 
@@ -126,9 +131,25 @@ export function SegmentDetail({
             </p>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <PromptTypeToggle value={promptTypeFilter} basePath={basePath ?? '/dashboard'} sessionId={sessionId} />
-          {sessions && <RunSessionPicker sessions={sessions} currentSessionId={sessionId} basePath={basePath} />}
+        <div className="flex items-center gap-3 flex-wrap">
+          {projects && (
+            <ProjectPicker
+              projects={projects}
+              currentProjectId={projectId}
+              basePath={basePath ?? '/dashboard'}
+              promptType={promptTypeFilter === 'all' ? undefined : promptTypeFilter}
+            />
+          )}
+          <PromptTypeToggle value={promptTypeFilter} basePath={basePath ?? '/dashboard'} sessionId={sessionId} projectId={projectId} />
+          {sessions && (
+            <RunSessionPicker
+              sessions={sessions}
+              currentSessionId={sessionId}
+              basePath={basePath}
+              projectId={projectId}
+              promptType={promptTypeFilter === 'all' ? undefined : promptTypeFilter}
+            />
+          )}
         </div>
       </div>
 

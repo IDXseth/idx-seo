@@ -7,25 +7,18 @@ import { SessionOption } from '@/components/run-session-picker'
 import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
 import { getCompetitorLeaderboard, CompetitorLeaderboardEntry } from '@/lib/competitor-stats'
-
-async function getSessionList(): Promise<SessionOption[]> {
-  const sessions = await prisma.runSession.findMany({
-    where: { status: 'done', results: { some: {} } },
-    orderBy: { startedAt: 'asc' },
-    select: { id: true, startedAt: true, triggeredBy: true, _count: { select: { results: true } } },
-  })
-  return sessions.map((s) => ({ id: s.id, startedAt: s.startedAt.toISOString(), triggeredBy: s.triggeredBy, resultCount: s._count.results }))
-}
+import { getSessionList } from '@/lib/run-sessions'
+import { getProjectList } from '@/lib/projects'
 
 export const dynamic = 'force-dynamic'
 
-async function getCategoryData(name: string, sessionId?: string, promptType?: string, userId?: string) {
+async function getCategoryData(name: string, sessionId?: string, promptType?: string, projectId?: string, userId?: string) {
   const decodedName = decodeURIComponent(name)
   const resultsFilter = sessionId ? { where: { runSessionId: sessionId } } : {}
-  const typeFilter = promptType ? { promptType } : {}
+  const scopeFilter = { ...(promptType ? { promptType } : {}), ...(projectId ? { batchId: projectId } : {}) }
 
   const prompts = await prisma.prompt.findMany({
-    where: { category: decodedName, ...typeFilter },
+    where: { category: decodedName, ...scopeFilter },
     include: { results: { ...resultsFilter, include: { citations: true } } },
   })
 
@@ -56,7 +49,7 @@ async function getCategoryData(name: string, sessionId?: string, promptType?: st
     .sort((a, b) => b[1] - a[1]).slice(0, 10)
     .map(([domain, count]) => ({ domain, count, percentage: totalResults > 0 ? count / totalResults : 0 }))
 
-  const trendData = sessionId ? [] : await getSegmentTrendData({ category: decodedName, ...typeFilter })
+  const trendData = sessionId ? [] : await getSegmentTrendData({ category: decodedName, ...scopeFilter })
   const competitorLeaderboard = userId
     ? await getCompetitorLeaderboard(prompts.map((p) => p.id), userId, sessionId)
     : null
@@ -72,9 +65,9 @@ export default async function CategoryDetailPage({
   params, searchParams,
 }: {
   params: Promise<{ name: string }>
-  searchParams: Promise<{ session?: string; type?: string }>
+  searchParams: Promise<{ session?: string; type?: string; project?: string }>
 }) {
-  const [{ name }, { session: sessionId, type }] = await Promise.all([params, searchParams])
+  const [{ name }, { session: sessionId, type, project: projectId }] = await Promise.all([params, searchParams])
   const promptTypeParam: PromptTypeFilter = type === 'brand' || type === 'nonbrand' ? type : 'all'
   const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
   const session = await auth().catch(() => null)
@@ -82,11 +75,19 @@ export default async function CategoryDetailPage({
 
   let data: Awaited<ReturnType<typeof getCategoryData>> = null
   let sessions: SessionOption[] = []
-  try { ;[data, sessions] = await Promise.all([getCategoryData(name, sessionId, promptType, userId), getSessionList()]) } catch { /* DB not configured */ }
+  let projects: Awaited<ReturnType<typeof getProjectList>> = []
+  try {
+    ;[data, sessions, projects] = await Promise.all([
+      getCategoryData(name, sessionId, promptType, projectId, userId),
+      getSessionList(projectId),
+      getProjectList(),
+    ])
+  } catch { /* DB not configured */ }
 
   if (!data) notFound()
 
   const dashboardQuery = new URLSearchParams()
+  if (projectId) dashboardQuery.set('project', projectId)
   if (sessionId) dashboardQuery.set('session', sessionId)
   if (promptType) dashboardQuery.set('type', promptType)
 
@@ -106,6 +107,8 @@ export default async function CategoryDetailPage({
       trendData={data.trendData}
       competitorLeaderboard={data.competitorLeaderboard as CompetitorLeaderboardEntry[] | null}
       promptTypeFilter={promptTypeParam}
+      projectId={projectId}
+      projects={projects}
     />
   )
 }

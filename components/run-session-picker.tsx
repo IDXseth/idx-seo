@@ -22,15 +22,24 @@ export function RunSessionPicker({
   sessions,
   currentSessionId,
   basePath = '/dashboard',
+  projectId,
+  promptType,
 }: {
   sessions: SessionOption[]
   currentSessionId?: string
   basePath?: string
+  projectId?: string
+  promptType?: string
 }) {
   const router = useRouter()
 
   function handleChange(id: string) {
-    router.push(id ? `${basePath}?session=${id}` : basePath)
+    const params = new URLSearchParams()
+    if (projectId) params.set('project', projectId)
+    if (id) params.set('session', id)
+    if (promptType) params.set('type', promptType)
+    const qs = params.toString()
+    router.push(qs ? `${basePath}?${qs}` : basePath)
   }
 
   if (sessions.length < 1) return null

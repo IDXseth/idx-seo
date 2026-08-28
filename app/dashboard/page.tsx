@@ -6,38 +6,36 @@ import { PlatformMentionChart } from '@/components/platform-chart'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
+import { ProjectPicker } from '@/components/project-picker'
 import { OptimizationPriorityTable } from '@/components/optimization-priority-table'
 import { getSitemapAnalysis, SitemapAnalysis } from '@/lib/sitemap'
 import { getGscMetrics, getPageCrawlResults } from '@/lib/gsc'
+import { getSessionList } from '@/lib/run-sessions'
+import { getProjectList } from '@/lib/projects'
 import { slugify } from '@/lib/utils'
 import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink, Download } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
-async function getSessionList(): Promise<SessionOption[]> {
-  const sessions = await prisma.runSession.findMany({
-    where: { status: 'done', results: { some: {} } },
-    orderBy: { startedAt: 'asc' },
-    select: { id: true, startedAt: true, triggeredBy: true, _count: { select: { results: true } } },
-  })
-  return sessions.map((s) => ({
-    id: s.id,
-    startedAt: s.startedAt.toISOString(),
-    triggeredBy: s.triggeredBy,
-    resultCount: s._count.results,
-  }))
-}
+async function getTrendData(promptType?: string, projectId?: string): Promise<TrendPoint[]> {
+  const promptFilter = {
+    ...(promptType ? { promptType } : {}),
+    ...(projectId ? { batchId: projectId } : {}),
+  }
+  const hasPromptFilter = Object.keys(promptFilter).length > 0
 
-async function getTrendData(promptType?: string): Promise<TrendPoint[]> {
   const sessions = await prisma.runSession.findMany({
-    where: { status: 'done', results: { some: {} } },
+    where: {
+      status: 'done',
+      results: projectId ? { some: { prompt: { batchId: projectId } } } : { some: {} },
+    },
     orderBy: { startedAt: 'asc' },
     select: {
       id: true,
       startedAt: true,
       triggeredBy: true,
       results: {
-        where: promptType ? { prompt: { promptType } } : undefined,
+        where: hasPromptFilter ? { prompt: promptFilter } : undefined,
         select: { platform: true, isMentioned: true, isCited: true, sentiment: true },
       },
     },
@@ -74,12 +72,18 @@ async function getTrendData(promptType?: string): Promise<TrendPoint[]> {
   })
 }
 
-async function getDashboardData(sessionId?: string, promptType?: string) {
-  // One canonical prompt per unique promptText (first created wins) — prevents cross-batch double-counting
+async function getDashboardData(sessionId?: string, promptType?: string, projectId?: string) {
+  // One canonical prompt per unique promptText (first created wins) — prevents cross-batch
+  // double-counting. Scoped to a single project's own prompts when one is selected, since
+  // there's no cross-batch collision to worry about within one project.
+  const canonicalWhere = {
+    ...(promptType ? { promptType } : {}),
+    ...(projectId ? { batchId: projectId } : {}),
+  }
   const canonicalRows = await prisma.prompt.findMany({
     distinct: ['promptText'],
     orderBy: { createdAt: 'asc' },
-    where: promptType ? { promptType } : undefined,
+    where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
     select: { id: true },
   })
   const canonicalIds = canonicalRows.map((r) => r.id)
@@ -226,21 +230,23 @@ async function getDashboardData(sessionId?: string, promptType?: string) {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ session?: string; type?: string }>
+  searchParams: Promise<{ session?: string; type?: string; project?: string }>
 }) {
-  const { session: sessionId, type } = await searchParams
+  const { session: sessionId, type, project: projectId } = await searchParams
   const promptTypeParam: PromptTypeFilter = type === 'brand' || type === 'nonbrand' ? type : 'all'
   const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
 
   let data: Awaited<ReturnType<typeof getDashboardData>> | null = null
   let trendData: TrendPoint[] = []
   let sessions: SessionOption[] = []
+  let projects: Awaited<ReturnType<typeof getProjectList>> = []
   let sitemapAnalysis: SitemapAnalysis | null = null
   try {
-    ;[data, trendData, sessions] = await Promise.all([
-      getDashboardData(sessionId, promptType),
-      getTrendData(promptType),
-      getSessionList(),
+    ;[data, trendData, sessions, projects] = await Promise.all([
+      getDashboardData(sessionId, promptType, projectId),
+      getTrendData(promptType, projectId),
+      getSessionList(projectId),
+      getProjectList(),
     ])
   } catch {
     // DB not configured — show empty state
@@ -270,9 +276,11 @@ export default async function DashboardPage({
   }
 
   const currentSession = sessions.find((s) => s.id === sessionId)
+  const currentProject = projects.find((p) => p.id === projectId)
   const exportSessionId = sessionId ?? (sessions.length === 1 ? sessions[0]?.id : undefined)
 
   const drillParams = new URLSearchParams()
+  if (projectId) drillParams.set('project', projectId)
   if (sessionId) drillParams.set('session', sessionId)
   if (promptType) drillParams.set('type', promptType)
   const drillQuery = drillParams.toString() ? `?${drillParams.toString()}` : ''
@@ -282,16 +290,21 @@ export default async function DashboardPage({
       {/* Page header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Dashboard</h1>
+          <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>
+            {currentProject ? currentProject.name : 'Dashboard'}
+          </h1>
           <p className="text-[#5a7a85] mt-1 text-sm">
             {currentSession
               ? `Showing data from ${new Date(currentSession.startedAt).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`
+              : currentProject
+              ? 'AI mention and citation monitoring for this project'
               : 'AI mention and citation monitoring across your senior living portfolio'}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <PromptTypeToggle value={promptTypeParam} basePath="/dashboard" sessionId={sessionId} />
-          <RunSessionPicker sessions={sessions} currentSessionId={sessionId} />
+        <div className="flex items-center gap-3 flex-wrap">
+          <ProjectPicker projects={projects} currentProjectId={projectId} promptType={promptType} />
+          <PromptTypeToggle value={promptTypeParam} basePath="/dashboard" sessionId={sessionId} projectId={projectId} />
+          <RunSessionPicker sessions={sessions} currentSessionId={sessionId} projectId={projectId} promptType={promptType} />
         </div>
       </div>
 
