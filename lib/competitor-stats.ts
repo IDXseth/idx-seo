@@ -70,37 +70,43 @@ export async function getCompetitorLeaderboard(
 ): Promise<CompetitorLeaderboardEntry[] | null> {
   if (promptIds.length === 0) return null
 
-  const competitors = await prisma.competitor.findMany({ where: { userId, active: true } })
-  if (competitors.length === 0) return null
+  try {
+    const competitors = await prisma.competitor.findMany({ where: { userId, active: true } })
+    if (competitors.length === 0) return null
 
-  const resultWhere = {
-    promptId: { in: promptIds },
-    ...(sessionId ? { runSessionId: sessionId } : {}),
+    const resultWhere = {
+      promptId: { in: promptIds },
+      ...(sessionId ? { runSessionId: sessionId } : {}),
+    }
+
+    const [brandResults, mentions] = await Promise.all([
+      prisma.result.findMany({
+        where: resultWhere,
+        select: { platform: true, isMentioned: true, isCited: true, sentiment: true },
+      }),
+      prisma.competitorMention.findMany({
+        where: { competitorId: { in: competitors.map((c) => c.id) }, result: resultWhere },
+        select: { competitorId: true, isMentioned: true, isCited: true, sentiment: true, result: { select: { platform: true } } },
+      }),
+    ])
+
+    const brandEntry = buildEntry('you', YOUR_BRAND_NAME, YOUR_BRAND_DOMAIN, true, brandResults)
+
+    const competitorEntries = competitors.map((c) => {
+      const rows: RateRow[] = mentions
+        .filter((m) => m.competitorId === c.id)
+        .map((m) => ({ platform: m.result.platform, isMentioned: m.isMentioned, isCited: m.isCited, sentiment: m.sentiment }))
+      return buildEntry(c.id, c.brandName, c.domain, false, rows)
+    })
+
+    const all = [brandEntry, ...competitorEntries]
+    const totalMentions = all.reduce((sum, e) => sum + e.mentioned, 0)
+    for (const entry of all) entry.shareOfVoice = totalMentions > 0 ? entry.mentioned / totalMentions : 0
+
+    return all.sort((a, b) => b.mentionRate - a.mentionRate)
+  } catch {
+    // Competitor/CompetitorMention tables not migrated yet, or DB unreachable —
+    // fail soft so the rest of the report still renders.
+    return null
   }
-
-  const [brandResults, mentions] = await Promise.all([
-    prisma.result.findMany({
-      where: resultWhere,
-      select: { platform: true, isMentioned: true, isCited: true, sentiment: true },
-    }),
-    prisma.competitorMention.findMany({
-      where: { competitorId: { in: competitors.map((c) => c.id) }, result: resultWhere },
-      select: { competitorId: true, isMentioned: true, isCited: true, sentiment: true, result: { select: { platform: true } } },
-    }),
-  ])
-
-  const brandEntry = buildEntry('you', YOUR_BRAND_NAME, YOUR_BRAND_DOMAIN, true, brandResults)
-
-  const competitorEntries = competitors.map((c) => {
-    const rows: RateRow[] = mentions
-      .filter((m) => m.competitorId === c.id)
-      .map((m) => ({ platform: m.result.platform, isMentioned: m.isMentioned, isCited: m.isCited, sentiment: m.sentiment }))
-    return buildEntry(c.id, c.brandName, c.domain, false, rows)
-  })
-
-  const all = [brandEntry, ...competitorEntries]
-  const totalMentions = all.reduce((sum, e) => sum + e.mentioned, 0)
-  for (const entry of all) entry.shareOfVoice = totalMentions > 0 ? entry.mentioned / totalMentions : 0
-
-  return all.sort((a, b) => b.mentionRate - a.mentionRate)
 }

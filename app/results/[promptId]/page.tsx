@@ -17,14 +17,38 @@ async function getPromptData(promptId: string, sessionId: string | null) {
       batch: true,
       results: {
         where: sessionId ? { runSessionId: sessionId } : undefined,
-        include: {
-          citations: true,
-          competitorMentions: { include: { competitor: true } },
-        },
+        include: { citations: true },
         orderBy: { platform: 'asc' },
       },
     },
   })
+}
+
+interface DetectedBrand {
+  competitorId: string
+  brandName: string
+  isMentioned: boolean
+  isCited: boolean
+  sentiment: string
+}
+
+// Fetched separately from the core prompt query (and always fails soft) so a
+// not-yet-migrated CompetitorMention table can never break this page's core data.
+async function getCompetitorMentionsByResult(resultIds: string[]): Promise<Map<string, DetectedBrand[]>> {
+  const map = new Map<string, DetectedBrand[]>()
+  if (resultIds.length === 0) return map
+  try {
+    const mentions = await prisma.competitorMention.findMany({
+      where: { resultId: { in: resultIds } },
+      include: { competitor: { select: { brandName: true } } },
+    })
+    for (const m of mentions) {
+      const list = map.get(m.resultId) ?? []
+      list.push({ competitorId: m.competitorId, brandName: m.competitor.brandName, isMentioned: m.isMentioned, isCited: m.isCited, sentiment: m.sentiment })
+      map.set(m.resultId, list)
+    }
+  } catch { /* CompetitorMention table not migrated yet, or DB unreachable */ }
+  return map
 }
 
 async function getSessionsForPrompt(promptId: string): Promise<SessionOption[]> {
@@ -78,6 +102,8 @@ export default async function ResultsDetailPage({
     if (session?.user?.id) competitors = await getActiveCompetitors(session.user.id)
   } catch { /* not signed in / DB not configured */ }
 
+  const mentionsByResult = await getCompetitorMentionsByResult(sortedResults.map((r) => r.id))
+
   const brandSummary = [
     {
       id: 'you',
@@ -89,7 +115,7 @@ export default async function ResultsDetailPage({
       id: c.id,
       brandName: c.brandName,
       isYou: false,
-      mentionedCount: sortedResults.filter((r) => r.competitorMentions.some((m) => m.competitorId === c.id && m.isMentioned)).length,
+      mentionedCount: sortedResults.filter((r) => (mentionsByResult.get(r.id) ?? []).some((m) => m.competitorId === c.id && m.isMentioned)).length,
     })),
   ]
   const platformCount = sortedResults.length
@@ -176,7 +202,7 @@ export default async function ResultsDetailPage({
               </p>
               <div className="flex gap-1">
                 {sortedResults.map((r) => {
-                  const filled = b.isYou ? r.isMentioned : r.competitorMentions.some((m) => m.competitorId === b.id && m.isMentioned)
+                  const filled = b.isYou ? r.isMentioned : (mentionsByResult.get(r.id) ?? []).some((m) => m.competitorId === b.id && m.isMentioned)
                   return (
                     <div
                       key={r.id}
@@ -247,9 +273,9 @@ export default async function ResultsDetailPage({
                 {competitors.length > 0 && (() => {
                   const detected = [
                     ...(result.isMentioned ? [{ id: 'you', brandName: YOUR_BRAND_NAME, isYou: true, sentiment: result.sentiment }] : []),
-                    ...result.competitorMentions
+                    ...(mentionsByResult.get(result.id) ?? [])
                       .filter((m) => m.isMentioned)
-                      .map((m) => ({ id: m.competitorId, brandName: m.competitor.brandName, isYou: false, sentiment: m.sentiment })),
+                      .map((m) => ({ id: m.competitorId, brandName: m.brandName, isYou: false, sentiment: m.sentiment })),
                   ]
                   if (detected.length === 0) return null
                   return (

@@ -32,10 +32,15 @@ function domainMatches(citationDomain: string, competitorDomain: string): boolea
 }
 
 export async function getActiveCompetitors(userId: string): Promise<CompetitorInput[]> {
-  return prisma.competitor.findMany({
-    where: { userId, active: true },
-    select: { id: true, brandName: true, domain: true, aliases: true },
-  })
+  try {
+    return await prisma.competitor.findMany({
+      where: { userId, active: true },
+      select: { id: true, brandName: true, domain: true, aliases: true },
+    })
+  } catch {
+    // Competitor table not migrated yet, or DB unreachable — never let this break a prompt run.
+    return []
+  }
 }
 
 // Scans one AI response for every tracked competitor — alias/brand-name text match for
@@ -73,13 +78,17 @@ export async function matchCompetitors(
 // non-mentions — so downstream rate calculations have the same denominator as Result.
 export async function saveCompetitorMentions(resultId: string, matches: CompetitorMatchResult[]): Promise<void> {
   if (matches.length === 0) return
-  await prisma.competitorMention.createMany({
-    data: matches.map((m) => ({
-      resultId,
-      competitorId: m.competitorId,
-      isMentioned: m.isMentioned,
-      isCited: m.isCited,
-      sentiment: m.sentiment,
-    })),
-  })
+  try {
+    await prisma.competitorMention.createMany({
+      data: matches.map((m) => ({
+        resultId,
+        competitorId: m.competitorId,
+        isMentioned: m.isMentioned,
+        isCited: m.isCited,
+        sentiment: m.sentiment,
+      })),
+    })
+  } catch {
+    // CompetitorMention table not migrated yet — never let this abort saving the Result itself.
+  }
 }
