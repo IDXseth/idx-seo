@@ -151,6 +151,89 @@ export async function getGscMetrics(): Promise<Map<string, GscData>> {
   )
 }
 
+// ─── Query-level (search term) cache ───────────────────────────────────────
+// Page-level metrics (above) say which pages get found; this says what
+// people actually typed to find them — the real-demand signal the
+// prompt-suggestion generator grounds on.
+
+export async function refreshGscQueryCache(): Promise<{ queriesUpdated: number; error?: string }> {
+  const auth = await getGscOAuth2Client()
+  if (!auth) {
+    return {
+      queriesUpdated: 0,
+      error:
+        'No Google account with Search Console access found. Sign in with Google and grant the webmasters.readonly scope.',
+    }
+  }
+
+  const siteUrl = await getConfiguredSiteUrl()
+  if (!siteUrl) {
+    return {
+      queriesUpdated: 0,
+      error: 'No GSC domain selected. Go to Settings and choose a Search Console property.',
+    }
+  }
+
+  const sc = google.searchconsole({ version: 'v1', auth })
+
+  const today = new Date()
+  const endDate = today.toISOString().slice(0, 10)
+  const startDate = new Date(today.getTime() - 28 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+
+  let rows: Array<{ keys?: string[] | null; impressions?: number | null; clicks?: number | null; position?: number | null }> = []
+  try {
+    const res = await sc.searchanalytics.query({
+      siteUrl,
+      requestBody: {
+        startDate,
+        endDate,
+        dimensions: ['query'],
+        rowLimit: 1000,
+      },
+    })
+    rows = res.data.rows ?? []
+  } catch (err) {
+    return {
+      queriesUpdated: 0,
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+
+  const now = new Date()
+  let queriesUpdated = 0
+
+  for (const row of rows) {
+    const query = row.keys?.[0]
+    if (!query) continue
+
+    const data = {
+      impressions: row.impressions ?? 0,
+      clicks: row.clicks ?? 0,
+      position: row.position ?? null,
+      fetchedAt: now,
+      updatedAt: now,
+    }
+
+    await prisma.gscQuery.upsert({
+      where: { query },
+      create: { query, ...data },
+      update: data,
+    })
+    queriesUpdated++
+  }
+
+  return { queriesUpdated }
+}
+
+export async function getTopGscQueries(limit = 40): Promise<string[]> {
+  const records = await prisma.gscQuery.findMany({
+    orderBy: { impressions: 'desc' },
+    take: limit,
+    select: { query: true },
+  })
+  return records.map((r) => r.query)
+}
+
 function detectJsonLdSchema(html: string): { hasLocalBusiness: boolean; hasSeniorCare: boolean } {
   const scriptRe = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
   let hasLocalBusiness = false

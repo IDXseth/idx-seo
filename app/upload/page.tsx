@@ -7,9 +7,11 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, X, Info, TriangleAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { normalizeRow, KNOWN_LEVELS_OF_CARE } from '@/lib/normalize'
+import { SuggestPromptsPanel } from '@/components/suggest-prompts-panel'
 
 interface ParsedRow {
   promptType: string
@@ -144,8 +146,20 @@ export default function UploadPage() {
     <div className="max-w-4xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Upload Prompts</h1>
-        <p className="text-[#5a7a85] mt-1 text-sm">Upload a spreadsheet with your prompt data to get started</p>
+        <p className="text-[#5a7a85] mt-1 text-sm">Upload a spreadsheet, or let AI suggest nonbrand prompts for you</p>
       </div>
+
+      <Tabs defaultValue="file" className="mb-6">
+        <TabsList>
+          <TabsTrigger value="file">Upload File</TabsTrigger>
+          <TabsTrigger value="suggest">Suggest Prompts (AI)</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="suggest">
+          <SuggestPromptsPanel />
+        </TabsContent>
+
+        <TabsContent value="file">
 
       {/* Format guide */}
       <div className="bg-[#e6f2f5] border border-[#b8d8e0] rounded-xl p-4 mb-6 flex gap-3">
@@ -315,6 +329,9 @@ export default function UploadPage() {
           </div>
         </div>
       )}
+
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

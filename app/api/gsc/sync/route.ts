@@ -1,5 +1,5 @@
 import { auth } from '@/lib/auth'
-import { refreshGscCache, crawlCommunityPages } from '@/lib/gsc'
+import { refreshGscCache, refreshGscQueryCache, crawlCommunityPages } from '@/lib/gsc'
 import { NextResponse } from 'next/server'
 
 export async function POST() {
@@ -11,7 +11,12 @@ export async function POST() {
   if (result.error) {
     return NextResponse.json({ error: result.error }, { status: 400 })
   }
+  const queryResult = await refreshGscQueryCache()
   // Crawl community pages to detect schema markup (fire-and-forget; errors are non-fatal)
   crawlCommunityPages().catch(() => undefined)
-  return NextResponse.json({ pagesUpdated: result.pagesUpdated })
+  return NextResponse.json({
+    pagesUpdated: result.pagesUpdated,
+    queriesUpdated: queryResult.queriesUpdated,
+    queryError: queryResult.error ?? null,
+  })
 }

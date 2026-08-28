@@ -217,6 +217,20 @@ model GscMetric {
   updatedAt   DateTime @updatedAt
 }
 
+// Cache for Google Search Console query-level (search term) metrics — the
+// actual phrases people search that surface the connected site. Populated
+// by the same daily `refresh-gsc-cache` Inngest function and used to ground
+// the prompt-suggestion generator in real search demand.
+model GscQuery {
+  id          String   @id @default(cuid())
+  query       String   @unique
+  impressions Int      @default(0)
+  clicks      Int      @default(0)
+  position    Float?
+  fetchedAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 // Cache for page-level schema markup detection.
 // Populated by crawlCommunityPages() after each GSC sync.
 // SQL: CREATE TABLE IF NOT EXISTS "PageCrawlResult" ("id" TEXT NOT NULL PRIMARY KEY, "pageUrl" TEXT NOT NULL UNIQUE, "hasLocalBusiness" BOOLEAN, "hasSeniorCare" BOOLEAN, "crawledAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL);
