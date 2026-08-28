@@ -253,6 +253,16 @@ async function queryGemini(
   return { responseText: text, isMentioned, isCited, sentiment, citations }
 }
 
+function extractCitationsFromSources(sources: unknown[]): Array<{ url: string; title: string; domain: string }> {
+  return (sources as Array<Record<string, string>>)
+    .map((s) => ({
+      url: s.link ?? s.url ?? '',
+      title: s.title ?? s.name ?? '',
+      domain: extractDomain(s.link ?? s.url ?? ''),
+    }))
+    .filter((c) => c.url)
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function parseSearchAPIResponse(data: any, communityName: string, engine?: string): Promise<PlatformResult> {
   let text = ''
@@ -287,14 +297,7 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
   if (!text && data.ai_overview) {
     const aio = data.ai_overview
     text = aio.answer ?? aio.text ?? aio.snippet ?? ''
-    const sources: unknown[] = aio.sources ?? aio.references ?? aio.links ?? []
-    citations = (sources as Array<Record<string, string>>)
-      .map((s) => ({
-        url: s.link ?? s.url ?? '',
-        title: s.title ?? s.name ?? '',
-        domain: extractDomain(s.link ?? s.url ?? ''),
-      }))
-      .filter((c) => c.url)
+    citations = extractCitationsFromSources(aio.sources ?? aio.references ?? aio.links ?? [])
   }
 
   if (!text && data.answer) {
@@ -475,7 +478,18 @@ async function queryGoogleAIO(
       if (step2Res.ok) {
         const step2Data = await step2Res.json()
         const result = await parseSearchAPIResponse(step2Data, communityName, 'google_ai_overview')
-        if (result.responseText !== '[No AI Overview]') return result
+        if (result.responseText !== '[No AI Overview]') {
+          // The page_token-expanded response sometimes comes back with text but
+          // an empty reference_links array, even though the compact ai_overview
+          // from step 1 had its own sources for the same overview — don't
+          // discard those just because we swapped to the expanded engine.
+          if (result.citations.length === 0 && step1Data.ai_overview) {
+            const aio = step1Data.ai_overview
+            result.citations = extractCitationsFromSources(aio.sources ?? aio.references ?? aio.links ?? [])
+            result.isCited = checkCited(result.citations, communityName)
+          }
+          return result
+        }
       }
     } catch { /* fall through */ }
   }
