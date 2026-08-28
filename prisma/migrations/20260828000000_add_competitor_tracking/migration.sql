@@ -23,3 +23,9 @@ CREATE TABLE IF NOT EXISTS "CompetitorMention" (
 CREATE INDEX IF NOT EXISTS "Competitor_userId_idx" ON "Competitor"("userId");
 CREATE INDEX IF NOT EXISTS "CompetitorMention_competitorId_idx" ON "CompetitorMention"("competitorId");
 CREATE INDEX IF NOT EXISTS "CompetitorMention_resultId_idx" ON "CompetitorMention"("resultId");
+
+-- The app only ever reaches these tables through Prisma over the postgres superuser
+-- connection (which bypasses RLS), never through Supabase's anon/authenticated API —
+-- so RLS with no policies just closes off that unused public surface.
+ALTER TABLE "Competitor" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "CompetitorMention" ENABLE ROW LEVEL SECURITY;
