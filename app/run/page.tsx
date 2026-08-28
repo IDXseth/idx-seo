@@ -983,7 +983,7 @@ function BatchCard({
                 </Button>
               )
             )}
-            <Link href="/dashboard"><Button variant="outline" size="sm">Results</Button></Link>
+            <Link href={`/dashboard?project=${batch.id}`}><Button variant="outline" size="sm">Results</Button></Link>
             <Link href={`/data/${batch.id}`}><Button variant="outline" size="sm">Data</Button></Link>
             {batch.canWrite && (
               <>
@@ -1050,7 +1050,7 @@ export default function RunPage() {
   const [running, setRunning] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
   const [runStatus, setRunStatus] = useState<RunStatus | null>(null)
-  const [done, setDone] = useState<{ processed: number; errors: number } | null>(null)
+  const [done, setDone] = useState<{ processed: number; errors: number; batchId?: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notifyEmail, setNotifyEmail] = useState('')
   const [emailError, setEmailError] = useState<string | null>(null)
@@ -1082,7 +1082,7 @@ export default function RunPage() {
 
   useEffect(() => () => stopPolling(), [])
 
-  const startPolling = useCallback((batchRunId: string) => {
+  const startPolling = useCallback((batchRunId: string, batchId?: string) => {
     stopPolling()
     pollingRef.current = setInterval(async () => {
       try {
@@ -1094,7 +1094,7 @@ export default function RunPage() {
         setProgress(status.totalPrompts > 0 ? Math.round((completed / status.totalPrompts) * 100) : 0)
         if (status.status === 'done') {
           stopPolling()
-          setDone({ processed: status.doneCount, errors: status.failCount })
+          setDone({ processed: status.doneCount, errors: status.failCount, batchId })
           setRunning(null)
           setRunStatus(null)
           fetchBatches()
@@ -1123,8 +1123,8 @@ export default function RunPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to queue run')
-      if (data.processed === 0 || !data.batchRunId) { setDone({ processed: 0, errors: 0 }); setRunning(null); return }
-      startPolling(data.batchRunId)
+      if (data.processed === 0 || !data.batchRunId) { setDone({ processed: 0, errors: 0, batchId }); setRunning(null); return }
+      startPolling(data.batchRunId, batchId)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Run failed')
       setRunning(null)
@@ -1221,7 +1221,7 @@ export default function RunPage() {
                 : 'No prompts to run'}
             </p>
             {done.processed > 0 && (
-              <Link href="/dashboard" className="text-sm text-emerald-700 underline">View Dashboard →</Link>
+              <Link href={done.batchId ? `/dashboard?project=${done.batchId}` : '/dashboard'} className="text-sm text-emerald-700 underline">View Dashboard →</Link>
             )}
           </div>
         </div>

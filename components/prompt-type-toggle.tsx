@@ -15,15 +15,18 @@ export function PromptTypeToggle({
   value,
   basePath,
   sessionId,
+  projectId,
 }: {
   value: PromptTypeFilter
   basePath: string
   sessionId?: string
+  projectId?: string
 }) {
   const router = useRouter()
 
   function handleChange(type: PromptTypeFilter) {
     const params = new URLSearchParams()
+    if (projectId) params.set('project', projectId)
     if (sessionId) params.set('session', sessionId)
     if (type !== 'all') params.set('type', type)
     const qs = params.toString()
