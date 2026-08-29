@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
-import { PLATFORMS } from '@/lib/utils'
+import { PLATFORMS, slugify } from '@/lib/utils'
 import { SegmentDetail } from '@/components/segment-detail'
 import { SessionOption } from '@/components/run-session-picker'
 import { PromptTypeFilter } from '@/components/prompt-type-toggle'
@@ -15,32 +15,23 @@ async function getCommunityData(id: string, sessionId?: string, promptType?: str
   const resultsFilter = sessionId ? { where: { runSessionId: sessionId } } : {}
   const scopeFilter = { ...(promptType ? { promptType } : {}), ...(projectId ? { batchId: projectId } : {}) }
 
-  const prompts = await prisma.prompt.findMany({
-    where: {
-      communityName: {
-        contains: decodedId.replace(/-/g, ' '),
-        mode: 'insensitive',
-      },
-      ...scopeFilter,
-    },
-    include: {
-      results: { ...resultsFilter, include: { citations: true } },
-    },
+  // Communities have no dedicated table — they're identified purely by the free-text
+  // Prompt.communityName, slugified for the URL. Match by exact slug only: a substring
+  // `contains` match (the prior approach) would pull prompts from a differently-named
+  // community into this one whenever one name is a substring of another (e.g. visiting
+  // "grand-living" would also match prompts for "Grand Living East"), silently mixing
+  // in that other community's mentions/citations.
+  const allCommunities = await prisma.prompt.groupBy({
+    by: ['communityName'],
+    where: { communityName: { not: '' } },
   })
+  const matched = allCommunities.find((c) => slugify(c.communityName) === decodedId)
+  if (!matched) return null
 
-  // Try exact slug match if no results
-  let finalPrompts = prompts
-  if (prompts.length === 0) {
-    const allCommunities = await prisma.prompt.groupBy({ by: ['communityName'] })
-    const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-    const matched = allCommunities.find((c) => slugify(c.communityName) === decodedId)
-    if (!matched) return null
-
-    finalPrompts = await prisma.prompt.findMany({
-      where: { communityName: matched.communityName, ...scopeFilter },
-      include: { results: { ...resultsFilter, include: { citations: true } } },
-    })
-  }
+  const finalPrompts = await prisma.prompt.findMany({
+    where: { communityName: matched.communityName, ...scopeFilter },
+    include: { results: { ...resultsFilter, include: { citations: true } } },
+  })
 
   if (finalPrompts.length === 0) return null
 
