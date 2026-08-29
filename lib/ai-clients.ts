@@ -72,6 +72,27 @@ function extractDomain(url: string): string {
   }
 }
 
+// SearchAPI's Google AI Overview sources are frequently wrapped in an opaque
+// google.com/goto?url=<token> (or /aclk?...) redirect rather than the real
+// destination URL, which would make extractDomain(url) return "google.com" for
+// every one of them — silently breaking domain-based citation matching (e.g.
+// "is seniorlifestyle.com cited?" would always say no). The favicon URL
+// SearchAPI returns alongside each source is Google's own favicon-fetch
+// service, which carries the real destination as its own `url` query param —
+// real data already returned, just meant for a different purpose — so prefer
+// that to recover the true domain when the primary link is one of these
+// redirects. Falls back to the link itself when there's no favicon to recover
+// from, so behavior is unchanged for sources that already give a direct URL.
+function resolveCitationDomain(url: string, favicon?: string): string {
+  if ((url.includes('google.com/goto') || url.includes('google.com/aclk')) && favicon) {
+    try {
+      const inner = new URL(favicon).searchParams.get('url')
+      if (inner) return extractDomain(inner)
+    } catch { /* fall through to the redirect's own (wrong) domain */ }
+  }
+  return extractDomain(url)
+}
+
 function checkCited(
   citations: Array<{ url: string; title: string; domain: string; isExplicitCitation: boolean }>,
   _communityName: string
@@ -310,12 +331,15 @@ function collectReferencedIndexes(blocks: unknown[]): Set<number> {
 
 function extractCitationsFromSources(sources: unknown[]): PlatformCitation[] {
   return (sources as Array<Record<string, string>>)
-    .map((s) => ({
-      url: s.link ?? s.url ?? '',
-      title: s.title ?? s.name ?? '',
-      domain: extractDomain(s.link ?? s.url ?? ''),
-      isExplicitCitation: true,
-    }))
+    .map((s) => {
+      const url = s.link ?? s.url ?? ''
+      return {
+        url,
+        title: s.title ?? s.name ?? '',
+        domain: resolveCitationDomain(url, s.favicon),
+        isExplicitCitation: true,
+      }
+    })
     .filter((c) => c.url)
 }
 
@@ -326,13 +350,20 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
 
   // engine=google_ai_overview with page_token returns root-level markdown/text_blocks/reference_links
   if (!text && typeof data.markdown === 'string' && data.markdown.length > 0) {
-    // Strip inline citation markers like [1], [2] before storing
-    text = data.markdown.replace(/\[\d+\]/g, '').trim()
+    // Citation markers in this markdown are full links like " [1](https://...)",
+    // not bare "[1]" — stripping only the bracket part (the old regex) left the
+    // "(https://...)" half sitting in the visible text as a stray raw URL.
+    // SearchAPI also appends a full "[[0] - Title](url)" bibliography after the
+    // content, duplicating what the separate Citations list already shows.
+    text = data.markdown
+      .replace(/\s*\[\d+\]\([^)]*\)/g, '')
+      .replace(/^\[\[\d+\][^\]]*\]\([^)]*\)\s*$/gm, '')
+      .trim()
   }
   if (!text && Array.isArray(data.text_blocks) && data.text_blocks.length > 0) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     text = (data.text_blocks as Array<any>)
-      .map((b) => (b.snippet ?? b.text ?? b.content ?? '').replace(/\[\d+\]/g, ''))
+      .map((b) => (b.snippet ?? b.text ?? b.content ?? '').replace(/\s*\[\d+\]\([^)]*\)/g, ''))
       .filter(Boolean)
       .join('\n\n')
       .trim()
@@ -354,7 +385,7 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
         return {
           url,
           title: (r.title as string) ?? (r.name as string) ?? '',
-          domain: extractDomain(url),
+          domain: resolveCitationDomain(url, r.favicon as string | undefined),
           isExplicitCitation: referencedIndexes.size === 0 || referencedIndexes.has(refIndex),
         }
       })
@@ -372,12 +403,15 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
     text = data.answer
     const refs: unknown[] = data.citations ?? data.references ?? data.sources ?? []
     citations = (refs as Array<Record<string, string>>)
-      .map((r) => ({
-        url: r.url ?? r.link ?? '',
-        title: r.title ?? r.name ?? '',
-        domain: extractDomain(r.url ?? r.link ?? ''),
-        isExplicitCitation: true,
-      }))
+      .map((r) => {
+        const url = r.url ?? r.link ?? ''
+        return {
+          url,
+          title: r.title ?? r.name ?? '',
+          domain: resolveCitationDomain(url, r.favicon),
+          isExplicitCitation: true,
+        }
+      })
       .filter((c) => c.url)
   }
 
@@ -386,12 +420,15 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
     text = box.answer ?? box.snippet ?? box.result ?? ''
     const sources: unknown[] = box.sources ?? box.links ?? []
     citations = (sources as Array<Record<string, string>>)
-      .map((s) => ({
-        url: s.link ?? s.url ?? '',
-        title: s.title ?? '',
-        domain: extractDomain(s.link ?? s.url ?? ''),
-        isExplicitCitation: true,
-      }))
+      .map((s) => {
+        const url = s.link ?? s.url ?? ''
+        return {
+          url,
+          title: s.title ?? '',
+          domain: resolveCitationDomain(url, s.favicon),
+          isExplicitCitation: true,
+        }
+      })
       .filter((c) => c.url)
   }
 
