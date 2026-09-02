@@ -8,7 +8,7 @@ import { Progress } from '@/components/ui/progress'
 import {
   Play, CheckCircle2, AlertCircle, RefreshCw, BarChart3,
   Mail, Pencil, Trash2, Share2, X, Check, Link2, UserPlus,
-  Calendar, Plus, Clock, RotateCcw, ChevronDown, ChevronUp, History,
+  Calendar, Plus, Clock, RotateCcw, ChevronDown, ChevronUp, History, Download,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -880,6 +880,13 @@ export default function RunPage() {
           <Button variant="outline" onClick={fetchBatches} size="sm">
             <RefreshCw className="h-4 w-4 mr-2" />Refresh
           </Button>
+          {batches.length > 0 && (
+            <a href="/api/export">
+              <Button variant="outline" size="sm">
+                <Download className="h-4 w-4 mr-2" />Export All
+              </Button>
+            </a>
+          )}
           {totalUnrun > 0 && (
             <Button onClick={() => queueRun()} disabled={running !== null}>
               <Play className="h-4 w-4 mr-2" />Run All Unrun ({totalUnrun})
