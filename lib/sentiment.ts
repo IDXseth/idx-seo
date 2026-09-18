@@ -1,6 +1,3 @@
-export const SENTIMENTS = ['positive', 'neutral', 'negative'] as const
-export type Sentiment = typeof SENTIMENTS[number]
-
 export interface SentimentCounts {
   positive: number
   neutral: number
@@ -18,13 +15,4 @@ export function countSentiments(results: { sentiment: string }[]): SentimentCoun
     else neutral++
   }
   return { positive, neutral, negative, total: positive + neutral + negative }
-}
-
-// One row per Result, denormalized with the dimensions the sentiment breakdown
-// widget filters by (project = Batch, and brand/nonbrand prompt type).
-export interface SentimentRow {
-  sentiment: string
-  promptType: string
-  projectId: string
-  projectName: string
 }

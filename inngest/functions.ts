@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { queryPlatform } from '@/lib/ai-clients'
 import { PLATFORMS } from '@/lib/utils'
 import { sendRunCompleteEmail } from '@/lib/email'
-import { refreshGscCache } from '@/lib/gsc'
+import { refreshGscCache, refreshGscQueryCache, crawlCommunityPages } from '@/lib/gsc'
+import { getActiveCompetitors, matchCompetitors, saveCompetitorMentions } from '@/lib/competitors'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -109,7 +110,7 @@ export const runSinglePrompt = inngest.createFunction(
     }
 
     const prompt = await step.run('fetch-prompt', async () => {
-      return prisma.prompt.findUnique({ where: { id: promptId } })
+      return prisma.prompt.findUnique({ where: { id: promptId }, include: { batch: { select: { userId: true } } } })
     })
 
     if (!prompt) {
@@ -138,12 +139,15 @@ export const runSinglePrompt = inngest.createFunction(
     })
 
     await step.run('query-and-save', async () => {
-      const platformResults = await Promise.all(
-        PLATFORMS.map(async (platform) => {
-          const result = await queryPlatform(platform, prompt.promptText, prompt.communityName)
-          return { platform, result }
-        })
-      )
+      const [platformResults, competitors] = await Promise.all([
+        Promise.all(
+          PLATFORMS.map(async (platform) => {
+            const result = await queryPlatform(platform, prompt.promptText, prompt.communityName, prompt.city ?? undefined)
+            return { platform, result }
+          })
+        ),
+        getActiveCompetitors(prompt.batch.userId),
+      ])
 
       for (const { platform, result } of platformResults) {
         const saved = await prisma.result.create({
@@ -164,8 +168,13 @@ export const runSinglePrompt = inngest.createFunction(
               url: c.url,
               title: c.title,
               domain: c.domain,
+              isExplicitCitation: c.isExplicitCitation,
             })),
           })
+        }
+        if (competitors.length > 0) {
+          const matches = await matchCompetitors(result.responseText, result.citations, competitors)
+          await saveCompetitorMentions(saved.id, matches)
         }
       }
 
@@ -240,7 +249,9 @@ export const refreshGsc = inngest.createFunction(
   { id: 'refresh-gsc-cache', triggers: [{ cron: '0 3 * * *' }] },
   async ({ step }) => {
     const result = await step.run('fetch-gsc-metrics', () => refreshGscCache())
-    return result
+    const queries = await step.run('fetch-gsc-queries', () => refreshGscQueryCache())
+    await step.run('crawl-community-pages', () => crawlCommunityPages())
+    return { ...result, queries }
   }
 )
 

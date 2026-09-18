@@ -53,10 +53,10 @@ export async function GET(req: Request) {
       }
     })
 
-    // Top citation domains
+    // Top citation domains — explicitly-cited sources only
     const allCitations = prompts.flatMap((p) =>
       p.results.flatMap((r) => r.citations)
-    )
+    ).filter((c) => c.isExplicitCitation)
     const domainCounts: Record<string, number> = {}
     for (const citation of allCitations) {
       domainCounts[citation.domain] = (domainCounts[citation.domain] || 0) + 1

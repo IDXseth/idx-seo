@@ -1,51 +1,37 @@
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
-import { PLATFORMS } from '@/lib/utils'
+import { PLATFORMS, slugify } from '@/lib/utils'
 import { SegmentDetail } from '@/components/segment-detail'
 import { SessionOption } from '@/components/run-session-picker'
+import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
-
-async function getSessionList(): Promise<SessionOption[]> {
-  const sessions = await prisma.runSession.findMany({
-    where: { status: 'done' },
-    orderBy: { startedAt: 'asc' },
-    select: { id: true, startedAt: true, triggeredBy: true, _count: { select: { results: true } } },
-  })
-  return sessions.map((s) => ({ id: s.id, startedAt: s.startedAt.toISOString(), triggeredBy: s.triggeredBy, resultCount: s._count.results }))
-}
+import { getSessionList } from '@/lib/run-sessions'
+import { getProjectList } from '@/lib/projects'
 
 export const dynamic = 'force-dynamic'
 
-async function getCommunityData(id: string, sessionId?: string) {
+async function getCommunityData(id: string, sessionId?: string, promptType?: string, projectId?: string) {
   const decodedId = decodeURIComponent(id)
   const resultsFilter = sessionId ? { where: { runSessionId: sessionId } } : {}
+  const scopeFilter = { ...(promptType ? { promptType } : {}), ...(projectId ? { batchId: projectId } : {}) }
 
-  const prompts = await prisma.prompt.findMany({
-    where: {
-      communityName: {
-        contains: decodedId.replace(/-/g, ' '),
-        mode: 'insensitive',
-      },
-    },
-    include: {
-      batch: { select: { name: true } },
-      results: { ...resultsFilter, include: { citations: true } },
-    },
+  // Communities have no dedicated table — they're identified purely by the free-text
+  // Prompt.communityName, slugified for the URL. Match by exact slug only: a substring
+  // `contains` match (the prior approach) would pull prompts from a differently-named
+  // community into this one whenever one name is a substring of another (e.g. visiting
+  // "grand-living" would also match prompts for "Grand Living East"), silently mixing
+  // in that other community's mentions/citations.
+  const allCommunities = await prisma.prompt.groupBy({
+    by: ['communityName'],
+    where: { communityName: { not: '' } },
   })
+  const matched = allCommunities.find((c) => slugify(c.communityName) === decodedId)
+  if (!matched) return null
 
-  // Try exact slug match if no results
-  let finalPrompts = prompts
-  if (prompts.length === 0) {
-    const allCommunities = await prisma.prompt.groupBy({ by: ['communityName'] })
-    const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-    const matched = allCommunities.find((c) => slugify(c.communityName) === decodedId)
-    if (!matched) return null
-
-    finalPrompts = await prisma.prompt.findMany({
-      where: { communityName: matched.communityName },
-      include: { batch: { select: { name: true } }, results: { ...resultsFilter, include: { citations: true } } },
-    })
-  }
+  const finalPrompts = await prisma.prompt.findMany({
+    where: { communityName: matched.communityName, ...scopeFilter },
+    include: { results: { ...resultsFilter, include: { citations: true } } },
+  })
 
   if (finalPrompts.length === 0) return null
 
@@ -68,14 +54,14 @@ async function getCommunityData(id: string, sessionId?: string) {
     }
   })
 
-  const allCitations = finalPrompts.flatMap((p) => p.results.flatMap((r) => r.citations))
+  const allCitations = finalPrompts.flatMap((p) => p.results.flatMap((r) => r.citations)).filter((c) => c.isExplicitCitation)
   const domainCounts: Record<string, number> = {}
   for (const c of allCitations) domainCounts[c.domain] = (domainCounts[c.domain] || 0) + 1
   const topDomains = Object.entries(domainCounts)
     .sort((a, b) => b[1] - a[1]).slice(0, 10)
     .map(([domain, count]) => ({ domain, count, percentage: totalResults > 0 ? count / totalResults : 0 }))
 
-  const trendData = sessionId ? [] : await getSegmentTrendData({ communityName })
+  const trendData = sessionId ? [] : await getSegmentTrendData({ communityName, ...scopeFilter })
 
   return {
     communityName, prompts: finalPrompts,
@@ -88,19 +74,33 @@ export default async function CommunityDetailPage({
   params, searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ session?: string }>
+  searchParams: Promise<{ session?: string; type?: string; project?: string }>
 }) {
-  const [{ id }, { session: sessionId }] = await Promise.all([params, searchParams])
+  const [{ id }, { session: sessionId, type, project: projectId }] = await Promise.all([params, searchParams])
+  const promptTypeParam: PromptTypeFilter = type === 'brand' || type === 'nonbrand' ? type : 'all'
+  const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
   let data: Awaited<ReturnType<typeof getCommunityData>> = null
   let sessions: SessionOption[] = []
-  try { ;[data, sessions] = await Promise.all([getCommunityData(id, sessionId), getSessionList()]) } catch { /* DB not configured */ }
+  let projects: Awaited<ReturnType<typeof getProjectList>> = []
+  try {
+    ;[data, sessions, projects] = await Promise.all([
+      getCommunityData(id, sessionId, promptType, projectId),
+      getSessionList(projectId),
+      getProjectList(),
+    ])
+  } catch { /* DB not configured */ }
 
   if (!data) notFound()
+
+  const dashboardQuery = new URLSearchParams()
+  if (projectId) dashboardQuery.set('project', projectId)
+  if (sessionId) dashboardQuery.set('session', sessionId)
+  if (promptType) dashboardQuery.set('type', promptType)
 
   return (
     <SegmentDetail
       title={data.communityName}
-      backHref={`/dashboard${sessionId ? `?session=${sessionId}` : ''}`}
+      backHref={`/dashboard${dashboardQuery.toString() ? `?${dashboardQuery.toString()}` : ''}`}
       backLabel="Dashboard"
       overview={data.overview}
       platformStats={data.platformStats}
@@ -110,6 +110,9 @@ export default async function CommunityDetailPage({
       sessions={sessions}
       basePath={`/dashboard/community/${id}`}
       trendData={data.trendData}
+      promptTypeFilter={promptTypeParam}
+      projectId={projectId}
+      projects={projects}
     />
   )
 }

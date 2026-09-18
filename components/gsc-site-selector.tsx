@@ -86,7 +86,7 @@ export function GscSiteSelector() {
   }
 
   // Not connected — show connect button
-  if (sites.length === 0) {
+  if (sites.length === 0 && !selected) {
     return (
       <button
         onClick={() => signIn('google', { callbackUrl: '/dashboard?tab=optimization' }, { prompt: 'consent', access_type: 'offline' })}
@@ -94,6 +94,22 @@ export function GscSiteSelector() {
       >
         Connect with Google
       </button>
+    )
+  }
+
+  // Token broken — sites failed to load but a site is configured
+  if (sites.length === 0 && selected) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-rose-600 font-medium">Connection error</span>
+        <button
+          onClick={disconnect}
+          disabled={disconnecting}
+          className="flex-shrink-0 px-3 py-1.5 rounded-lg border border-rose-200 text-rose-600 text-xs font-semibold hover:bg-rose-50 transition-colors whitespace-nowrap"
+        >
+          {disconnecting ? 'Disconnecting…' : 'Disconnect & reconnect'}
+        </button>
+      </div>
     )
   }
 

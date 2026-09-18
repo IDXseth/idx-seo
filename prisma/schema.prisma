@@ -22,6 +22,7 @@ model User {
   sessions      Session[]
   batches       Batch[]
   sharedBatches ProjectShare[]
+  competitors   Competitor[]
 }
 
 model Account {
@@ -161,6 +162,7 @@ model Result {
   isCited      Boolean     @default(false)
   sentiment    String      @default("neutral")  // "positive" | "neutral" | "negative"
   citations    Citation[]
+  competitorMentions CompetitorMention[]
   runAt        DateTime    @default(now())
 }
 
@@ -171,6 +173,38 @@ model Citation {
   url      String
   title    String
   domain   String
+  // true: the platform explicitly cited/quoted this source in its answer text.
+  // false: the source was retrieved by the platform's web search but not directly
+  // cited — surfaced separately so it isn't counted toward isMentioned/isCited stats.
+  isExplicitCitation Boolean @default(true)
+}
+
+// A named competitor tracked against the user's existing prompt set.
+model Competitor {
+  id        String              @id @default(cuid())
+  userId    String
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brandName String
+  domain    String              // used to match citation domains (e.g. "brookdale.com")
+  aliases   String              @default("")  // comma-separated alternate names scanned in response text
+  active    Boolean             @default(true)
+  mentions  CompetitorMention[]
+  createdAt DateTime            @default(now())
+}
+
+// One row per (Result, Competitor) — mirrors Result.isMentioned/isCited/sentiment
+// so competitor mention/citation rates can be computed the same way as the user's own.
+model CompetitorMention {
+  id           String     @id @default(cuid())
+  resultId     String
+  result       Result     @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  competitorId String
+  competitor   Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  isMentioned  Boolean    @default(false)
+  isCited      Boolean    @default(false)
+  sentiment    String     @default("neutral")  // "positive" | "neutral" | "negative"
+
+  @@unique([resultId, competitorId])
 }
 
 // Cache for Google Search Console metrics per page URL.
@@ -185,4 +219,30 @@ model GscMetric {
   position    Float?
   fetchedAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+// Cache for Google Search Console query-level (search term) metrics — the
+// actual phrases people search that surface the connected site. Populated
+// by the same daily `refresh-gsc-cache` Inngest function and used to ground
+// the prompt-suggestion generator in real search demand.
+model GscQuery {
+  id          String   @id @default(cuid())
+  query       String   @unique
+  impressions Int      @default(0)
+  clicks      Int      @default(0)
+  position    Float?
+  fetchedAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Cache for page-level schema markup detection.
+// Populated by crawlCommunityPages() after each GSC sync.
+// SQL: CREATE TABLE IF NOT EXISTS "PageCrawlResult" ("id" TEXT NOT NULL PRIMARY KEY, "pageUrl" TEXT NOT NULL UNIQUE, "hasLocalBusiness" BOOLEAN, "hasSeniorCare" BOOLEAN, "crawledAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL);
+model PageCrawlResult {
+  id               String   @id @default(cuid())
+  pageUrl          String   @unique
+  hasLocalBusiness Boolean?
+  hasSeniorCare    Boolean?
+  crawledAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }

@@ -54,11 +54,15 @@ export async function listGscSites(): Promise<{ siteUrl: string; permissionLevel
   if (!auth) return []
 
   const sc = google.searchconsole({ version: 'v1', auth })
-  const res = await sc.sites.list()
-  return (res.data.siteEntry ?? []).map((s) => ({
-    siteUrl: s.siteUrl ?? '',
-    permissionLevel: s.permissionLevel ?? 'unknown',
-  }))
+  try {
+    const res = await sc.sites.list()
+    return (res.data.siteEntry ?? []).map((s) => ({
+      siteUrl: s.siteUrl ?? '',
+      permissionLevel: s.permissionLevel ?? 'unknown',
+    }))
+  } catch {
+    return []
+  }
 }
 
 export async function refreshGscCache(): Promise<{ pagesUpdated: number; error?: string }> {
@@ -144,5 +148,169 @@ export async function getGscMetrics(): Promise<Map<string, GscData>> {
         fetchedAt: r.fetchedAt,
       },
     ])
+  )
+}
+
+// ─── Query-level (search term) cache ───────────────────────────────────────
+// Page-level metrics (above) say which pages get found; this says what
+// people actually typed to find them — the real-demand signal the
+// prompt-suggestion generator grounds on.
+
+export async function refreshGscQueryCache(): Promise<{ queriesUpdated: number; error?: string }> {
+  const auth = await getGscOAuth2Client()
+  if (!auth) {
+    return {
+      queriesUpdated: 0,
+      error:
+        'No Google account with Search Console access found. Sign in with Google and grant the webmasters.readonly scope.',
+    }
+  }
+
+  const siteUrl = await getConfiguredSiteUrl()
+  if (!siteUrl) {
+    return {
+      queriesUpdated: 0,
+      error: 'No GSC domain selected. Go to Settings and choose a Search Console property.',
+    }
+  }
+
+  const sc = google.searchconsole({ version: 'v1', auth })
+
+  const today = new Date()
+  const endDate = today.toISOString().slice(0, 10)
+  const startDate = new Date(today.getTime() - 28 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+
+  let rows: Array<{ keys?: string[] | null; impressions?: number | null; clicks?: number | null; position?: number | null }> = []
+  try {
+    const res = await sc.searchanalytics.query({
+      siteUrl,
+      requestBody: {
+        startDate,
+        endDate,
+        dimensions: ['query'],
+        rowLimit: 1000,
+      },
+    })
+    rows = res.data.rows ?? []
+  } catch (err) {
+    return {
+      queriesUpdated: 0,
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+
+  const now = new Date()
+  let queriesUpdated = 0
+
+  for (const row of rows) {
+    const query = row.keys?.[0]
+    if (!query) continue
+
+    const data = {
+      impressions: row.impressions ?? 0,
+      clicks: row.clicks ?? 0,
+      position: row.position ?? null,
+      fetchedAt: now,
+      updatedAt: now,
+    }
+
+    await prisma.gscQuery.upsert({
+      where: { query },
+      create: { query, ...data },
+      update: data,
+    })
+    queriesUpdated++
+  }
+
+  return { queriesUpdated }
+}
+
+export async function getTopGscQueries(limit = 40): Promise<string[]> {
+  const records = await prisma.gscQuery.findMany({
+    orderBy: { impressions: 'desc' },
+    take: limit,
+    select: { query: true },
+  })
+  return records.map((r) => r.query)
+}
+
+function detectJsonLdSchema(html: string): { hasLocalBusiness: boolean; hasSeniorCare: boolean } {
+  const scriptRe = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
+  let hasLocalBusiness = false
+  let hasSeniorCare = false
+  let match
+  while ((match = scriptRe.exec(html)) !== null) {
+    try {
+      const data = JSON.parse(match[1]) as Record<string, unknown>
+      const nodes: unknown[] = Array.isArray(data['@graph']) ? (data['@graph'] as unknown[]) : [data]
+      for (const node of nodes) {
+        if (typeof node !== 'object' || node === null) continue
+        const type = (node as Record<string, unknown>)['@type']
+        const typeStr = (Array.isArray(type) ? type.join(',') : String(type ?? '')).toLowerCase()
+        if (typeStr.includes('localbusiness')) hasLocalBusiness = true
+        if (typeStr.includes('seniorcare')) hasSeniorCare = true
+      }
+    } catch {
+      // skip malformed JSON-LD
+    }
+  }
+  return { hasLocalBusiness, hasSeniorCare }
+}
+
+export async function crawlCommunityPages(): Promise<void> {
+  const metrics = await prisma.gscMetric.findMany({ select: { pageUrl: true } })
+
+  // Collect unique base URLs: /property/[state]/[community]/ (exactly 3 path segments)
+  const baseUrls = new Set<string>()
+  for (const { pageUrl } of metrics) {
+    try {
+      const parsed = new URL(pageUrl)
+      const parts = parsed.pathname.split('/').filter(Boolean)
+      if (parts.length >= 3 && parts[0] === 'property') {
+        baseUrls.add(`${parsed.origin}/${parts[0]}/${parts[1]}/${parts[2]}/`)
+      }
+    } catch {
+      // skip malformed URLs
+    }
+  }
+
+  await Promise.allSettled(
+    Array.from(baseUrls).map(async (pageUrl) => {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 8000)
+      try {
+        const res = await fetch(pageUrl, { signal: controller.signal, cache: 'no-store' })
+        if (res.ok) {
+          const html = await res.text()
+          const { hasLocalBusiness, hasSeniorCare } = detectJsonLdSchema(html)
+          await prisma.pageCrawlResult.upsert({
+            where: { pageUrl },
+            create: { pageUrl, hasLocalBusiness, hasSeniorCare },
+            update: { hasLocalBusiness, hasSeniorCare },
+          })
+        } else {
+          await prisma.pageCrawlResult.upsert({
+            where: { pageUrl },
+            create: { pageUrl, hasLocalBusiness: null, hasSeniorCare: null },
+            update: { hasLocalBusiness: null, hasSeniorCare: null },
+          })
+        }
+      } catch {
+        await prisma.pageCrawlResult.upsert({
+          where: { pageUrl },
+          create: { pageUrl, hasLocalBusiness: null, hasSeniorCare: null },
+          update: { hasLocalBusiness: null, hasSeniorCare: null },
+        })
+      } finally {
+        clearTimeout(timer)
+      }
+    })
+  )
+}
+
+export async function getPageCrawlResults(): Promise<Map<string, { hasLocalBusiness: boolean | null; hasSeniorCare: boolean | null }>> {
+  const records = await prisma.pageCrawlResult.findMany()
+  return new Map(
+    records.map((r) => [r.pageUrl, { hasLocalBusiness: r.hasLocalBusiness, hasSeniorCare: r.hasSeniorCare }])
   )
 }

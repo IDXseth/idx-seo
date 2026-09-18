@@ -3,41 +3,43 @@ import { PLATFORMS, formatPercent } from '@/lib/utils'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Scorecard } from '@/components/scorecard'
 import { PlatformMentionChart } from '@/components/platform-chart'
+import { BrandComparisonChart } from '@/components/brand-comparison-chart'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
+import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
+import { ProjectPicker } from '@/components/project-picker'
+import { CompetitorViewPicker } from '@/components/competitor-view-picker'
 import { OptimizationPriorityTable } from '@/components/optimization-priority-table'
 import { SentimentBreakdown } from '@/components/sentiment-breakdown'
-import { SentimentRow } from '@/lib/sentiment'
 import { getSitemapAnalysis, SitemapAnalysis } from '@/lib/sitemap'
-import { getGscMetrics } from '@/lib/gsc'
+import { getGscMetrics, getPageCrawlResults } from '@/lib/gsc'
+import { getSessionList } from '@/lib/run-sessions'
+import { getProjectList } from '@/lib/projects'
+import { getBrandSeries } from '@/lib/competitor-stats'
 import { slugify } from '@/lib/utils'
-import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink } from 'lucide-react'
+import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink, Download, Users } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
-async function getSessionList(): Promise<SessionOption[]> {
-  const sessions = await prisma.runSession.findMany({
-    where: { status: 'done' },
-    orderBy: { startedAt: 'asc' },
-    select: { id: true, startedAt: true, triggeredBy: true, _count: { select: { results: true } } },
-  })
-  return sessions.map((s) => ({
-    id: s.id,
-    startedAt: s.startedAt.toISOString(),
-    triggeredBy: s.triggeredBy,
-    resultCount: s._count.results,
-  }))
-}
+async function getTrendData(promptType?: string, projectId?: string): Promise<TrendPoint[]> {
+  const promptFilter = {
+    ...(promptType ? { promptType } : {}),
+    ...(projectId ? { batchId: projectId } : {}),
+  }
+  const hasPromptFilter = Object.keys(promptFilter).length > 0
 
-async function getTrendData(): Promise<TrendPoint[]> {
   const sessions = await prisma.runSession.findMany({
-    where: { status: 'done' },
+    where: {
+      status: 'done',
+      results: projectId ? { some: { prompt: { batchId: projectId } } } : { some: {} },
+    },
     orderBy: { startedAt: 'asc' },
     select: {
       id: true,
       startedAt: true,
       triggeredBy: true,
       results: {
+        where: hasPromptFilter ? { prompt: promptFilter } : undefined,
         select: { platform: true, isMentioned: true, isCited: true, sentiment: true },
       },
     },
@@ -74,30 +76,18 @@ async function getTrendData(): Promise<TrendPoint[]> {
   })
 }
 
-async function getSentimentRows(canonicalIds: string[], sessionId?: string): Promise<SentimentRow[]> {
-  const results = await prisma.result.findMany({
-    where: {
-      promptId: { in: canonicalIds },
-      ...(sessionId ? { runSessionId: sessionId } : {}),
-    },
-    select: {
-      sentiment: true,
-      prompt: { select: { promptType: true, batchId: true, batch: { select: { name: true } } } },
-    },
-  })
-  return results.map((r) => ({
-    sentiment: r.sentiment,
-    promptType: r.prompt.promptType,
-    projectId: r.prompt.batchId,
-    projectName: r.prompt.batch.name,
-  }))
-}
-
-async function getDashboardData(sessionId?: string) {
-  // One canonical prompt per unique promptText (first created wins) — prevents cross-batch double-counting
+async function getDashboardData(sessionId?: string, promptType?: string, projectId?: string) {
+  // One canonical prompt per unique promptText (first created wins) — prevents cross-batch
+  // double-counting. Scoped to a single project's own prompts when one is selected, since
+  // there's no cross-batch collision to worry about within one project.
+  const canonicalWhere = {
+    ...(promptType ? { promptType } : {}),
+    ...(projectId ? { batchId: projectId } : {}),
+  }
   const canonicalRows = await prisma.prompt.findMany({
     distinct: ['promptText'],
     orderBy: { createdAt: 'asc' },
+    where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
     select: { id: true },
   })
   const canonicalIds = canonicalRows.map((r) => r.id)
@@ -208,7 +198,10 @@ async function getDashboardData(sessionId?: string) {
   )).filter(Boolean) as Array<{ market: string; promptCount: number; mentionRate: number; citationRate: number }>
 
   const rawCitations = await prisma.citation.findMany({
-    where: { ...(sessionId ? { result: { runSessionId: sessionId } } : {}), url: { not: '' } },
+    where: {
+      result: { promptId: { in: canonicalIds }, ...(sessionId ? { runSessionId: sessionId } : {}) },
+      url: { not: '' },
+    },
     select: { url: true, title: true },
   })
   const urlMap = new Map<string, { title: string; count: number }>()
@@ -221,8 +214,6 @@ async function getDashboardData(sessionId?: string) {
     .map(([url, { title, count }]) => ({ url, title, count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 10)
-
-  const sentimentRows = await getSentimentRows(canonicalIds, sessionId)
 
   return {
     overview: {
@@ -237,34 +228,325 @@ async function getDashboardData(sessionId?: string) {
     careLevelStats,
     marketStats,
     topCitationUrls,
-    sentimentRows,
   }
+}
+
+// ─── Competitor lens ────────────────────────────────────────────────────────
+// Same shapes as the functions above, sourced from CompetitorMention instead
+// of Result, so the "Viewing" picker can swap the whole dashboard between
+// your own brand and any tracked competitor. CompetitorMention has no
+// per-citation URLs (only isCited), so topCitationUrls is always empty here.
+
+async function getCompetitorOptions(promptType?: string, projectId?: string): Promise<{ id: string; brandName: string }[]> {
+  const canonicalWhere = {
+    ...(promptType ? { promptType } : {}),
+    ...(projectId ? { batchId: projectId } : {}),
+  }
+  const canonicalIds = (
+    await prisma.prompt.findMany({
+      distinct: ['promptText'],
+      where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
+      select: { id: true },
+    })
+  ).map((r) => r.id)
+  if (canonicalIds.length === 0) return []
+
+  const rows = await prisma.competitorMention.findMany({
+    where: { result: { promptId: { in: canonicalIds } } },
+    distinct: ['competitorId'],
+    select: { competitor: { select: { id: true, brandName: true } } },
+  })
+  return rows.map((r) => r.competitor).sort((a, b) => a.brandName.localeCompare(b.brandName))
+}
+
+async function getCompetitorDashboardData(competitorId: string, sessionId?: string, promptType?: string, projectId?: string) {
+  const canonicalWhere = {
+    ...(promptType ? { promptType } : {}),
+    ...(projectId ? { batchId: projectId } : {}),
+  }
+  const canonicalRows = await prisma.prompt.findMany({
+    distinct: ['promptText'],
+    orderBy: { createdAt: 'asc' },
+    where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
+    select: { id: true, communityName: true, city: true, category: true, levelOfCare: true, market: true },
+  })
+  const canonicalIds = canonicalRows.map((r) => r.id)
+
+  const mentions = await prisma.competitorMention.findMany({
+    where: {
+      competitorId,
+      result: {
+        promptId: { in: canonicalIds },
+        ...(sessionId ? { runSessionId: sessionId } : {}),
+      },
+    },
+    select: {
+      isMentioned: true,
+      isCited: true,
+      result: { select: { platform: true, promptId: true } },
+    },
+  })
+
+  const totalResults = mentions.length
+  const mentionedResults = mentions.filter((m) => m.isMentioned).length
+  const citedResults = mentions.filter((m) => m.isCited).length
+  const totalPrompts = sessionId
+    ? new Set(mentions.map((m) => m.result.promptId)).size
+    : canonicalIds.length
+
+  const platformStats = PLATFORMS.map((platform) => {
+    const pm = mentions.filter((m) => m.result.platform === platform)
+    const total = pm.length
+    const mentioned = pm.filter((m) => m.isMentioned).length
+    const cited = pm.filter((m) => m.isCited).length
+    return { platform, total, mentioned, cited, mentionRate: total > 0 ? mentioned / total : 0, citationRate: total > 0 ? cited / total : 0 }
+  })
+
+  const mentionsByPrompt = new Map<string, { isMentioned: boolean; isCited: boolean }[]>()
+  for (const m of mentions) {
+    const list = mentionsByPrompt.get(m.result.promptId) ?? []
+    list.push({ isMentioned: m.isMentioned, isCited: m.isCited })
+    mentionsByPrompt.set(m.result.promptId, list)
+  }
+
+  function groupBy(
+    keyOf: (row: (typeof canonicalRows)[number]) => string,
+    build: (key: string, promptCount: number, mentionRate: number, citationRate: number) => unknown
+  ) {
+    const groups = new Map<string, { promptCount: number; mentioned: number; cited: number; total: number }>()
+    for (const row of canonicalRows) {
+      const key = keyOf(row)
+      if (!key) continue
+      const g = groups.get(key) ?? { promptCount: 0, mentioned: 0, cited: 0, total: 0 }
+      g.promptCount++
+      for (const m of mentionsByPrompt.get(row.id) ?? []) {
+        g.total++
+        if (m.isMentioned) g.mentioned++
+        if (m.isCited) g.cited++
+      }
+      groups.set(key, g)
+    }
+    return [...groups.entries()]
+      .filter(([, g]) => !(sessionId && g.total === 0))
+      .map(([key, g]) => build(key, g.promptCount, g.total > 0 ? g.mentioned / g.total : 0, g.total > 0 ? g.cited / g.total : 0))
+  }
+
+  const communityStats = groupBy(
+    (r) => r.communityName,
+    (communityName, promptCount, mentionRate, citationRate) => {
+      const city = canonicalRows.find((r) => r.communityName === communityName)?.city ?? ''
+      return { communityName, city, promptCount, mentionRate, citationRate }
+    }
+  ) as Array<{ communityName: string; city: string; promptCount: number; mentionRate: number; citationRate: number }>
+
+  const categoryStats = groupBy(
+    (r) => r.category,
+    (category, promptCount, mentionRate, citationRate) => ({ category, promptCount, mentionRate, citationRate })
+  ) as Array<{ category: string; promptCount: number; mentionRate: number; citationRate: number }>
+
+  const careLevelStats = groupBy(
+    (r) => r.levelOfCare,
+    (levelOfCare, promptCount, mentionRate, citationRate) => ({ levelOfCare, promptCount, mentionRate, citationRate })
+  ) as Array<{ levelOfCare: string; promptCount: number; mentionRate: number; citationRate: number }>
+
+  const marketStats = groupBy(
+    (r) => r.market,
+    (market, promptCount, mentionRate, citationRate) => ({ market, promptCount, mentionRate, citationRate })
+  ) as Array<{ market: string; promptCount: number; mentionRate: number; citationRate: number }>
+
+  return {
+    overview: {
+      totalPrompts,
+      totalResults,
+      overallMentionRate: totalResults > 0 ? mentionedResults / totalResults : 0,
+      overallCitationRate: totalResults > 0 ? citedResults / totalResults : 0,
+    },
+    platformStats,
+    communityStats,
+    categoryStats,
+    careLevelStats,
+    marketStats,
+    topCitationUrls: [] as Array<{ url: string; title: string; count: number }>,
+  }
+}
+
+async function getCompetitorTrendData(competitorId: string, promptType?: string, projectId?: string): Promise<TrendPoint[]> {
+  const promptFilter = {
+    ...(promptType ? { promptType } : {}),
+    ...(projectId ? { batchId: projectId } : {}),
+  }
+  const hasPromptFilter = Object.keys(promptFilter).length > 0
+
+  const sessions = await prisma.runSession.findMany({
+    where: {
+      status: 'done',
+      results: projectId ? { some: { prompt: { batchId: projectId } } } : { some: {} },
+    },
+    orderBy: { startedAt: 'asc' },
+    select: {
+      id: true,
+      startedAt: true,
+      triggeredBy: true,
+      results: {
+        where: hasPromptFilter ? { prompt: promptFilter } : undefined,
+        select: {
+          platform: true,
+          competitorMentions: { where: { competitorId }, select: { isMentioned: true, isCited: true, sentiment: true } },
+        },
+      },
+    },
+  })
+
+  return sessions.map((rs) => {
+    const rows = rs.results.flatMap((r) => r.competitorMentions.map((cm) => ({ platform: r.platform, ...cm })))
+    const total = rows.length
+    const mentioned = rows.filter((r) => r.isMentioned).length
+    const cited = rows.filter((r) => r.isCited).length
+    const positive = rows.filter((r) => r.sentiment === 'positive').length
+    const negative = rows.filter((r) => r.sentiment === 'negative').length
+
+    const byPlatform: Record<string, { mentionRate: number; citationRate: number }> = {}
+    for (const platform of PLATFORMS) {
+      const pr = rows.filter((r) => r.platform === platform)
+      byPlatform[platform] = {
+        mentionRate: pr.length > 0 ? pr.filter((r) => r.isMentioned).length / pr.length : 0,
+        citationRate: pr.length > 0 ? pr.filter((r) => r.isCited).length / pr.length : 0,
+      }
+    }
+
+    return {
+      runSessionId: rs.id,
+      startedAt: rs.startedAt.toISOString(),
+      triggeredBy: rs.triggeredBy,
+      total,
+      mentionRate: total > 0 ? mentioned / total : 0,
+      citationRate: total > 0 ? cited / total : 0,
+      positiveRate: total > 0 ? positive / total : 0,
+      negativeRate: total > 0 ? negative / total : 0,
+      byPlatform,
+    }
+  })
+}
+
+// ─── Brand comparison (all brands, one chart) ──────────────────────────────
+// The Overview tab's comparison chart needs every brand's numbers scoped to
+// the dashboard's own canonical-prompt dedup — segment detail pages (category,
+// market, etc.) have their own already-scoped prompt list and call
+// getBrandSeries directly instead. See lib/competitor-stats.ts.
+
+async function getBrandComparisonData(sessionId?: string, promptType?: string, projectId?: string) {
+  const canonicalWhere = {
+    ...(promptType ? { promptType } : {}),
+    ...(projectId ? { batchId: projectId } : {}),
+  }
+  const canonicalIds = (
+    await prisma.prompt.findMany({
+      distinct: ['promptText'],
+      where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
+      select: { id: true },
+    })
+  ).map((r) => r.id)
+
+  return getBrandSeries({
+    promptId: { in: canonicalIds },
+    ...(sessionId ? { runSessionId: sessionId } : {}),
+  })
+}
+
+// ─── Sentiment breakdown ────────────────────────────────────────────────────
+
+async function getSentimentRows(sessionId?: string, promptType?: string, projectId?: string): Promise<{ sentiment: string }[]> {
+  const canonicalWhere = {
+    ...(promptType ? { promptType } : {}),
+    ...(projectId ? { batchId: projectId } : {}),
+  }
+  const canonicalIds = (
+    await prisma.prompt.findMany({
+      distinct: ['promptText'],
+      where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
+      select: { id: true },
+    })
+  ).map((r) => r.id)
+
+  return prisma.result.findMany({
+    where: {
+      promptId: { in: canonicalIds },
+      ...(sessionId ? { runSessionId: sessionId } : {}),
+    },
+    select: { sentiment: true },
+  })
+}
+
+async function getCompetitorSentimentRows(competitorId: string, sessionId?: string, promptType?: string, projectId?: string): Promise<{ sentiment: string }[]> {
+  const canonicalWhere = {
+    ...(promptType ? { promptType } : {}),
+    ...(projectId ? { batchId: projectId } : {}),
+  }
+  const canonicalIds = (
+    await prisma.prompt.findMany({
+      distinct: ['promptText'],
+      where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
+      select: { id: true },
+    })
+  ).map((r) => r.id)
+
+  return prisma.competitorMention.findMany({
+    where: {
+      competitorId,
+      result: {
+        promptId: { in: canonicalIds },
+        ...(sessionId ? { runSessionId: sessionId } : {}),
+      },
+    },
+    select: { sentiment: true },
+  })
 }
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ session?: string }>
+  searchParams: Promise<{ session?: string; type?: string; project?: string; competitor?: string }>
 }) {
-  const { session: sessionId } = await searchParams
+  const { session: sessionId, type, project: projectId, competitor: competitorId } = await searchParams
+  const promptTypeParam: PromptTypeFilter = type === 'brand' || type === 'nonbrand' ? type : 'all'
+  const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
 
   let data: Awaited<ReturnType<typeof getDashboardData>> | null = null
   let trendData: TrendPoint[] = []
   let sessions: SessionOption[] = []
+  let projects: Awaited<ReturnType<typeof getProjectList>> = []
+  let competitorOptions: Awaited<ReturnType<typeof getCompetitorOptions>> = []
+  let brandComparison: Awaited<ReturnType<typeof getBrandComparisonData>> | null = null
   let sitemapAnalysis: SitemapAnalysis | null = null
+  let sentimentRows: { sentiment: string }[] = []
   try {
-    ;[data, trendData, sessions] = await Promise.all([
-      getDashboardData(sessionId),
-      getTrendData(),
-      getSessionList(),
+    ;[data, trendData, sessions, projects, competitorOptions, brandComparison, sentimentRows] = await Promise.all([
+      competitorId
+        ? getCompetitorDashboardData(competitorId, sessionId, promptType, projectId)
+        : getDashboardData(sessionId, promptType, projectId),
+      competitorId
+        ? getCompetitorTrendData(competitorId, promptType, projectId)
+        : getTrendData(promptType, projectId),
+      getSessionList(projectId),
+      getProjectList(),
+      getCompetitorOptions(promptType, projectId).catch(() => []),
+      getBrandComparisonData(sessionId, promptType, projectId).catch(() => null),
+      competitorId
+        ? getCompetitorSentimentRows(competitorId, sessionId, promptType, projectId)
+        : getSentimentRows(sessionId, promptType, projectId),
     ])
   } catch {
     // DB not configured — show empty state
   }
-  if (data) {
+  // Optimization Priority is about your own site's schema/indexing health,
+  // not mention data — always your own brand's, regardless of the "Viewing" picker.
+  if (data && !competitorId) {
     try {
-      const gscMetrics = await getGscMetrics().catch(() => undefined)
-      sitemapAnalysis = await getSitemapAnalysis(data.communityStats, gscMetrics)
+      const [gscMetrics, crawlResults] = await Promise.all([
+        getGscMetrics().catch(() => undefined),
+        getPageCrawlResults().catch(() => undefined),
+      ])
+      sitemapAnalysis = await getSitemapAnalysis(data.communityStats, gscMetrics, crawlResults)
     } catch {
       // Tab shows empty state
     }
@@ -283,21 +565,55 @@ export default async function DashboardPage({
   }
 
   const currentSession = sessions.find((s) => s.id === sessionId)
+  const currentProject = projects.find((p) => p.id === projectId)
+  const currentCompetitor = competitorOptions.find((c) => c.id === competitorId)
+  const exportSessionId = !competitorId ? sessionId ?? (sessions.length === 1 ? sessions[0]?.id : undefined) : undefined
+
+  const drillParams = new URLSearchParams()
+  if (projectId) drillParams.set('project', projectId)
+  if (sessionId) drillParams.set('session', sessionId)
+  if (promptType) drillParams.set('type', promptType)
+  const drillQuery = drillParams.toString() ? `?${drillParams.toString()}` : ''
 
   return (
     <div>
       {/* Page header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Dashboard</h1>
+          <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>
+            {currentProject ? currentProject.name : 'Dashboard'}
+          </h1>
           <p className="text-[#5a7a85] mt-1 text-sm">
             {currentSession
               ? `Showing data from ${new Date(currentSession.startedAt).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`
+              : currentProject
+              ? 'AI mention and citation monitoring for this project'
               : 'AI mention and citation monitoring across your senior living portfolio'}
           </p>
         </div>
-        <RunSessionPicker sessions={sessions} currentSessionId={sessionId} />
+        <div className="flex items-center gap-3 flex-wrap">
+          <ProjectPicker projects={projects} currentProjectId={projectId} promptType={promptType} />
+          <PromptTypeToggle value={promptTypeParam} basePath="/dashboard" sessionId={sessionId} projectId={projectId} />
+          <RunSessionPicker sessions={sessions} currentSessionId={sessionId} projectId={projectId} promptType={promptType} />
+          <CompetitorViewPicker
+            competitors={competitorOptions}
+            currentCompetitorId={competitorId}
+            sessionId={sessionId}
+            projectId={projectId}
+            promptType={promptType}
+          />
+        </div>
       </div>
+
+      {currentCompetitor && (
+        <div className="bg-[#e6f2f5] border border-[#b8d8e0] rounded-xl p-4 mb-6 flex items-center gap-3">
+          <Users className="h-4 w-4 text-[#177e89] flex-shrink-0" />
+          <p className="text-sm text-[#084c61]">
+            Showing AI-visibility data for <span className="font-semibold">{currentCompetitor.brandName}</span> — a tracked competitor, not your own brand.
+            Optimization Priority and citation URLs aren&apos;t available in this view.
+          </p>
+        </div>
+      )}
 
       <>
         {/* Hero stat strip */}
@@ -342,17 +658,34 @@ export default async function DashboardPage({
             <TabsTrigger value="category">By Category</TabsTrigger>
             <TabsTrigger value="careLevel">By Level of Care</TabsTrigger>
             <TabsTrigger value="market">By Market</TabsTrigger>
-            <TabsTrigger value="optimization">Optimization Priority</TabsTrigger>
+            <TabsTrigger value="optimization" disabled={!!competitorId}>Optimization Priority</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview">
             <div className="space-y-6">
-              <SectionCard title="Mention & Citation Rate by Platform">
-                <PlatformMentionChart data={data.platformStats} />
+              {exportSessionId && (
+                <div className="flex items-center justify-end">
+                  <a
+                    href={`/api/export?session=${exportSessionId}`}
+                    download
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#dde6ea] text-xs font-medium text-[#5a7a85] hover:bg-[#f0f5f7] transition-colors"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Export run
+                  </a>
+                </div>
+              )}
+              <SectionCard title={brandComparison && brandComparison.brands.length > 1 ? 'Mention & Citation Rate by Platform — All Brands' : 'Mention & Citation Rate by Platform'}>
+                {brandComparison && brandComparison.brands.length > 1 ? (
+                  <BrandComparisonChart brands={brandComparison.brands} anyBrand={brandComparison.anyBrand} />
+                ) : (
+                  <PlatformMentionChart data={data.platformStats} />
+                )}
               </SectionCard>
-              <SentimentBreakdown rows={data.sentimentRows} />
               <SectionCard title="Top Citation URLs">
-                {data.topCitationUrls.length === 0 ? (
+                {competitorId ? (
+                  <p className="text-sm text-[#8aadb8]">Citation URLs are only tracked for your own brand — the citation rate above still reflects this competitor.</p>
+                ) : data.topCitationUrls.length === 0 ? (
                   <p className="text-sm text-[#8aadb8]">No citations recorded yet.</p>
                 ) : (
                   <div className="space-y-2">
@@ -381,13 +714,14 @@ export default async function DashboardPage({
                   </div>
                 )}
               </SectionCard>
+              <SentimentBreakdown results={sentimentRows} />
             </div>
           </TabsContent>
 
           <TabsContent value="trends">
             <div className="space-y-6">
               <TrendCharts data={trendData} />
-              <SentimentBreakdown rows={data.sentimentRows} title="Sentiment Breakdown (All Time)" />
+              <SentimentBreakdown results={sentimentRows} title="Sentiment Breakdown (All Time)" />
             </div>
           </TabsContent>
 
@@ -402,7 +736,7 @@ export default async function DashboardPage({
                   mentionRate={c.mentionRate}
                   citationRate={c.citationRate}
                   promptCount={c.promptCount}
-                  href={`/dashboard/community/${encodeURIComponent(slugify(c.communityName))}${sessionId ? `?session=${sessionId}` : ''}`}
+                  href={`/dashboard/community/${encodeURIComponent(slugify(c.communityName))}${drillQuery}`}
                 />
               )}
               empty="No community data available"
@@ -419,7 +753,7 @@ export default async function DashboardPage({
                   mentionRate={c.mentionRate}
                   citationRate={c.citationRate}
                   promptCount={c.promptCount}
-                  href={`/dashboard/category/${encodeURIComponent(c.category)}${sessionId ? `?session=${sessionId}` : ''}`}
+                  href={`/dashboard/category/${encodeURIComponent(c.category)}${drillQuery}`}
                 />
               )}
               empty="No category data available"
@@ -436,7 +770,7 @@ export default async function DashboardPage({
                   mentionRate={c.mentionRate}
                   citationRate={c.citationRate}
                   promptCount={c.promptCount}
-                  href={`/dashboard/care-level/${encodeURIComponent(c.levelOfCare)}${sessionId ? `?session=${sessionId}` : ''}`}
+                  href={`/dashboard/care-level/${encodeURIComponent(c.levelOfCare)}${drillQuery}`}
                 />
               )}
               empty="No care level data available"
@@ -453,7 +787,7 @@ export default async function DashboardPage({
                   mentionRate={m.mentionRate}
                   citationRate={m.citationRate}
                   promptCount={m.promptCount}
-                  href={`/dashboard/market/${encodeURIComponent(m.market)}${sessionId ? `?session=${sessionId}` : ''}`}
+                  href={`/dashboard/market/${encodeURIComponent(m.market)}${drillQuery}`}
                 />
               )}
               empty="No market data available"
@@ -461,7 +795,11 @@ export default async function DashboardPage({
           </TabsContent>
 
           <TabsContent value="optimization">
-            {sitemapAnalysis ? (
+            {competitorId ? (
+              <SectionCard title="Optimization Priority">
+                <p className="text-sm text-[#8aadb8]">This tab reflects your own site&apos;s pages and isn&apos;t available while viewing a competitor. Switch back to Your Brand above.</p>
+              </SectionCard>
+            ) : sitemapAnalysis ? (
               <OptimizationPriorityTable {...sitemapAnalysis} />
             ) : (
               <SectionCard title="Optimization Priority">
@@ -547,7 +885,7 @@ function EmptyDashboard() {
         </div>
         <h2 className="text-xl font-bold text-white mb-1" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>No data yet</h2>
         <p className="text-white/70 text-sm max-w-sm mx-auto">
-          Upload your prompts spreadsheet and run it against 6 AI platforms to see your mention and citation performance.
+          Upload your prompts spreadsheet and run it against 5 AI platforms to see your mention and citation performance.
         </p>
       </div>
 
