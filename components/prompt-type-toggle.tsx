@@ -1,6 +1,6 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 
 export type PromptTypeFilter = 'all' | 'brand' | 'nonbrand'
@@ -23,12 +23,17 @@ export function PromptTypeToggle({
   projectId?: string
 }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   function handleChange(type: PromptTypeFilter) {
-    const params = new URLSearchParams()
+    // Seed from the current URL so any param this component doesn't know about
+    // (level of care, a cross-segment scope like market=Cincinnati, competitor, …)
+    // survives the navigation instead of being silently dropped.
+    const params = new URLSearchParams(searchParams.toString())
     if (projectId) params.set('project', projectId)
     if (sessionId) params.set('session', sessionId)
     if (type !== 'all') params.set('type', type)
+    else params.delete('type')
     const qs = params.toString()
     router.push(qs ? `${basePath}?${qs}` : basePath)
   }

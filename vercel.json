@@ -1,4 +1,4 @@
 {
   "framework": "nextjs",
-  "buildCommand": "npx prisma migrate deploy && next build"
+  "buildCommand": "sh scripts/vercel-build.sh"
 }

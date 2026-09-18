@@ -8,8 +8,10 @@ import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { ProjectPicker } from '@/components/project-picker'
+import { CareLevelPicker } from '@/components/care-level-picker'
 import { CompetitorViewPicker } from '@/components/competitor-view-picker'
 import { OptimizationPriorityTable } from '@/components/optimization-priority-table'
+import { SentimentBreakdown } from '@/components/sentiment-breakdown'
 import { getSitemapAnalysis, SitemapAnalysis } from '@/lib/sitemap'
 import { getGscMetrics, getPageCrawlResults } from '@/lib/gsc'
 import { getSessionList } from '@/lib/run-sessions'
@@ -20,10 +22,11 @@ import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink, Download, U
 
 export const dynamic = 'force-dynamic'
 
-async function getTrendData(promptType?: string, projectId?: string): Promise<TrendPoint[]> {
+async function getTrendData(promptType?: string, projectId?: string, careLevel?: string): Promise<TrendPoint[]> {
   const promptFilter = {
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
   }
   const hasPromptFilter = Object.keys(promptFilter).length > 0
 
@@ -47,10 +50,13 @@ async function getTrendData(promptType?: string, projectId?: string): Promise<Tr
   return sessions.map((rs) => {
     const results = rs.results
     const total = results.length
-    const mentioned = results.filter((r) => r.isMentioned).length
+    const mentionedResults = results.filter((r) => r.isMentioned)
+    const mentioned = mentionedResults.length
     const cited = results.filter((r) => r.isCited).length
-    const positive = results.filter((r) => r.sentiment === 'positive').length
-    const negative = results.filter((r) => r.sentiment === 'negative').length
+    // Sentiment only means something on a response that actually mentions the
+    // brand, so it's rated against mentions, not every result.
+    const positive = mentionedResults.filter((r) => r.sentiment === 'positive').length
+    const negative = mentionedResults.filter((r) => r.sentiment === 'negative').length
 
     const byPlatform: Record<string, { mentionRate: number; citationRate: number }> = {}
     for (const platform of PLATFORMS) {
@@ -68,20 +74,21 @@ async function getTrendData(promptType?: string, projectId?: string): Promise<Tr
       total,
       mentionRate: total > 0 ? mentioned / total : 0,
       citationRate: total > 0 ? cited / total : 0,
-      positiveRate: total > 0 ? positive / total : 0,
-      negativeRate: total > 0 ? negative / total : 0,
+      positiveRate: mentioned > 0 ? positive / mentioned : 0,
+      negativeRate: mentioned > 0 ? negative / mentioned : 0,
       byPlatform,
     }
   })
 }
 
-async function getDashboardData(sessionId?: string, promptType?: string, projectId?: string) {
+async function getDashboardData(sessionId?: string, promptType?: string, projectId?: string, careLevel?: string) {
   // One canonical prompt per unique promptText (first created wins) — prevents cross-batch
   // double-counting. Scoped to a single project's own prompts when one is selected, since
   // there's no cross-batch collision to worry about within one project.
   const canonicalWhere = {
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
   }
   const canonicalRows = await prisma.prompt.findMany({
     distinct: ['promptText'],
@@ -230,16 +237,32 @@ async function getDashboardData(sessionId?: string, promptType?: string, project
   }
 }
 
+// Every level of care across the current project/brand scope, regardless of which
+// (if any) is currently selected — so the picker always offers the full set rather
+// than collapsing to just the one already chosen.
+async function getCareLevelOptions(promptType?: string, projectId?: string): Promise<string[]> {
+  const where = {
+    ...(promptType ? { promptType } : {}),
+    ...(projectId ? { batchId: projectId } : {}),
+  }
+  const groups = await prisma.prompt.groupBy({
+    by: ['levelOfCare'],
+    where: Object.keys(where).length > 0 ? where : undefined,
+  })
+  return groups.map((g) => g.levelOfCare).filter(Boolean).sort()
+}
+
 // ─── Competitor lens ────────────────────────────────────────────────────────
 // Same shapes as the functions above, sourced from CompetitorMention instead
 // of Result, so the "Viewing" picker can swap the whole dashboard between
 // your own brand and any tracked competitor. CompetitorMention has no
 // per-citation URLs (only isCited), so topCitationUrls is always empty here.
 
-async function getCompetitorOptions(promptType?: string, projectId?: string): Promise<{ id: string; brandName: string }[]> {
+async function getCompetitorOptions(promptType?: string, projectId?: string, careLevel?: string): Promise<{ id: string; brandName: string }[]> {
   const canonicalWhere = {
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
   }
   const canonicalIds = (
     await prisma.prompt.findMany({
@@ -258,10 +281,11 @@ async function getCompetitorOptions(promptType?: string, projectId?: string): Pr
   return rows.map((r) => r.competitor).sort((a, b) => a.brandName.localeCompare(b.brandName))
 }
 
-async function getCompetitorDashboardData(competitorId: string, sessionId?: string, promptType?: string, projectId?: string) {
+async function getCompetitorDashboardData(competitorId: string, sessionId?: string, promptType?: string, projectId?: string, careLevel?: string) {
   const canonicalWhere = {
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
   }
   const canonicalRows = await prisma.prompt.findMany({
     distinct: ['promptText'],
@@ -369,10 +393,11 @@ async function getCompetitorDashboardData(competitorId: string, sessionId?: stri
   }
 }
 
-async function getCompetitorTrendData(competitorId: string, promptType?: string, projectId?: string): Promise<TrendPoint[]> {
+async function getCompetitorTrendData(competitorId: string, promptType?: string, projectId?: string, careLevel?: string): Promise<TrendPoint[]> {
   const promptFilter = {
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
   }
   const hasPromptFilter = Object.keys(promptFilter).length > 0
 
@@ -399,10 +424,13 @@ async function getCompetitorTrendData(competitorId: string, promptType?: string,
   return sessions.map((rs) => {
     const rows = rs.results.flatMap((r) => r.competitorMentions.map((cm) => ({ platform: r.platform, ...cm })))
     const total = rows.length
-    const mentioned = rows.filter((r) => r.isMentioned).length
+    const mentionedRows = rows.filter((r) => r.isMentioned)
+    const mentioned = mentionedRows.length
     const cited = rows.filter((r) => r.isCited).length
-    const positive = rows.filter((r) => r.sentiment === 'positive').length
-    const negative = rows.filter((r) => r.sentiment === 'negative').length
+    // Sentiment only means something on a response that actually mentions the
+    // brand, so it's rated against mentions, not every result.
+    const positive = mentionedRows.filter((r) => r.sentiment === 'positive').length
+    const negative = mentionedRows.filter((r) => r.sentiment === 'negative').length
 
     const byPlatform: Record<string, { mentionRate: number; citationRate: number }> = {}
     for (const platform of PLATFORMS) {
@@ -420,8 +448,8 @@ async function getCompetitorTrendData(competitorId: string, promptType?: string,
       total,
       mentionRate: total > 0 ? mentioned / total : 0,
       citationRate: total > 0 ? cited / total : 0,
-      positiveRate: total > 0 ? positive / total : 0,
-      negativeRate: total > 0 ? negative / total : 0,
+      positiveRate: mentioned > 0 ? positive / mentioned : 0,
+      negativeRate: mentioned > 0 ? negative / mentioned : 0,
       byPlatform,
     }
   })
@@ -433,10 +461,11 @@ async function getCompetitorTrendData(competitorId: string, promptType?: string,
 // market, etc.) have their own already-scoped prompt list and call
 // getBrandSeries directly instead. See lib/competitor-stats.ts.
 
-async function getBrandComparisonData(sessionId?: string, promptType?: string, projectId?: string) {
+async function getBrandComparisonData(sessionId?: string, promptType?: string, projectId?: string, careLevel?: string) {
   const canonicalWhere = {
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
   }
   const canonicalIds = (
     await prisma.prompt.findMany({
@@ -452,12 +481,67 @@ async function getBrandComparisonData(sessionId?: string, promptType?: string, p
   })
 }
 
+// ─── Sentiment breakdown ────────────────────────────────────────────────────
+
+async function getSentimentRows(sessionId?: string, promptType?: string, projectId?: string, careLevel?: string): Promise<{ sentiment: string; isMentioned: boolean }[]> {
+  const canonicalWhere = {
+    ...(promptType ? { promptType } : {}),
+    ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
+  }
+  const canonicalIds = (
+    await prisma.prompt.findMany({
+      distinct: ['promptText'],
+      where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
+      select: { id: true },
+    })
+  ).map((r) => r.id)
+
+  // Sentiment only means something on a response that actually mentions the brand.
+  return prisma.result.findMany({
+    where: {
+      promptId: { in: canonicalIds },
+      isMentioned: true,
+      ...(sessionId ? { runSessionId: sessionId } : {}),
+    },
+    select: { sentiment: true, isMentioned: true },
+  })
+}
+
+async function getCompetitorSentimentRows(competitorId: string, sessionId?: string, promptType?: string, projectId?: string, careLevel?: string): Promise<{ sentiment: string; isMentioned: boolean }[]> {
+  const canonicalWhere = {
+    ...(promptType ? { promptType } : {}),
+    ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
+  }
+  const canonicalIds = (
+    await prisma.prompt.findMany({
+      distinct: ['promptText'],
+      where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
+      select: { id: true },
+    })
+  ).map((r) => r.id)
+
+  // Sentiment only means something when the brand (or competitor here) is mentioned.
+  return prisma.competitorMention.findMany({
+    where: {
+      competitorId,
+      isMentioned: true,
+      result: {
+        promptId: { in: canonicalIds },
+        ...(sessionId ? { runSessionId: sessionId } : {}),
+      },
+    },
+    select: { sentiment: true, isMentioned: true },
+  })
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ session?: string; type?: string; project?: string; competitor?: string }>
+  searchParams: Promise<{ session?: string; type?: string; project?: string; competitor?: string; careLevel?: string }>
 }) {
-  const { session: sessionId, type, project: projectId, competitor: competitorId } = await searchParams
+  const { session: sessionId, type, project: projectId, competitor: competitorId, careLevel } = await searchParams
   const promptTypeParam: PromptTypeFilter = type === 'brand' || type === 'nonbrand' ? type : 'all'
   const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
 
@@ -468,18 +552,24 @@ export default async function DashboardPage({
   let competitorOptions: Awaited<ReturnType<typeof getCompetitorOptions>> = []
   let brandComparison: Awaited<ReturnType<typeof getBrandComparisonData>> | null = null
   let sitemapAnalysis: SitemapAnalysis | null = null
+  let sentimentRows: { sentiment: string; isMentioned: boolean }[] = []
+  let careLevelOptions: string[] = []
   try {
-    ;[data, trendData, sessions, projects, competitorOptions, brandComparison] = await Promise.all([
+    ;[data, trendData, sessions, projects, competitorOptions, brandComparison, sentimentRows, careLevelOptions] = await Promise.all([
       competitorId
-        ? getCompetitorDashboardData(competitorId, sessionId, promptType, projectId)
-        : getDashboardData(sessionId, promptType, projectId),
+        ? getCompetitorDashboardData(competitorId, sessionId, promptType, projectId, careLevel)
+        : getDashboardData(sessionId, promptType, projectId, careLevel),
       competitorId
-        ? getCompetitorTrendData(competitorId, promptType, projectId)
-        : getTrendData(promptType, projectId),
+        ? getCompetitorTrendData(competitorId, promptType, projectId, careLevel)
+        : getTrendData(promptType, projectId, careLevel),
       getSessionList(projectId),
       getProjectList(),
-      getCompetitorOptions(promptType, projectId).catch(() => []),
-      getBrandComparisonData(sessionId, promptType, projectId).catch(() => null),
+      getCompetitorOptions(promptType, projectId, careLevel).catch(() => []),
+      getBrandComparisonData(sessionId, promptType, projectId, careLevel).catch(() => null),
+      competitorId
+        ? getCompetitorSentimentRows(competitorId, sessionId, promptType, projectId, careLevel)
+        : getSentimentRows(sessionId, promptType, projectId, careLevel),
+      getCareLevelOptions(promptType, projectId).catch(() => []),
     ])
   } catch {
     // DB not configured — show empty state
@@ -519,6 +609,7 @@ export default async function DashboardPage({
   if (projectId) drillParams.set('project', projectId)
   if (sessionId) drillParams.set('session', sessionId)
   if (promptType) drillParams.set('type', promptType)
+  if (careLevel) drillParams.set('careLevel', careLevel)
   const drillQuery = drillParams.toString() ? `?${drillParams.toString()}` : ''
 
   return (
@@ -660,46 +751,74 @@ export default async function DashboardPage({
                   </div>
                 )}
               </SectionCard>
+              <SentimentBreakdown results={sentimentRows} />
             </div>
           </TabsContent>
 
           <TabsContent value="trends">
-            <TrendCharts data={trendData} />
+            <div className="space-y-6">
+              <TrendCharts data={trendData} />
+              <SentimentBreakdown results={sentimentRows} title="Sentiment Breakdown (All Time)" />
+            </div>
           </TabsContent>
 
           <TabsContent value="community">
-            <TabGrid
-              items={data.communityStats}
-              renderCard={(c) => (
-                <Scorecard
-                  key={c.communityName}
-                  title={c.communityName}
-                  subtitle={c.city}
-                  mentionRate={c.mentionRate}
-                  citationRate={c.citationRate}
-                  promptCount={c.promptCount}
-                  href={`/dashboard/community/${encodeURIComponent(slugify(c.communityName))}${drillQuery}`}
+            <div className="space-y-4">
+              <div className="flex justify-end">
+                <CareLevelPicker
+                  levels={careLevelOptions}
+                  currentLevel={careLevel}
+                  basePath="/dashboard"
+                  promptType={promptType}
+                  projectId={projectId}
+                  sessionId={sessionId}
                 />
-              )}
-              empty="No community data available"
-            />
+              </div>
+              <TabGrid
+                items={data.communityStats}
+                renderCard={(c) => (
+                  <Scorecard
+                    key={c.communityName}
+                    title={c.communityName}
+                    subtitle={c.city}
+                    mentionRate={c.mentionRate}
+                    citationRate={c.citationRate}
+                    promptCount={c.promptCount}
+                    href={`/dashboard/community/${encodeURIComponent(slugify(c.communityName))}${drillQuery}`}
+                  />
+                )}
+                empty="No community data available"
+              />
+            </div>
           </TabsContent>
 
           <TabsContent value="category">
-            <TabGrid
-              items={data.categoryStats}
-              renderCard={(c) => (
-                <Scorecard
-                  key={c.category}
-                  title={c.category}
-                  mentionRate={c.mentionRate}
-                  citationRate={c.citationRate}
-                  promptCount={c.promptCount}
-                  href={`/dashboard/category/${encodeURIComponent(c.category)}${drillQuery}`}
+            <div className="space-y-4">
+              <div className="flex justify-end">
+                <CareLevelPicker
+                  levels={careLevelOptions}
+                  currentLevel={careLevel}
+                  basePath="/dashboard"
+                  promptType={promptType}
+                  projectId={projectId}
+                  sessionId={sessionId}
                 />
-              )}
-              empty="No category data available"
-            />
+              </div>
+              <TabGrid
+                items={data.categoryStats}
+                renderCard={(c) => (
+                  <Scorecard
+                    key={c.category}
+                    title={c.category}
+                    mentionRate={c.mentionRate}
+                    citationRate={c.citationRate}
+                    promptCount={c.promptCount}
+                    href={`/dashboard/category/${encodeURIComponent(c.category)}${drillQuery}`}
+                  />
+                )}
+                empty="No category data available"
+              />
+            </div>
           </TabsContent>
 
           <TabsContent value="careLevel">
@@ -720,20 +839,32 @@ export default async function DashboardPage({
           </TabsContent>
 
           <TabsContent value="market">
-            <TabGrid
-              items={data.marketStats}
-              renderCard={(m) => (
-                <Scorecard
-                  key={m.market}
-                  title={m.market}
-                  mentionRate={m.mentionRate}
-                  citationRate={m.citationRate}
-                  promptCount={m.promptCount}
-                  href={`/dashboard/market/${encodeURIComponent(m.market)}${drillQuery}`}
+            <div className="space-y-4">
+              <div className="flex justify-end">
+                <CareLevelPicker
+                  levels={careLevelOptions}
+                  currentLevel={careLevel}
+                  basePath="/dashboard"
+                  promptType={promptType}
+                  projectId={projectId}
+                  sessionId={sessionId}
                 />
-              )}
-              empty="No market data available"
-            />
+              </div>
+              <TabGrid
+                items={data.marketStats}
+                renderCard={(m) => (
+                  <Scorecard
+                    key={m.market}
+                    title={m.market}
+                    mentionRate={m.mentionRate}
+                    citationRate={m.citationRate}
+                    promptCount={m.promptCount}
+                    href={`/dashboard/market/${encodeURIComponent(m.market)}${drillQuery}`}
+                  />
+                )}
+                empty="No market data available"
+              />
+            </div>
           </TabsContent>
 
           <TabsContent value="optimization">

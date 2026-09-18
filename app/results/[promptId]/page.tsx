@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PLATFORM_LABELS, PLATFORM_COLORS, YOUR_BRAND_NAME, YOUR_BRAND_DOMAIN } from '@/lib/utils'
 import { getActiveCompetitors, domainMatches, CompetitorInput } from '@/lib/competitors'
+import { SentimentBreakdown } from '@/components/sentiment-breakdown'
 import { ChevronLeft, ExternalLink, MapPin, Building2, Tag, Heart, Info } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -243,6 +244,9 @@ export default async function ResultsDetailPage({
         </div>
       )}
 
+      {/* Sentiment breakdown for this prompt's responses */}
+      {sortedResults.length > 0 && <SentimentBreakdown results={sortedResults} title="Sentiment Across Platforms" />}
+
       {/* Platform results */}
       {sortedResults.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#dde6ea] py-16 text-center">
@@ -280,7 +284,8 @@ export default async function ResultsDetailPage({
                         Cited
                       </span>
                     )}
-                    {!isNoAIO && (result.sentiment === 'positive' ? (
+                    {/* Sentiment only means something on a response that actually mentions the brand */}
+                    {!isNoAIO && result.isMentioned && (result.sentiment === 'positive' ? (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                         Positive
                       </span>

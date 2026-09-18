@@ -34,10 +34,13 @@ export async function GET(
       })
 
       const total = results.length
-      const mentioned = results.filter((r) => r.isMentioned).length
+      const mentionedResults = results.filter((r) => r.isMentioned)
+      const mentioned = mentionedResults.length
       const cited = results.filter((r) => r.isCited).length
-      const positive = results.filter((r) => r.sentiment === 'positive').length
-      const negative = results.filter((r) => r.sentiment === 'negative').length
+      // Sentiment only means something on a response that actually mentions the
+      // brand, so it's rated against mentions, not every result.
+      const positive = mentionedResults.filter((r) => r.sentiment === 'positive').length
+      const negative = mentionedResults.filter((r) => r.sentiment === 'negative').length
 
       // Per-platform breakdown
       const byPlatform: Record<string, { mentionRate: number; citationRate: number }> = {}
@@ -56,8 +59,8 @@ export async function GET(
         total,
         mentionRate: total > 0 ? mentioned / total : 0,
         citationRate: total > 0 ? cited / total : 0,
-        positiveRate: total > 0 ? positive / total : 0,
-        negativeRate: total > 0 ? negative / total : 0,
+        positiveRate: mentioned > 0 ? positive / mentioned : 0,
+        negativeRate: mentioned > 0 ? negative / mentioned : 0,
         byPlatform,
       }
     })

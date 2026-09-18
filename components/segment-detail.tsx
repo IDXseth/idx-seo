@@ -9,7 +9,9 @@ import { BrandTrendChart } from '@/components/brand-trend-chart'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { ProjectPicker, ProjectOption } from '@/components/project-picker'
+import { CareLevelPicker } from '@/components/care-level-picker'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
+import { SentimentBreakdown } from '@/components/sentiment-breakdown'
 import { PLATFORM_LABELS, PLATFORM_COLORS, formatPercent, slugify, cn } from '@/lib/utils'
 import { ChevronLeft, Target, Quote, FileText, ExternalLink, Trophy } from 'lucide-react'
 import type { CompetitorLeaderboardEntry, BrandComparison, BrandTrendSeries } from '@/lib/competitor-stats'
@@ -91,6 +93,13 @@ interface SegmentDetailProps {
   promptTypeFilter?: PromptTypeFilter
   projectId?: string
   projects?: ProjectOption[]
+  careLevel?: string
+  careLevels?: string[]
+  careLevelBreakdown?: Array<{ levelOfCare: string; promptCount: number; mentionRate: number; citationRate: number }>
+  // The dimension + value this page is itself scoped to (e.g. { key: 'market', value: 'Cincinnati' }).
+  // Carried into each level-of-care breakdown card's link so drilling into a level of care
+  // from within Cincinnati lands on Cincinnati + that level, not the unfiltered level-of-care view.
+  segmentDrillParam?: { key: string; value: string }
 }
 
 export function SegmentDetail({
@@ -113,6 +122,10 @@ export function SegmentDetail({
   promptTypeFilter = 'all',
   projectId,
   projects,
+  careLevel,
+  careLevels,
+  careLevelBreakdown,
+  segmentDrillParam,
 }: SegmentDetailProps) {
   const platforms = platformStats.map((p) => p.platform)
 
@@ -122,6 +135,7 @@ export function SegmentDetail({
   if (projectId) drillParams.set('project', projectId)
   if (sessionId) drillParams.set('session', sessionId)
   if (promptTypeFilter !== 'all') drillParams.set('type', promptTypeFilter)
+  if (careLevel) drillParams.set('careLevel', careLevel)
   const drillQuery = drillParams.toString() ? `?${drillParams.toString()}` : ''
 
   return (
@@ -165,6 +179,16 @@ export function SegmentDetail({
             />
           )}
           <PromptTypeToggle value={promptTypeFilter} basePath={basePath ?? '/dashboard'} sessionId={sessionId} projectId={projectId} />
+          {careLevels && (
+            <CareLevelPicker
+              levels={careLevels}
+              currentLevel={careLevel}
+              basePath={basePath ?? '/dashboard'}
+              promptType={promptTypeFilter === 'all' ? undefined : promptTypeFilter}
+              projectId={projectId}
+              sessionId={sessionId}
+            />
+          )}
           {sessions && (
             <RunSessionPicker
               sessions={sessions}
@@ -236,17 +260,47 @@ export function SegmentDetail({
         </div>
       )}
 
-      {/* Platform Chart */}
-      <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
-        <h2 className="text-sm font-semibold text-[#084c61] mb-4">
-          {brandComparison && brandComparison.brands.length > 1 ? 'Performance by Platform — All Brands' : 'Performance by Platform'}
-        </h2>
-        {brandComparison && brandComparison.brands.length > 1 ? (
-          <BrandComparisonChart brands={brandComparison.brands} anyBrand={brandComparison.anyBrand} />
-        ) : (
-          <PlatformMentionChart data={platformStats} />
-        )}
+      {/* Platform Chart + Sentiment Breakdown */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
+          <h2 className="text-sm font-semibold text-[#084c61] mb-4">
+            {brandComparison && brandComparison.brands.length > 1 ? 'Performance by Platform — All Brands' : 'Performance by Platform'}
+          </h2>
+          {brandComparison && brandComparison.brands.length > 1 ? (
+            <BrandComparisonChart brands={brandComparison.brands} anyBrand={brandComparison.anyBrand} />
+          ) : (
+            <PlatformMentionChart data={platformStats} />
+          )}
+        </div>
+        <SentimentBreakdown results={prompts.flatMap((p) => p.results)} />
       </div>
+
+      {/* Breakdown by Level of Care */}
+      {careLevelBreakdown && careLevelBreakdown.length > 1 && (
+        <div>
+          <h2 className="text-sm font-semibold text-[#084c61] mb-4">Breakdown by Level of Care</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {careLevelBreakdown.map((c) => {
+              const params = new URLSearchParams()
+              if (projectId) params.set('project', projectId)
+              if (sessionId) params.set('session', sessionId)
+              if (promptTypeFilter !== 'all') params.set('type', promptTypeFilter)
+              if (segmentDrillParam) params.set(segmentDrillParam.key, segmentDrillParam.value)
+              const qs = params.toString()
+              return (
+                <Scorecard
+                  key={c.levelOfCare}
+                  title={c.levelOfCare}
+                  mentionRate={c.mentionRate}
+                  citationRate={c.citationRate}
+                  promptCount={c.promptCount}
+                  href={`/dashboard/care-level/${encodeURIComponent(c.levelOfCare)}${qs ? `?${qs}` : ''}`}
+                />
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Top Citation Sources */}
       {topDomains.length > 0 && (
@@ -368,9 +422,14 @@ export function SegmentDetail({
                   <td className="px-4 py-4 text-[#5a7a85] text-xs">{prompt.levelOfCare || '—'}</td>
                   <td className="px-4 py-4">
                     {(() => {
-                      const pos = prompt.results.filter((r) => r.sentiment === 'positive').length
-                      const neg = prompt.results.filter((r) => r.sentiment === 'negative').length
-                      const neu = prompt.results.filter((r) => r.sentiment === 'neutral').length
+                      // Sentiment only means something on a response that actually
+                      // mentions the brand — a majority over unmentioned responses too
+                      // would misrepresent prompts where the brand barely came up.
+                      const mentioned = prompt.results.filter((r) => r.isMentioned)
+                      if (mentioned.length === 0) return <span className="text-[#b8cdd3] text-xs">—</span>
+                      const pos = mentioned.filter((r) => r.sentiment === 'positive').length
+                      const neg = mentioned.filter((r) => r.sentiment === 'negative').length
+                      const neu = mentioned.filter((r) => r.sentiment === 'neutral').length
                       const majority = pos >= neg && pos >= neu ? 'positive' : neg >= pos && neg >= neu ? 'negative' : 'neutral'
                       if (majority === 'positive') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 w-fit">Positive</span>
                       if (majority === 'negative') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-50 text-rose-700 w-fit">Negative</span>

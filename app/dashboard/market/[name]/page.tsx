@@ -10,10 +10,14 @@ import { getProjectList } from '@/lib/projects'
 
 export const dynamic = 'force-dynamic'
 
-async function getMarketData(name: string, sessionId?: string, promptType?: string, projectId?: string) {
+async function getMarketData(name: string, sessionId?: string, promptType?: string, projectId?: string, careLevel?: string) {
   const decodedName = decodeURIComponent(name)
   const resultsFilter = sessionId ? { where: { runSessionId: sessionId } } : {}
-  const scopeFilter = { ...(promptType ? { promptType } : {}), ...(projectId ? { batchId: projectId } : {}) }
+  const scopeFilter = {
+    ...(promptType ? { promptType } : {}),
+    ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
+  }
 
   const prompts = await prisma.prompt.findMany({
     where: { market: decodedName, ...scopeFilter },
@@ -72,23 +76,56 @@ async function getMarketData(name: string, sessionId?: string, promptType?: stri
   }
 }
 
+// Every level of care present in this market — regardless of which one (if any) is
+// currently selected — so the picker always offers the full set and the breakdown
+// grid below always shows every level side by side.
+async function getMarketCareLevelBreakdown(name: string, sessionId?: string, promptType?: string, projectId?: string) {
+  const decodedName = decodeURIComponent(name)
+  const scopeFilter = { ...(promptType ? { promptType } : {}), ...(projectId ? { batchId: projectId } : {}) }
+  const where = { market: decodedName, ...scopeFilter }
+
+  const groups = await prisma.prompt.groupBy({ by: ['levelOfCare'], where, _count: { id: true } })
+  const resultsFilter = sessionId ? { runSessionId: sessionId } : {}
+
+  const stats = (await Promise.all(
+    groups.filter((g) => g.levelOfCare).map(async (g) => {
+      const results = await prisma.result.findMany({
+        where: { ...resultsFilter, prompt: { ...where, levelOfCare: g.levelOfCare } },
+        select: { isMentioned: true, isCited: true },
+      })
+      const total = results.length
+      if (sessionId && total === 0) return null
+      return {
+        levelOfCare: g.levelOfCare,
+        promptCount: g._count.id,
+        mentionRate: total > 0 ? results.filter((r) => r.isMentioned).length / total : 0,
+        citationRate: total > 0 ? results.filter((r) => r.isCited).length / total : 0,
+      }
+    })
+  )).filter(Boolean) as Array<{ levelOfCare: string; promptCount: number; mentionRate: number; citationRate: number }>
+
+  return stats
+}
+
 export default async function MarketDetailPage({
   params, searchParams,
 }: {
   params: Promise<{ name: string }>
-  searchParams: Promise<{ session?: string; type?: string; project?: string }>
+  searchParams: Promise<{ session?: string; type?: string; project?: string; careLevel?: string }>
 }) {
-  const [{ name }, { session: sessionId, type, project: projectId }] = await Promise.all([params, searchParams])
+  const [{ name }, { session: sessionId, type, project: projectId, careLevel }] = await Promise.all([params, searchParams])
   const promptTypeParam: PromptTypeFilter = type === 'brand' || type === 'nonbrand' ? type : 'all'
   const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
   let data: Awaited<ReturnType<typeof getMarketData>> = null
   let sessions: SessionOption[] = []
   let projects: Awaited<ReturnType<typeof getProjectList>> = []
+  let careLevelBreakdown: Awaited<ReturnType<typeof getMarketCareLevelBreakdown>> = []
   try {
-    ;[data, sessions, projects] = await Promise.all([
-      getMarketData(name, sessionId, promptType, projectId),
+    ;[data, sessions, projects, careLevelBreakdown] = await Promise.all([
+      getMarketData(name, sessionId, promptType, projectId, careLevel),
       getSessionList(projectId),
       getProjectList(),
+      getMarketCareLevelBreakdown(name, sessionId, promptType, projectId),
     ])
   } catch { /* DB not configured */ }
 
@@ -98,6 +135,7 @@ export default async function MarketDetailPage({
   if (projectId) dashboardQuery.set('project', projectId)
   if (sessionId) dashboardQuery.set('session', sessionId)
   if (promptType) dashboardQuery.set('type', promptType)
+  if (careLevel) dashboardQuery.set('careLevel', careLevel)
 
   return (
     <SegmentDetail
@@ -117,6 +155,10 @@ export default async function MarketDetailPage({
       promptTypeFilter={promptTypeParam}
       projectId={projectId}
       projects={projects}
+      careLevel={careLevel}
+      careLevels={careLevelBreakdown.map((c) => c.levelOfCare)}
+      careLevelBreakdown={careLevelBreakdown}
+      segmentDrillParam={{ key: 'market', value: data.name }}
     />
   )
 }
