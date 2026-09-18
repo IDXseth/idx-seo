@@ -3,7 +3,7 @@ import { PLATFORMS, formatPercent } from '@/lib/utils'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Scorecard } from '@/components/scorecard'
 import { PlatformMentionChart } from '@/components/platform-chart'
-import { BrandComparisonChart } from '@/components/brand-comparison-chart'
+import { BrandScorecards } from '@/components/brand-scorecards'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
@@ -712,13 +712,16 @@ export default async function DashboardPage({
                   </a>
                 </div>
               )}
-              <SectionCard title={brandComparison && brandComparison.brands.length > 1 ? 'Mention & Citation Rate by Platform — All Brands' : 'Mention & Citation Rate by Platform'}>
-                {brandComparison && brandComparison.brands.length > 1 ? (
-                  <BrandComparisonChart brands={brandComparison.brands} anyBrand={brandComparison.anyBrand} />
-                ) : (
+              {brandComparison && brandComparison.brands.length > 1 ? (
+                <div>
+                  <h2 className="text-sm font-semibold text-[#084c61] mb-4">Mention & Citation Rate by Brand</h2>
+                  <BrandScorecards brands={brandComparison.brands} promptCount={data.overview.totalPrompts} />
+                </div>
+              ) : (
+                <SectionCard title="Mention & Citation Rate by Platform">
                   <PlatformMentionChart data={data.platformStats} />
-                )}
-              </SectionCard>
+                </SectionCard>
+              )}
               <SectionCard title="Top Citation URLs">
                 {competitorId ? (
                   <p className="text-sm text-[#8aadb8]">Citation URLs are only tracked for your own brand — the citation rate above still reflects this competitor.</p>

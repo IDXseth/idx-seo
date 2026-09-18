@@ -53,10 +53,26 @@ async function getMarketData(name: string, sessionId?: string, promptType?: stri
 
   const trendData = sessionId ? [] : await getSegmentTrendData({ market: decodedName, ...scopeFilter })
 
+  const communityGroups = new Map<string, { city: string; promptCount: number; mentioned: number; cited: number; total: number }>()
+  for (const p of prompts) {
+    if (!p.communityName) continue
+    const g = communityGroups.get(p.communityName) ?? { city: p.city, promptCount: 0, mentioned: 0, cited: 0, total: 0 }
+    g.promptCount++
+    g.total += p.results.length
+    g.mentioned += p.results.filter((r) => r.isMentioned).length
+    g.cited += p.results.filter((r) => r.isCited).length
+    communityGroups.set(p.communityName, g)
+  }
+  const communityStats = [...communityGroups.entries()].map(([communityName, g]) => ({
+    communityName, city: g.city, promptCount: g.promptCount,
+    mentionRate: g.total > 0 ? g.mentioned / g.total : 0,
+    citationRate: g.total > 0 ? g.cited / g.total : 0,
+  }))
+
   return {
     name: decodedName, prompts,
     overview: { promptCount: prompts.length, mentionRate: totalResults > 0 ? mentioned / totalResults : 0, citationRate: totalResults > 0 ? cited / totalResults : 0 },
-    platformStats, topDomains, trendData,
+    platformStats, topDomains, trendData, communityStats,
   }
 }
 
@@ -135,6 +151,7 @@ export default async function MarketDetailPage({
       sessions={sessions}
       basePath={`/dashboard/market/${encodeURIComponent(name)}`}
       trendData={data.trendData}
+      communityStats={data.communityStats}
       promptTypeFilter={promptTypeParam}
       projectId={projectId}
       projects={projects}

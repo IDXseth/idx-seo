@@ -112,12 +112,14 @@ export default async function ResultsDetailPage({
       brandName: YOUR_BRAND_NAME,
       isYou: true,
       mentionedCount: sortedResults.filter((r) => r.isMentioned).length,
+      citedCount: sortedResults.filter((r) => r.isCited).length,
     },
     ...competitors.map((c) => ({
       id: c.id,
       brandName: c.brandName,
       isYou: false,
       mentionedCount: sortedResults.filter((r) => (mentionsByResult.get(r.id) ?? []).some((m) => m.competitorId === c.id && m.isMentioned)).length,
+      citedCount: sortedResults.filter((r) => (mentionsByResult.get(r.id) ?? []).some((m) => m.competitorId === c.id && m.isCited)).length,
     })),
   ]
   const platformCount = sortedResults.length
@@ -199,10 +201,14 @@ export default async function ResultsDetailPage({
               <p className={`text-xs font-semibold mb-2 truncate ${b.isYou ? 'text-[#084c61]' : 'text-[#1a1a1a]'}`}>
                 {b.brandName}{b.isYou && ' (You)'}
               </p>
-              <p className="text-xl font-extrabold text-[#084c61] leading-none mb-2">
-                {b.mentionedCount}<span className="text-xs font-semibold text-[#5a7a85]"> / {platformCount} platforms</span>
-              </p>
-              <div className="flex gap-1">
+
+              <div className="space-y-0.5 mb-1.5">
+                <p className="text-[9px] font-semibold text-[#8aadb8] uppercase tracking-wider">Mentions</p>
+                <p className="text-xl font-extrabold text-[#084c61] leading-none">
+                  {b.mentionedCount}<span className="text-xs font-semibold text-[#5a7a85]"> / {platformCount} platforms</span>
+                </p>
+              </div>
+              <div className="flex gap-1 mb-2.5">
                 {sortedResults.map((r) => {
                   const filled = b.isYou ? r.isMentioned : (mentionsByResult.get(r.id) ?? []).some((m) => m.competitorId === b.id && m.isMentioned)
                   return (
@@ -210,6 +216,25 @@ export default async function ResultsDetailPage({
                       key={r.id}
                       className="h-1.5 flex-1 rounded-sm"
                       style={{ backgroundColor: filled ? (b.isYou ? '#177e89' : '#8aadb8') : '#eef3f5' }}
+                    />
+                  )
+                })}
+              </div>
+
+              <div className="space-y-0.5 mb-1.5">
+                <p className="text-[9px] font-semibold text-[#8aadb8] uppercase tracking-wider">Citations</p>
+                <p className="text-base font-bold text-[#b45309] leading-none">
+                  {b.citedCount}<span className="text-xs font-semibold text-[#5a7a85]"> / {platformCount} platforms</span>
+                </p>
+              </div>
+              <div className="flex gap-1">
+                {sortedResults.map((r) => {
+                  const filled = b.isYou ? r.isCited : (mentionsByResult.get(r.id) ?? []).some((m) => m.competitorId === b.id && m.isCited)
+                  return (
+                    <div
+                      key={r.id}
+                      className="h-1.5 flex-1 rounded-sm"
+                      style={{ backgroundColor: filled ? '#d97706' : '#eef3f5' }}
                     />
                   )
                 })}

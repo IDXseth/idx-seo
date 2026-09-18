@@ -2,17 +2,17 @@
 
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
+import { Scorecard } from '@/components/scorecard'
 import { PlatformMentionChart } from '@/components/platform-chart'
-import { BrandComparisonChart } from '@/components/brand-comparison-chart'
+import { BrandScorecards } from '@/components/brand-scorecards'
 import { BrandTrendChart } from '@/components/brand-trend-chart'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { ProjectPicker, ProjectOption } from '@/components/project-picker'
 import { CareLevelPicker } from '@/components/care-level-picker'
-import { Scorecard } from '@/components/scorecard'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { SentimentBreakdown } from '@/components/sentiment-breakdown'
-import { PLATFORM_LABELS, PLATFORM_COLORS, formatPercent, cn } from '@/lib/utils'
+import { PLATFORM_LABELS, PLATFORM_COLORS, formatPercent, slugify, cn } from '@/lib/utils'
 import { ChevronLeft, Target, Quote, FileText, ExternalLink, Trophy } from 'lucide-react'
 import type { CompetitorLeaderboardEntry, BrandComparison, BrandTrendSeries } from '@/lib/competitor-stats'
 
@@ -65,6 +65,14 @@ interface Overview {
   citationRate: number
 }
 
+interface CommunityStat {
+  communityName: string
+  city: string
+  promptCount: number
+  mentionRate: number
+  citationRate: number
+}
+
 interface SegmentDetailProps {
   title: string
   backHref: string
@@ -78,6 +86,7 @@ interface SegmentDetailProps {
   sessions?: SessionOption[]
   basePath?: string
   trendData?: TrendPoint[]
+  communityStats?: CommunityStat[]
   competitorLeaderboard?: CompetitorLeaderboardEntry[] | null
   brandComparison?: BrandComparison | null
   brandTrend?: BrandTrendSeries[]
@@ -106,6 +115,7 @@ export function SegmentDetail({
   sessions,
   basePath,
   trendData,
+  communityStats,
   competitorLeaderboard,
   brandComparison,
   brandTrend,
@@ -120,6 +130,13 @@ export function SegmentDetail({
   const platforms = platformStats.map((p) => p.platform)
 
   const maxDomainCount = topDomains[0]?.count ?? 1
+
+  const drillParams = new URLSearchParams()
+  if (projectId) drillParams.set('project', projectId)
+  if (sessionId) drillParams.set('session', sessionId)
+  if (promptTypeFilter !== 'all') drillParams.set('type', promptTypeFilter)
+  if (careLevel) drillParams.set('careLevel', careLevel)
+  const drillQuery = drillParams.toString() ? `?${drillParams.toString()}` : ''
 
   return (
     <div className="space-y-6">
@@ -201,6 +218,26 @@ export function SegmentDetail({
         ))}
       </div>
 
+      {/* Communities in this market */}
+      {communityStats && communityStats.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold text-[#084c61] mb-4">Communities in {title}</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {communityStats.map((c) => (
+              <Scorecard
+                key={c.communityName}
+                title={c.communityName}
+                subtitle={c.city}
+                mentionRate={c.mentionRate}
+                citationRate={c.citationRate}
+                promptCount={c.promptCount}
+                href={`/dashboard/community/${encodeURIComponent(slugify(c.communityName))}${drillQuery}`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Competitor comparison */}
       {competitorLeaderboard && competitorLeaderboard.length > 0 && (
         <CompetitorComparison entries={competitorLeaderboard} />
@@ -223,20 +260,24 @@ export function SegmentDetail({
         </div>
       )}
 
-      {/* Platform Chart + Sentiment Breakdown */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
-          <h2 className="text-sm font-semibold text-[#084c61] mb-4">
-            {brandComparison && brandComparison.brands.length > 1 ? 'Performance by Platform — All Brands' : 'Performance by Platform'}
-          </h2>
-          {brandComparison && brandComparison.brands.length > 1 ? (
-            <BrandComparisonChart brands={brandComparison.brands} anyBrand={brandComparison.anyBrand} />
-          ) : (
+      {/* Mention & Citation Rate by Brand, or Platform Chart + Sentiment Breakdown */}
+      {brandComparison && brandComparison.brands.length > 1 ? (
+        <>
+          <div>
+            <h2 className="text-sm font-semibold text-[#084c61] mb-4">Mention & Citation Rate by Brand</h2>
+            <BrandScorecards brands={brandComparison.brands} promptCount={overview.promptCount} />
+          </div>
+          <SentimentBreakdown results={prompts.flatMap((p) => p.results)} />
+        </>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
+            <h2 className="text-sm font-semibold text-[#084c61] mb-4">Performance by Platform</h2>
             <PlatformMentionChart data={platformStats} />
-          )}
+          </div>
+          <SentimentBreakdown results={prompts.flatMap((p) => p.results)} />
         </div>
-        <SentimentBreakdown results={prompts.flatMap((p) => p.results)} />
-      </div>
+      )}
 
       {/* Breakdown by Level of Care */}
       {careLevelBreakdown && careLevelBreakdown.length > 1 && (
