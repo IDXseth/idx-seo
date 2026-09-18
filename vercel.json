@@ -1,4 +1,4 @@
 {
   "framework": "nextjs",
-  "buildCommand": "if [ -z \"$DIRECT_URL\" ]; then echo 'DIRECT_URL is not set for this Vercel environment — refusing to run prisma migrate deploy against the pooled DATABASE_URL. Pgbouncer transaction-mode pooling (port 6543) does not support the advisory lock migrate deploy needs, so it hangs instead of failing. Set DIRECT_URL for this environment to the session-pooler or direct connection string (port 5432).' >&2; exit 1; fi; npx prisma migrate deploy && next build"
+  "buildCommand": "sh scripts/vercel-build.sh"
 }
