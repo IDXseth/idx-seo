@@ -1,6 +1,6 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Layers } from 'lucide-react'
 
 export interface ProjectOption {
@@ -20,12 +20,18 @@ export function ProjectPicker({
   promptType?: string
 }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   function handleChange(id: string) {
-    const params = new URLSearchParams()
+    // Seed from the current URL so any param this component doesn't know about
+    // (level of care, a cross-segment scope like market=Cincinnati, competitor, …)
+    // survives the navigation instead of being silently dropped.
+    const params = new URLSearchParams(searchParams.toString())
     if (id) params.set('project', id)
+    else params.delete('project')
     // Switching projects drops the run-snapshot filter — a session picked in one
     // project's history rarely applies to another — but keeps the brand/non-brand toggle.
+    params.delete('session')
     if (promptType) params.set('type', promptType)
     const qs = params.toString()
     router.push(qs ? `${basePath}?${qs}` : basePath)

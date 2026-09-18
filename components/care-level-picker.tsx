@@ -1,6 +1,6 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Heart } from 'lucide-react'
 
 export function CareLevelPicker({
@@ -19,13 +19,18 @@ export function CareLevelPicker({
   sessionId?: string
 }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   function handleChange(level: string) {
-    const params = new URLSearchParams()
+    // Seed from the current URL so any param this component doesn't know about
+    // (a cross-segment scope like market=Cincinnati, competitor, …) survives the
+    // navigation instead of being silently dropped.
+    const params = new URLSearchParams(searchParams.toString())
     if (projectId) params.set('project', projectId)
     if (sessionId) params.set('session', sessionId)
     if (promptType) params.set('type', promptType)
     if (level) params.set('careLevel', level)
+    else params.delete('careLevel')
     const qs = params.toString()
     router.push(qs ? `${basePath}?${qs}` : basePath)
   }

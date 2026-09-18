@@ -73,6 +73,37 @@ async function getCategoryData(name: string, sessionId?: string, promptType?: st
   }
 }
 
+// Every level of care present in this category — regardless of which one (if any) is
+// currently selected — so the picker always offers the full set and the breakdown
+// grid below always shows every level side by side.
+async function getCategoryCareLevelBreakdown(name: string, sessionId?: string, promptType?: string, projectId?: string) {
+  const decodedName = decodeURIComponent(name)
+  const scopeFilter = { ...(promptType ? { promptType } : {}), ...(projectId ? { batchId: projectId } : {}) }
+  const where = { category: decodedName, ...scopeFilter }
+
+  const groups = await prisma.prompt.groupBy({ by: ['levelOfCare'], where, _count: { id: true } })
+  const resultsFilter = sessionId ? { runSessionId: sessionId } : {}
+
+  const stats = (await Promise.all(
+    groups.filter((g) => g.levelOfCare).map(async (g) => {
+      const results = await prisma.result.findMany({
+        where: { ...resultsFilter, prompt: { ...where, levelOfCare: g.levelOfCare } },
+        select: { isMentioned: true, isCited: true },
+      })
+      const total = results.length
+      if (sessionId && total === 0) return null
+      return {
+        levelOfCare: g.levelOfCare,
+        promptCount: g._count.id,
+        mentionRate: total > 0 ? results.filter((r) => r.isMentioned).length / total : 0,
+        citationRate: total > 0 ? results.filter((r) => r.isCited).length / total : 0,
+      }
+    })
+  )).filter(Boolean) as Array<{ levelOfCare: string; promptCount: number; mentionRate: number; citationRate: number }>
+
+  return stats
+}
+
 export default async function CategoryDetailPage({
   params, searchParams,
 }: {
@@ -88,11 +119,13 @@ export default async function CategoryDetailPage({
   let data: Awaited<ReturnType<typeof getCategoryData>> = null
   let sessions: SessionOption[] = []
   let projects: Awaited<ReturnType<typeof getProjectList>> = []
+  let careLevelBreakdown: Awaited<ReturnType<typeof getCategoryCareLevelBreakdown>> = []
   try {
-    ;[data, sessions, projects] = await Promise.all([
+    ;[data, sessions, projects, careLevelBreakdown] = await Promise.all([
       getCategoryData(name, sessionId, promptType, projectId, userId, careLevel),
       getSessionList(projectId),
       getProjectList(),
+      getCategoryCareLevelBreakdown(name, sessionId, promptType, projectId),
     ])
   } catch { /* DB not configured */ }
 
@@ -124,6 +157,10 @@ export default async function CategoryDetailPage({
       promptTypeFilter={promptTypeParam}
       projectId={projectId}
       projects={projects}
+      careLevel={careLevel}
+      careLevels={careLevelBreakdown.map((c) => c.levelOfCare)}
+      careLevelBreakdown={careLevelBreakdown}
+      segmentDrillParam={{ key: 'category', value: data.name }}
     />
   )
 }

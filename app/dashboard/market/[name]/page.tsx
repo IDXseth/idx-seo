@@ -141,6 +141,7 @@ export default async function MarketDetailPage({
       careLevel={careLevel}
       careLevels={careLevelBreakdown.map((c) => c.levelOfCare)}
       careLevelBreakdown={careLevelBreakdown}
+      segmentDrillParam={{ key: 'market', value: data.name }}
     />
   )
 }

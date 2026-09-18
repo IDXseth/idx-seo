@@ -87,6 +87,10 @@ interface SegmentDetailProps {
   careLevel?: string
   careLevels?: string[]
   careLevelBreakdown?: Array<{ levelOfCare: string; promptCount: number; mentionRate: number; citationRate: number }>
+  // The dimension + value this page is itself scoped to (e.g. { key: 'market', value: 'Cincinnati' }).
+  // Carried into each level-of-care breakdown card's link so drilling into a level of care
+  // from within Cincinnati lands on Cincinnati + that level, not the unfiltered level-of-care view.
+  segmentDrillParam?: { key: string; value: string }
 }
 
 export function SegmentDetail({
@@ -111,6 +115,7 @@ export function SegmentDetail({
   careLevel,
   careLevels,
   careLevelBreakdown,
+  segmentDrillParam,
 }: SegmentDetailProps) {
   const platforms = platformStats.map((p) => p.platform)
 
@@ -243,6 +248,7 @@ export function SegmentDetail({
               if (projectId) params.set('project', projectId)
               if (sessionId) params.set('session', sessionId)
               if (promptTypeFilter !== 'all') params.set('type', promptTypeFilter)
+              if (segmentDrillParam) params.set(segmentDrillParam.key, segmentDrillParam.value)
               const qs = params.toString()
               return (
                 <Scorecard

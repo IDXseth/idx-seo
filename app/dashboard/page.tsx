@@ -753,38 +753,62 @@ export default async function DashboardPage({
           </TabsContent>
 
           <TabsContent value="community">
-            <TabGrid
-              items={data.communityStats}
-              renderCard={(c) => (
-                <Scorecard
-                  key={c.communityName}
-                  title={c.communityName}
-                  subtitle={c.city}
-                  mentionRate={c.mentionRate}
-                  citationRate={c.citationRate}
-                  promptCount={c.promptCount}
-                  href={`/dashboard/community/${encodeURIComponent(slugify(c.communityName))}${drillQuery}`}
+            <div className="space-y-4">
+              <div className="flex justify-end">
+                <CareLevelPicker
+                  levels={careLevelOptions}
+                  currentLevel={careLevel}
+                  basePath="/dashboard"
+                  promptType={promptType}
+                  projectId={projectId}
+                  sessionId={sessionId}
                 />
-              )}
-              empty="No community data available"
-            />
+              </div>
+              <TabGrid
+                items={data.communityStats}
+                renderCard={(c) => (
+                  <Scorecard
+                    key={c.communityName}
+                    title={c.communityName}
+                    subtitle={c.city}
+                    mentionRate={c.mentionRate}
+                    citationRate={c.citationRate}
+                    promptCount={c.promptCount}
+                    href={`/dashboard/community/${encodeURIComponent(slugify(c.communityName))}${drillQuery}`}
+                  />
+                )}
+                empty="No community data available"
+              />
+            </div>
           </TabsContent>
 
           <TabsContent value="category">
-            <TabGrid
-              items={data.categoryStats}
-              renderCard={(c) => (
-                <Scorecard
-                  key={c.category}
-                  title={c.category}
-                  mentionRate={c.mentionRate}
-                  citationRate={c.citationRate}
-                  promptCount={c.promptCount}
-                  href={`/dashboard/category/${encodeURIComponent(c.category)}${drillQuery}`}
+            <div className="space-y-4">
+              <div className="flex justify-end">
+                <CareLevelPicker
+                  levels={careLevelOptions}
+                  currentLevel={careLevel}
+                  basePath="/dashboard"
+                  promptType={promptType}
+                  projectId={projectId}
+                  sessionId={sessionId}
                 />
-              )}
-              empty="No category data available"
-            />
+              </div>
+              <TabGrid
+                items={data.categoryStats}
+                renderCard={(c) => (
+                  <Scorecard
+                    key={c.category}
+                    title={c.category}
+                    mentionRate={c.mentionRate}
+                    citationRate={c.citationRate}
+                    promptCount={c.promptCount}
+                    href={`/dashboard/category/${encodeURIComponent(c.category)}${drillQuery}`}
+                  />
+                )}
+                empty="No category data available"
+              />
+            </div>
           </TabsContent>
 
           <TabsContent value="careLevel">

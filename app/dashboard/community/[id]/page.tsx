@@ -74,6 +74,37 @@ async function getCommunityData(id: string, sessionId?: string, promptType?: str
   }
 }
 
+// Every level of care present in this community — regardless of which one (if any) is
+// currently selected — so the picker always offers the full set and the breakdown
+// grid below always shows every level side by side. Takes the already-resolved exact
+// communityName (see getCommunityData's slug matching) rather than re-resolving it.
+async function getCommunityCareLevelBreakdown(communityName: string, sessionId?: string, promptType?: string, projectId?: string) {
+  const scopeFilter = { ...(promptType ? { promptType } : {}), ...(projectId ? { batchId: projectId } : {}) }
+  const where = { communityName, ...scopeFilter }
+
+  const groups = await prisma.prompt.groupBy({ by: ['levelOfCare'], where, _count: { id: true } })
+  const resultsFilter = sessionId ? { runSessionId: sessionId } : {}
+
+  const stats = (await Promise.all(
+    groups.filter((g) => g.levelOfCare).map(async (g) => {
+      const results = await prisma.result.findMany({
+        where: { ...resultsFilter, prompt: { ...where, levelOfCare: g.levelOfCare } },
+        select: { isMentioned: true, isCited: true },
+      })
+      const total = results.length
+      if (sessionId && total === 0) return null
+      return {
+        levelOfCare: g.levelOfCare,
+        promptCount: g._count.id,
+        mentionRate: total > 0 ? results.filter((r) => r.isMentioned).length / total : 0,
+        citationRate: total > 0 ? results.filter((r) => r.isCited).length / total : 0,
+      }
+    })
+  )).filter(Boolean) as Array<{ levelOfCare: string; promptCount: number; mentionRate: number; citationRate: number }>
+
+  return stats
+}
+
 export default async function CommunityDetailPage({
   params, searchParams,
 }: {
@@ -86,12 +117,14 @@ export default async function CommunityDetailPage({
   let data: Awaited<ReturnType<typeof getCommunityData>> = null
   let sessions: SessionOption[] = []
   let projects: Awaited<ReturnType<typeof getProjectList>> = []
+  let careLevelBreakdown: Awaited<ReturnType<typeof getCommunityCareLevelBreakdown>> = []
   try {
     ;[data, sessions, projects] = await Promise.all([
       getCommunityData(id, sessionId, promptType, projectId, careLevel),
       getSessionList(projectId),
       getProjectList(),
     ])
+    if (data) careLevelBreakdown = await getCommunityCareLevelBreakdown(data.communityName, sessionId, promptType, projectId)
   } catch { /* DB not configured */ }
 
   if (!data) notFound()
@@ -118,6 +151,10 @@ export default async function CommunityDetailPage({
       promptTypeFilter={promptTypeParam}
       projectId={projectId}
       projects={projects}
+      careLevel={careLevel}
+      careLevels={careLevelBreakdown.map((c) => c.levelOfCare)}
+      careLevelBreakdown={careLevelBreakdown}
+      segmentDrillParam={{ key: 'communityName', value: data.communityName }}
     />
   )
 }
