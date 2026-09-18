@@ -8,6 +8,8 @@ import { BrandTrendChart } from '@/components/brand-trend-chart'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { ProjectPicker, ProjectOption } from '@/components/project-picker'
+import { CareLevelPicker } from '@/components/care-level-picker'
+import { Scorecard } from '@/components/scorecard'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { SentimentBreakdown } from '@/components/sentiment-breakdown'
 import { PLATFORM_LABELS, PLATFORM_COLORS, formatPercent, cn } from '@/lib/utils'
@@ -82,6 +84,9 @@ interface SegmentDetailProps {
   promptTypeFilter?: PromptTypeFilter
   projectId?: string
   projects?: ProjectOption[]
+  careLevel?: string
+  careLevels?: string[]
+  careLevelBreakdown?: Array<{ levelOfCare: string; promptCount: number; mentionRate: number; citationRate: number }>
 }
 
 export function SegmentDetail({
@@ -103,6 +108,9 @@ export function SegmentDetail({
   promptTypeFilter = 'all',
   projectId,
   projects,
+  careLevel,
+  careLevels,
+  careLevelBreakdown,
 }: SegmentDetailProps) {
   const platforms = platformStats.map((p) => p.platform)
 
@@ -149,6 +157,16 @@ export function SegmentDetail({
             />
           )}
           <PromptTypeToggle value={promptTypeFilter} basePath={basePath ?? '/dashboard'} sessionId={sessionId} projectId={projectId} />
+          {careLevels && (
+            <CareLevelPicker
+              levels={careLevels}
+              currentLevel={careLevel}
+              basePath={basePath ?? '/dashboard'}
+              promptType={promptTypeFilter === 'all' ? undefined : promptTypeFilter}
+              projectId={projectId}
+              sessionId={sessionId}
+            />
+          )}
           {sessions && (
             <RunSessionPicker
               sessions={sessions}
@@ -214,6 +232,32 @@ export function SegmentDetail({
         </div>
         <SentimentBreakdown results={prompts.flatMap((p) => p.results)} />
       </div>
+
+      {/* Breakdown by Level of Care */}
+      {careLevelBreakdown && careLevelBreakdown.length > 1 && (
+        <div>
+          <h2 className="text-sm font-semibold text-[#084c61] mb-4">Breakdown by Level of Care</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {careLevelBreakdown.map((c) => {
+              const params = new URLSearchParams()
+              if (projectId) params.set('project', projectId)
+              if (sessionId) params.set('session', sessionId)
+              if (promptTypeFilter !== 'all') params.set('type', promptTypeFilter)
+              const qs = params.toString()
+              return (
+                <Scorecard
+                  key={c.levelOfCare}
+                  title={c.levelOfCare}
+                  mentionRate={c.mentionRate}
+                  citationRate={c.citationRate}
+                  promptCount={c.promptCount}
+                  href={`/dashboard/care-level/${encodeURIComponent(c.levelOfCare)}${qs ? `?${qs}` : ''}`}
+                />
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Top Citation Sources */}
       {topDomains.length > 0 && (

@@ -10,10 +10,14 @@ import { getProjectList } from '@/lib/projects'
 
 export const dynamic = 'force-dynamic'
 
-async function getCommunityData(id: string, sessionId?: string, promptType?: string, projectId?: string) {
+async function getCommunityData(id: string, sessionId?: string, promptType?: string, projectId?: string, careLevel?: string) {
   const decodedId = decodeURIComponent(id)
   const resultsFilter = sessionId ? { where: { runSessionId: sessionId } } : {}
-  const scopeFilter = { ...(promptType ? { promptType } : {}), ...(projectId ? { batchId: projectId } : {}) }
+  const scopeFilter = {
+    ...(promptType ? { promptType } : {}),
+    ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
+  }
 
   // Communities have no dedicated table — they're identified purely by the free-text
   // Prompt.communityName, slugified for the URL. Match by exact slug only: a substring
@@ -74,9 +78,9 @@ export default async function CommunityDetailPage({
   params, searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ session?: string; type?: string; project?: string }>
+  searchParams: Promise<{ session?: string; type?: string; project?: string; careLevel?: string }>
 }) {
-  const [{ id }, { session: sessionId, type, project: projectId }] = await Promise.all([params, searchParams])
+  const [{ id }, { session: sessionId, type, project: projectId, careLevel }] = await Promise.all([params, searchParams])
   const promptTypeParam: PromptTypeFilter = type === 'brand' || type === 'nonbrand' ? type : 'all'
   const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
   let data: Awaited<ReturnType<typeof getCommunityData>> = null
@@ -84,7 +88,7 @@ export default async function CommunityDetailPage({
   let projects: Awaited<ReturnType<typeof getProjectList>> = []
   try {
     ;[data, sessions, projects] = await Promise.all([
-      getCommunityData(id, sessionId, promptType, projectId),
+      getCommunityData(id, sessionId, promptType, projectId, careLevel),
       getSessionList(projectId),
       getProjectList(),
     ])
@@ -96,6 +100,7 @@ export default async function CommunityDetailPage({
   if (projectId) dashboardQuery.set('project', projectId)
   if (sessionId) dashboardQuery.set('session', sessionId)
   if (promptType) dashboardQuery.set('type', promptType)
+  if (careLevel) dashboardQuery.set('careLevel', careLevel)
 
   return (
     <SegmentDetail

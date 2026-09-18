@@ -12,10 +12,14 @@ import { getProjectList } from '@/lib/projects'
 
 export const dynamic = 'force-dynamic'
 
-async function getCategoryData(name: string, sessionId?: string, promptType?: string, projectId?: string, userId?: string) {
+async function getCategoryData(name: string, sessionId?: string, promptType?: string, projectId?: string, userId?: string, careLevel?: string) {
   const decodedName = decodeURIComponent(name)
   const resultsFilter = sessionId ? { where: { runSessionId: sessionId } } : {}
-  const scopeFilter = { ...(promptType ? { promptType } : {}), ...(projectId ? { batchId: projectId } : {}) }
+  const scopeFilter = {
+    ...(promptType ? { promptType } : {}),
+    ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
+  }
 
   const prompts = await prisma.prompt.findMany({
     where: { category: decodedName, ...scopeFilter },
@@ -73,9 +77,9 @@ export default async function CategoryDetailPage({
   params, searchParams,
 }: {
   params: Promise<{ name: string }>
-  searchParams: Promise<{ session?: string; type?: string; project?: string }>
+  searchParams: Promise<{ session?: string; type?: string; project?: string; careLevel?: string }>
 }) {
-  const [{ name }, { session: sessionId, type, project: projectId }] = await Promise.all([params, searchParams])
+  const [{ name }, { session: sessionId, type, project: projectId, careLevel }] = await Promise.all([params, searchParams])
   const promptTypeParam: PromptTypeFilter = type === 'brand' || type === 'nonbrand' ? type : 'all'
   const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
   const session = await auth().catch(() => null)
@@ -86,7 +90,7 @@ export default async function CategoryDetailPage({
   let projects: Awaited<ReturnType<typeof getProjectList>> = []
   try {
     ;[data, sessions, projects] = await Promise.all([
-      getCategoryData(name, sessionId, promptType, projectId, userId),
+      getCategoryData(name, sessionId, promptType, projectId, userId, careLevel),
       getSessionList(projectId),
       getProjectList(),
     ])
@@ -98,6 +102,7 @@ export default async function CategoryDetailPage({
   if (projectId) dashboardQuery.set('project', projectId)
   if (sessionId) dashboardQuery.set('session', sessionId)
   if (promptType) dashboardQuery.set('type', promptType)
+  if (careLevel) dashboardQuery.set('careLevel', careLevel)
 
   return (
     <SegmentDetail

@@ -8,6 +8,7 @@ import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { ProjectPicker } from '@/components/project-picker'
+import { CareLevelPicker } from '@/components/care-level-picker'
 import { CompetitorViewPicker } from '@/components/competitor-view-picker'
 import { OptimizationPriorityTable } from '@/components/optimization-priority-table'
 import { SentimentBreakdown } from '@/components/sentiment-breakdown'
@@ -21,10 +22,11 @@ import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink, Download, U
 
 export const dynamic = 'force-dynamic'
 
-async function getTrendData(promptType?: string, projectId?: string): Promise<TrendPoint[]> {
+async function getTrendData(promptType?: string, projectId?: string, careLevel?: string): Promise<TrendPoint[]> {
   const promptFilter = {
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
   }
   const hasPromptFilter = Object.keys(promptFilter).length > 0
 
@@ -76,13 +78,14 @@ async function getTrendData(promptType?: string, projectId?: string): Promise<Tr
   })
 }
 
-async function getDashboardData(sessionId?: string, promptType?: string, projectId?: string) {
+async function getDashboardData(sessionId?: string, promptType?: string, projectId?: string, careLevel?: string) {
   // One canonical prompt per unique promptText (first created wins) — prevents cross-batch
   // double-counting. Scoped to a single project's own prompts when one is selected, since
   // there's no cross-batch collision to worry about within one project.
   const canonicalWhere = {
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
   }
   const canonicalRows = await prisma.prompt.findMany({
     distinct: ['promptText'],
@@ -231,16 +234,32 @@ async function getDashboardData(sessionId?: string, promptType?: string, project
   }
 }
 
+// Every level of care across the current project/brand scope, regardless of which
+// (if any) is currently selected — so the picker always offers the full set rather
+// than collapsing to just the one already chosen.
+async function getCareLevelOptions(promptType?: string, projectId?: string): Promise<string[]> {
+  const where = {
+    ...(promptType ? { promptType } : {}),
+    ...(projectId ? { batchId: projectId } : {}),
+  }
+  const groups = await prisma.prompt.groupBy({
+    by: ['levelOfCare'],
+    where: Object.keys(where).length > 0 ? where : undefined,
+  })
+  return groups.map((g) => g.levelOfCare).filter(Boolean).sort()
+}
+
 // ─── Competitor lens ────────────────────────────────────────────────────────
 // Same shapes as the functions above, sourced from CompetitorMention instead
 // of Result, so the "Viewing" picker can swap the whole dashboard between
 // your own brand and any tracked competitor. CompetitorMention has no
 // per-citation URLs (only isCited), so topCitationUrls is always empty here.
 
-async function getCompetitorOptions(promptType?: string, projectId?: string): Promise<{ id: string; brandName: string }[]> {
+async function getCompetitorOptions(promptType?: string, projectId?: string, careLevel?: string): Promise<{ id: string; brandName: string }[]> {
   const canonicalWhere = {
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
   }
   const canonicalIds = (
     await prisma.prompt.findMany({
@@ -259,10 +278,11 @@ async function getCompetitorOptions(promptType?: string, projectId?: string): Pr
   return rows.map((r) => r.competitor).sort((a, b) => a.brandName.localeCompare(b.brandName))
 }
 
-async function getCompetitorDashboardData(competitorId: string, sessionId?: string, promptType?: string, projectId?: string) {
+async function getCompetitorDashboardData(competitorId: string, sessionId?: string, promptType?: string, projectId?: string, careLevel?: string) {
   const canonicalWhere = {
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
   }
   const canonicalRows = await prisma.prompt.findMany({
     distinct: ['promptText'],
@@ -370,10 +390,11 @@ async function getCompetitorDashboardData(competitorId: string, sessionId?: stri
   }
 }
 
-async function getCompetitorTrendData(competitorId: string, promptType?: string, projectId?: string): Promise<TrendPoint[]> {
+async function getCompetitorTrendData(competitorId: string, promptType?: string, projectId?: string, careLevel?: string): Promise<TrendPoint[]> {
   const promptFilter = {
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
   }
   const hasPromptFilter = Object.keys(promptFilter).length > 0
 
@@ -434,10 +455,11 @@ async function getCompetitorTrendData(competitorId: string, promptType?: string,
 // market, etc.) have their own already-scoped prompt list and call
 // getBrandSeries directly instead. See lib/competitor-stats.ts.
 
-async function getBrandComparisonData(sessionId?: string, promptType?: string, projectId?: string) {
+async function getBrandComparisonData(sessionId?: string, promptType?: string, projectId?: string, careLevel?: string) {
   const canonicalWhere = {
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
   }
   const canonicalIds = (
     await prisma.prompt.findMany({
@@ -455,10 +477,11 @@ async function getBrandComparisonData(sessionId?: string, promptType?: string, p
 
 // ─── Sentiment breakdown ────────────────────────────────────────────────────
 
-async function getSentimentRows(sessionId?: string, promptType?: string, projectId?: string): Promise<{ sentiment: string }[]> {
+async function getSentimentRows(sessionId?: string, promptType?: string, projectId?: string, careLevel?: string): Promise<{ sentiment: string }[]> {
   const canonicalWhere = {
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
   }
   const canonicalIds = (
     await prisma.prompt.findMany({
@@ -477,10 +500,11 @@ async function getSentimentRows(sessionId?: string, promptType?: string, project
   })
 }
 
-async function getCompetitorSentimentRows(competitorId: string, sessionId?: string, promptType?: string, projectId?: string): Promise<{ sentiment: string }[]> {
+async function getCompetitorSentimentRows(competitorId: string, sessionId?: string, promptType?: string, projectId?: string, careLevel?: string): Promise<{ sentiment: string }[]> {
   const canonicalWhere = {
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
   }
   const canonicalIds = (
     await prisma.prompt.findMany({
@@ -505,9 +529,9 @@ async function getCompetitorSentimentRows(competitorId: string, sessionId?: stri
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ session?: string; type?: string; project?: string; competitor?: string }>
+  searchParams: Promise<{ session?: string; type?: string; project?: string; competitor?: string; careLevel?: string }>
 }) {
-  const { session: sessionId, type, project: projectId, competitor: competitorId } = await searchParams
+  const { session: sessionId, type, project: projectId, competitor: competitorId, careLevel } = await searchParams
   const promptTypeParam: PromptTypeFilter = type === 'brand' || type === 'nonbrand' ? type : 'all'
   const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
 
@@ -519,21 +543,23 @@ export default async function DashboardPage({
   let brandComparison: Awaited<ReturnType<typeof getBrandComparisonData>> | null = null
   let sitemapAnalysis: SitemapAnalysis | null = null
   let sentimentRows: { sentiment: string }[] = []
+  let careLevelOptions: string[] = []
   try {
-    ;[data, trendData, sessions, projects, competitorOptions, brandComparison, sentimentRows] = await Promise.all([
+    ;[data, trendData, sessions, projects, competitorOptions, brandComparison, sentimentRows, careLevelOptions] = await Promise.all([
       competitorId
-        ? getCompetitorDashboardData(competitorId, sessionId, promptType, projectId)
-        : getDashboardData(sessionId, promptType, projectId),
+        ? getCompetitorDashboardData(competitorId, sessionId, promptType, projectId, careLevel)
+        : getDashboardData(sessionId, promptType, projectId, careLevel),
       competitorId
-        ? getCompetitorTrendData(competitorId, promptType, projectId)
-        : getTrendData(promptType, projectId),
+        ? getCompetitorTrendData(competitorId, promptType, projectId, careLevel)
+        : getTrendData(promptType, projectId, careLevel),
       getSessionList(projectId),
       getProjectList(),
-      getCompetitorOptions(promptType, projectId).catch(() => []),
-      getBrandComparisonData(sessionId, promptType, projectId).catch(() => null),
+      getCompetitorOptions(promptType, projectId, careLevel).catch(() => []),
+      getBrandComparisonData(sessionId, promptType, projectId, careLevel).catch(() => null),
       competitorId
-        ? getCompetitorSentimentRows(competitorId, sessionId, promptType, projectId)
-        : getSentimentRows(sessionId, promptType, projectId),
+        ? getCompetitorSentimentRows(competitorId, sessionId, promptType, projectId, careLevel)
+        : getSentimentRows(sessionId, promptType, projectId, careLevel),
+      getCareLevelOptions(promptType, projectId).catch(() => []),
     ])
   } catch {
     // DB not configured — show empty state
@@ -573,6 +599,7 @@ export default async function DashboardPage({
   if (projectId) drillParams.set('project', projectId)
   if (sessionId) drillParams.set('session', sessionId)
   if (promptType) drillParams.set('type', promptType)
+  if (careLevel) drillParams.set('careLevel', careLevel)
   const drillQuery = drillParams.toString() ? `?${drillParams.toString()}` : ''
 
   return (
@@ -778,20 +805,32 @@ export default async function DashboardPage({
           </TabsContent>
 
           <TabsContent value="market">
-            <TabGrid
-              items={data.marketStats}
-              renderCard={(m) => (
-                <Scorecard
-                  key={m.market}
-                  title={m.market}
-                  mentionRate={m.mentionRate}
-                  citationRate={m.citationRate}
-                  promptCount={m.promptCount}
-                  href={`/dashboard/market/${encodeURIComponent(m.market)}${drillQuery}`}
+            <div className="space-y-4">
+              <div className="flex justify-end">
+                <CareLevelPicker
+                  levels={careLevelOptions}
+                  currentLevel={careLevel}
+                  basePath="/dashboard"
+                  promptType={promptType}
+                  projectId={projectId}
+                  sessionId={sessionId}
                 />
-              )}
-              empty="No market data available"
-            />
+              </div>
+              <TabGrid
+                items={data.marketStats}
+                renderCard={(m) => (
+                  <Scorecard
+                    key={m.market}
+                    title={m.market}
+                    mentionRate={m.mentionRate}
+                    citationRate={m.citationRate}
+                    promptCount={m.promptCount}
+                    href={`/dashboard/market/${encodeURIComponent(m.market)}${drillQuery}`}
+                  />
+                )}
+                empty="No market data available"
+              />
+            </div>
           </TabsContent>
 
           <TabsContent value="optimization">

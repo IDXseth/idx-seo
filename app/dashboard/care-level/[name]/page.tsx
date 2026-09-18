@@ -60,9 +60,9 @@ export default async function CareLevelDetailPage({
   params, searchParams,
 }: {
   params: Promise<{ name: string }>
-  searchParams: Promise<{ session?: string; type?: string; project?: string }>
+  searchParams: Promise<{ session?: string; type?: string; project?: string; careLevel?: string }>
 }) {
-  const [{ name }, { session: sessionId, type, project: projectId }] = await Promise.all([params, searchParams])
+  const [{ name }, { session: sessionId, type, project: projectId, careLevel }] = await Promise.all([params, searchParams])
   const promptTypeParam: PromptTypeFilter = type === 'brand' || type === 'nonbrand' ? type : 'all'
   const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
   let data: Awaited<ReturnType<typeof getCareLevelData>> = null
@@ -78,10 +78,14 @@ export default async function CareLevelDetailPage({
 
   if (!data) notFound()
 
+  // This page is already pinned to one level of care by its route param, so
+  // careLevel isn't used to scope getCareLevelData — only carried through to
+  // the back-to-dashboard link so the dashboard's own filter state round-trips.
   const dashboardQuery = new URLSearchParams()
   if (projectId) dashboardQuery.set('project', projectId)
   if (sessionId) dashboardQuery.set('session', sessionId)
   if (promptType) dashboardQuery.set('type', promptType)
+  if (careLevel) dashboardQuery.set('careLevel', careLevel)
 
   return (
     <SegmentDetail
