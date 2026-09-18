@@ -50,10 +50,13 @@ async function getTrendData(promptType?: string, projectId?: string, careLevel?:
   return sessions.map((rs) => {
     const results = rs.results
     const total = results.length
-    const mentioned = results.filter((r) => r.isMentioned).length
+    const mentionedResults = results.filter((r) => r.isMentioned)
+    const mentioned = mentionedResults.length
     const cited = results.filter((r) => r.isCited).length
-    const positive = results.filter((r) => r.sentiment === 'positive').length
-    const negative = results.filter((r) => r.sentiment === 'negative').length
+    // Sentiment only means something on a response that actually mentions the
+    // brand, so it's rated against mentions, not every result.
+    const positive = mentionedResults.filter((r) => r.sentiment === 'positive').length
+    const negative = mentionedResults.filter((r) => r.sentiment === 'negative').length
 
     const byPlatform: Record<string, { mentionRate: number; citationRate: number }> = {}
     for (const platform of PLATFORMS) {
@@ -71,8 +74,8 @@ async function getTrendData(promptType?: string, projectId?: string, careLevel?:
       total,
       mentionRate: total > 0 ? mentioned / total : 0,
       citationRate: total > 0 ? cited / total : 0,
-      positiveRate: total > 0 ? positive / total : 0,
-      negativeRate: total > 0 ? negative / total : 0,
+      positiveRate: mentioned > 0 ? positive / mentioned : 0,
+      negativeRate: mentioned > 0 ? negative / mentioned : 0,
       byPlatform,
     }
   })
@@ -421,10 +424,13 @@ async function getCompetitorTrendData(competitorId: string, promptType?: string,
   return sessions.map((rs) => {
     const rows = rs.results.flatMap((r) => r.competitorMentions.map((cm) => ({ platform: r.platform, ...cm })))
     const total = rows.length
-    const mentioned = rows.filter((r) => r.isMentioned).length
+    const mentionedRows = rows.filter((r) => r.isMentioned)
+    const mentioned = mentionedRows.length
     const cited = rows.filter((r) => r.isCited).length
-    const positive = rows.filter((r) => r.sentiment === 'positive').length
-    const negative = rows.filter((r) => r.sentiment === 'negative').length
+    // Sentiment only means something on a response that actually mentions the
+    // brand, so it's rated against mentions, not every result.
+    const positive = mentionedRows.filter((r) => r.sentiment === 'positive').length
+    const negative = mentionedRows.filter((r) => r.sentiment === 'negative').length
 
     const byPlatform: Record<string, { mentionRate: number; citationRate: number }> = {}
     for (const platform of PLATFORMS) {
@@ -442,8 +448,8 @@ async function getCompetitorTrendData(competitorId: string, promptType?: string,
       total,
       mentionRate: total > 0 ? mentioned / total : 0,
       citationRate: total > 0 ? cited / total : 0,
-      positiveRate: total > 0 ? positive / total : 0,
-      negativeRate: total > 0 ? negative / total : 0,
+      positiveRate: mentioned > 0 ? positive / mentioned : 0,
+      negativeRate: mentioned > 0 ? negative / mentioned : 0,
       byPlatform,
     }
   })
@@ -477,7 +483,7 @@ async function getBrandComparisonData(sessionId?: string, promptType?: string, p
 
 // ─── Sentiment breakdown ────────────────────────────────────────────────────
 
-async function getSentimentRows(sessionId?: string, promptType?: string, projectId?: string, careLevel?: string): Promise<{ sentiment: string }[]> {
+async function getSentimentRows(sessionId?: string, promptType?: string, projectId?: string, careLevel?: string): Promise<{ sentiment: string; isMentioned: boolean }[]> {
   const canonicalWhere = {
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
@@ -491,16 +497,18 @@ async function getSentimentRows(sessionId?: string, promptType?: string, project
     })
   ).map((r) => r.id)
 
+  // Sentiment only means something on a response that actually mentions the brand.
   return prisma.result.findMany({
     where: {
       promptId: { in: canonicalIds },
+      isMentioned: true,
       ...(sessionId ? { runSessionId: sessionId } : {}),
     },
-    select: { sentiment: true },
+    select: { sentiment: true, isMentioned: true },
   })
 }
 
-async function getCompetitorSentimentRows(competitorId: string, sessionId?: string, promptType?: string, projectId?: string, careLevel?: string): Promise<{ sentiment: string }[]> {
+async function getCompetitorSentimentRows(competitorId: string, sessionId?: string, promptType?: string, projectId?: string, careLevel?: string): Promise<{ sentiment: string; isMentioned: boolean }[]> {
   const canonicalWhere = {
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
@@ -514,15 +522,17 @@ async function getCompetitorSentimentRows(competitorId: string, sessionId?: stri
     })
   ).map((r) => r.id)
 
+  // Sentiment only means something when the brand (or competitor here) is mentioned.
   return prisma.competitorMention.findMany({
     where: {
       competitorId,
+      isMentioned: true,
       result: {
         promptId: { in: canonicalIds },
         ...(sessionId ? { runSessionId: sessionId } : {}),
       },
     },
-    select: { sentiment: true },
+    select: { sentiment: true, isMentioned: true },
   })
 }
 
@@ -542,7 +552,7 @@ export default async function DashboardPage({
   let competitorOptions: Awaited<ReturnType<typeof getCompetitorOptions>> = []
   let brandComparison: Awaited<ReturnType<typeof getBrandComparisonData>> | null = null
   let sitemapAnalysis: SitemapAnalysis | null = null
-  let sentimentRows: { sentiment: string }[] = []
+  let sentimentRows: { sentiment: string; isMentioned: boolean }[] = []
   let careLevelOptions: string[] = []
   try {
     ;[data, trendData, sessions, projects, competitorOptions, brandComparison, sentimentRows, careLevelOptions] = await Promise.all([

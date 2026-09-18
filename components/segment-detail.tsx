@@ -385,9 +385,14 @@ export function SegmentDetail({
                   <td className="px-4 py-4 text-[#5a7a85] text-xs">{prompt.levelOfCare || '—'}</td>
                   <td className="px-4 py-4">
                     {(() => {
-                      const pos = prompt.results.filter((r) => r.sentiment === 'positive').length
-                      const neg = prompt.results.filter((r) => r.sentiment === 'negative').length
-                      const neu = prompt.results.filter((r) => r.sentiment === 'neutral').length
+                      // Sentiment only means something on a response that actually
+                      // mentions the brand — a majority over unmentioned responses too
+                      // would misrepresent prompts where the brand barely came up.
+                      const mentioned = prompt.results.filter((r) => r.isMentioned)
+                      if (mentioned.length === 0) return <span className="text-[#b8cdd3] text-xs">—</span>
+                      const pos = mentioned.filter((r) => r.sentiment === 'positive').length
+                      const neg = mentioned.filter((r) => r.sentiment === 'negative').length
+                      const neu = mentioned.filter((r) => r.sentiment === 'neutral').length
                       const majority = pos >= neg && pos >= neu ? 'positive' : neg >= pos && neg >= neu ? 'negative' : 'neutral'
                       if (majority === 'positive') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 w-fit">Positive</span>
                       if (majority === 'negative') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-50 text-rose-700 w-fit">Negative</span>

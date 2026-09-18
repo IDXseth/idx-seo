@@ -259,7 +259,8 @@ export default async function ResultsDetailPage({
                         Cited
                       </span>
                     )}
-                    {!isNoAIO && (result.sentiment === 'positive' ? (
+                    {/* Sentiment only means something on a response that actually mentions the brand */}
+                    {!isNoAIO && result.isMentioned && (result.sentiment === 'positive' ? (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                         Positive
                       </span>

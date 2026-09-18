@@ -80,10 +80,12 @@ export default async function PlatformDrillDownPage({
   const mentionRate = totalResults > 0 ? mentionedCount / totalResults : 0
   const citationRate = totalResults > 0 ? citedCount / totalResults : 0
 
-  const positiveCount = results.filter((r) => r.sentiment === 'positive').length
-  const neutralCount = results.filter((r) => r.sentiment === 'neutral').length
-  const negativeCount = results.filter((r) => r.sentiment === 'negative').length
-  const positiveRate = totalResults > 0 ? positiveCount / totalResults : 0
+  // Sentiment only means something on a response that actually mentions the brand.
+  const mentionedResults = results.filter((r) => r.isMentioned)
+  const positiveCount = mentionedResults.filter((r) => r.sentiment === 'positive').length
+  const neutralCount = mentionedResults.filter((r) => r.sentiment === 'neutral').length
+  const negativeCount = mentionedResults.filter((r) => r.sentiment === 'negative').length
+  const positiveRate = mentionedCount > 0 ? positiveCount / mentionedCount : 0
 
   const sentimentColor =
     positiveRate >= 0.6 ? 'text-emerald-600' : positiveRate >= 0.3 ? 'text-amber-600' : 'text-rose-500'
@@ -232,7 +234,9 @@ export default async function PlatformDrillDownPage({
                       )}
                     </td>
                     <td className="px-4 py-4">
-                      {result.sentiment === 'positive' ? (
+                      {!result.isMentioned ? (
+                        <span className="text-[#b8cdd3] text-xs">—</span>
+                      ) : result.sentiment === 'positive' ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                           Positive
                         </span>
