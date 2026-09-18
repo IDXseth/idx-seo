@@ -6,6 +6,8 @@ import { PlatformMentionChart } from '@/components/platform-chart'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { OptimizationPriorityTable } from '@/components/optimization-priority-table'
+import { SentimentBreakdown } from '@/components/sentiment-breakdown'
+import { SentimentRow } from '@/lib/sentiment'
 import { getSitemapAnalysis, SitemapAnalysis } from '@/lib/sitemap'
 import { getGscMetrics } from '@/lib/gsc'
 import { slugify } from '@/lib/utils'
@@ -70,6 +72,25 @@ async function getTrendData(): Promise<TrendPoint[]> {
       byPlatform,
     }
   })
+}
+
+async function getSentimentRows(canonicalIds: string[], sessionId?: string): Promise<SentimentRow[]> {
+  const results = await prisma.result.findMany({
+    where: {
+      promptId: { in: canonicalIds },
+      ...(sessionId ? { runSessionId: sessionId } : {}),
+    },
+    select: {
+      sentiment: true,
+      prompt: { select: { promptType: true, batchId: true, batch: { select: { name: true } } } },
+    },
+  })
+  return results.map((r) => ({
+    sentiment: r.sentiment,
+    promptType: r.prompt.promptType,
+    projectId: r.prompt.batchId,
+    projectName: r.prompt.batch.name,
+  }))
 }
 
 async function getDashboardData(sessionId?: string) {
@@ -201,6 +222,8 @@ async function getDashboardData(sessionId?: string) {
     .sort((a, b) => b.count - a.count)
     .slice(0, 10)
 
+  const sentimentRows = await getSentimentRows(canonicalIds, sessionId)
+
   return {
     overview: {
       totalPrompts,
@@ -214,6 +237,7 @@ async function getDashboardData(sessionId?: string) {
     careLevelStats,
     marketStats,
     topCitationUrls,
+    sentimentRows,
   }
 }
 
@@ -326,6 +350,7 @@ export default async function DashboardPage({
               <SectionCard title="Mention & Citation Rate by Platform">
                 <PlatformMentionChart data={data.platformStats} />
               </SectionCard>
+              <SentimentBreakdown rows={data.sentimentRows} />
               <SectionCard title="Top Citation URLs">
                 {data.topCitationUrls.length === 0 ? (
                   <p className="text-sm text-[#8aadb8]">No citations recorded yet.</p>
@@ -360,7 +385,10 @@ export default async function DashboardPage({
           </TabsContent>
 
           <TabsContent value="trends">
-            <TrendCharts data={trendData} />
+            <div className="space-y-6">
+              <TrendCharts data={trendData} />
+              <SentimentBreakdown rows={data.sentimentRows} title="Sentiment Breakdown (All Time)" />
+            </div>
           </TabsContent>
 
           <TabsContent value="community">

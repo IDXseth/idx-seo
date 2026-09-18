@@ -22,7 +22,7 @@ async function getMarketData(name: string, sessionId?: string) {
 
   const prompts = await prisma.prompt.findMany({
     where: { market: decodedName },
-    include: { results: { ...resultsFilter, include: { citations: true } } },
+    include: { batch: { select: { name: true } }, results: { ...resultsFilter, include: { citations: true } } },
   })
 
   if (prompts.length === 0) return null

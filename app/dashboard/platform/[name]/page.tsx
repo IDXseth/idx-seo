@@ -2,6 +2,8 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import { PLATFORM_LABELS, PLATFORM_COLORS } from '@/lib/utils'
+import { SentimentBreakdown } from '@/components/sentiment-breakdown'
+import { SentimentRow } from '@/lib/sentiment'
 import { ChevronLeft, Target, Quote, Smile } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -36,6 +38,9 @@ export default async function PlatformDrillDownPage({
       category: string
       levelOfCare: string
       city: string
+      promptType: string
+      batchId: string
+      batch: { name: string }
     }
     citations: Array<{ id: string }>
   }> = []
@@ -55,6 +60,9 @@ export default async function PlatformDrillDownPage({
             category: true,
             levelOfCare: true,
             city: true,
+            promptType: true,
+            batchId: true,
+            batch: { select: { name: true } },
           },
         },
         citations: { select: { id: true } },
@@ -64,6 +72,13 @@ export default async function PlatformDrillDownPage({
   } catch {
     // DB not configured
   }
+
+  const sentimentRows: SentimentRow[] = results.map((r) => ({
+    sentiment: r.sentiment,
+    promptType: r.prompt.promptType,
+    projectId: r.prompt.batchId,
+    projectName: r.prompt.batch.name,
+  }))
 
   const totalResults = results.length
   const mentionedCount = results.filter((r) => r.isMentioned).length
@@ -153,6 +168,8 @@ export default async function PlatformDrillDownPage({
           </p>
         </div>
       </div>
+
+      <SentimentBreakdown rows={sentimentRows} />
 
       {/* Prompts table */}
       <div className="bg-white rounded-xl border border-[#dde6ea] overflow-hidden">

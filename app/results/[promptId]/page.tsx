@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import { Badge } from '@/components/ui/badge'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
+import { SentimentBreakdown } from '@/components/sentiment-breakdown'
+import { SentimentRow } from '@/lib/sentiment'
 import { PLATFORM_LABELS, PLATFORM_COLORS } from '@/lib/utils'
 import { ChevronLeft, ExternalLink, MapPin, Building2, Tag, Heart, Info } from 'lucide-react'
 
@@ -66,6 +68,13 @@ export default async function ResultsDetailPage({
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
 
+  const sentimentRows: SentimentRow[] = prompt.results.map((r) => ({
+    sentiment: r.sentiment,
+    promptType: prompt.promptType,
+    projectId: prompt.batchId,
+    projectName: prompt.batch.name,
+  }))
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Breadcrumb */}
@@ -127,6 +136,9 @@ export default async function ResultsDetailPage({
           )}
         </div>
       )}
+
+      {/* Sentiment breakdown for this prompt's responses */}
+      {sortedResults.length > 0 && <SentimentBreakdown rows={sentimentRows} title="Sentiment Across Platforms" />}
 
       {/* Platform results */}
       {sortedResults.length === 0 ? (

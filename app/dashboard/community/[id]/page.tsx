@@ -28,6 +28,7 @@ async function getCommunityData(id: string, sessionId?: string) {
       },
     },
     include: {
+      batch: { select: { name: true } },
       results: { ...resultsFilter, include: { citations: true } },
     },
   })
@@ -42,7 +43,7 @@ async function getCommunityData(id: string, sessionId?: string) {
 
     finalPrompts = await prisma.prompt.findMany({
       where: { communityName: matched.communityName },
-      include: { results: { ...resultsFilter, include: { citations: true } } },
+      include: { batch: { select: { name: true } }, results: { ...resultsFilter, include: { citations: true } } },
     })
   }
 

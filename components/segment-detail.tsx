@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge'
 import { PlatformMentionChart } from '@/components/platform-chart'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
+import { SentimentBreakdown } from '@/components/sentiment-breakdown'
+import { SentimentRow } from '@/lib/sentiment'
 import { PLATFORM_LABELS, PLATFORM_COLORS, formatPercent, cn } from '@/lib/utils'
 import { ChevronLeft, Target, Quote, FileText, ExternalLink } from 'lucide-react'
 
@@ -36,6 +38,8 @@ interface Prompt {
   city: string
   market: string
   levelOfCare: string
+  batchId: string
+  batch: { name: string }
   results: Result[]
 }
 
@@ -126,6 +130,15 @@ export function SegmentDetail({
 
   const maxDomainCount = filteredTopDomains[0]?.count ?? 1
 
+  const sentimentRows: SentimentRow[] = filteredPrompts.flatMap((p) =>
+    p.results.map((r) => ({
+      sentiment: r.sentiment,
+      promptType: p.promptType,
+      projectId: p.batchId,
+      projectName: p.batch.name,
+    }))
+  )
+
   return (
     <div className="space-y-6">
       {/* Breadcrumb */}
@@ -193,10 +206,13 @@ export function SegmentDetail({
         </div>
       )}
 
-      {/* Platform Chart */}
-      <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
-        <h2 className="text-sm font-semibold text-[#084c61] mb-4">Performance by Platform</h2>
-        <PlatformMentionChart data={filteredPlatformStats} />
+      {/* Platform Chart + Sentiment Breakdown */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
+          <h2 className="text-sm font-semibold text-[#084c61] mb-4">Performance by Platform</h2>
+          <PlatformMentionChart data={filteredPlatformStats} />
+        </div>
+        <SentimentBreakdown rows={sentimentRows} />
       </div>
 
       {/* Top Citation Sources */}
