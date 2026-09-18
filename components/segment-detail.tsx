@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Scorecard } from '@/components/scorecard'
 import { PlatformMentionChart } from '@/components/platform-chart'
-import { BrandComparisonChart } from '@/components/brand-comparison-chart'
+import { BrandScorecards } from '@/components/brand-scorecards'
 import { BrandTrendChart } from '@/components/brand-trend-chart'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
@@ -260,20 +260,24 @@ export function SegmentDetail({
         </div>
       )}
 
-      {/* Platform Chart + Sentiment Breakdown */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
-          <h2 className="text-sm font-semibold text-[#084c61] mb-4">
-            {brandComparison && brandComparison.brands.length > 1 ? 'Performance by Platform — All Brands' : 'Performance by Platform'}
-          </h2>
-          {brandComparison && brandComparison.brands.length > 1 ? (
-            <BrandComparisonChart brands={brandComparison.brands} anyBrand={brandComparison.anyBrand} />
-          ) : (
+      {/* Mention & Citation Rate by Brand, or Platform Chart + Sentiment Breakdown */}
+      {brandComparison && brandComparison.brands.length > 1 ? (
+        <>
+          <div>
+            <h2 className="text-sm font-semibold text-[#084c61] mb-4">Mention & Citation Rate by Brand</h2>
+            <BrandScorecards brands={brandComparison.brands} promptCount={overview.promptCount} />
+          </div>
+          <SentimentBreakdown results={prompts.flatMap((p) => p.results)} />
+        </>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
+            <h2 className="text-sm font-semibold text-[#084c61] mb-4">Performance by Platform</h2>
             <PlatformMentionChart data={platformStats} />
-          )}
+          </div>
+          <SentimentBreakdown results={prompts.flatMap((p) => p.results)} />
         </div>
-        <SentimentBreakdown results={prompts.flatMap((p) => p.results)} />
-      </div>
+      )}
 
       {/* Breakdown by Level of Care */}
       {careLevelBreakdown && careLevelBreakdown.length > 1 && (
