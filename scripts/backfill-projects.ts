@@ -1,4 +1,4 @@
-// Attaches existing data to a Senior Lifestyle project after the
+// Attaches existing batches, prompts and competitors to a Senior Lifestyle project after the
 // 20260924000000_add_projects_competitors migration. Idempotent — re-run it to
 // pick up batches uploaded before project selection exists in the UI.
 //
@@ -48,14 +48,16 @@ async function main() {
     where: { userId_primaryDomain: { userId: owner.id, primaryDomain: SENIOR_LIFESTYLE.primaryDomain } },
   })
 
-  const [unassignedBatches, promptsMissingProject, promptsMissingSegments] = await Promise.all([
+  const [unassignedBatches, unassignedCompetitors, promptsMissingProject, promptsMissingSegments] = await Promise.all([
     prisma.batch.count({ where: { projectId: null } }),
+    prisma.competitor.count({ where: { projectId: null } }),
     prisma.prompt.count({ where: { projectId: null } }),
     prisma.prompt.count({ where: { segments: { equals: Prisma.DbNull } } }),
   ])
 
   console.log(`Project: ${existing ? `exists (${existing.id})` : 'will be created'}`)
   console.log(`Batches without a project:      ${unassignedBatches}`)
+  console.log(`Competitors without a project:  ${unassignedCompetitors}`)
   console.log(`Prompts without a project:      ${promptsMissingProject}`)
   console.log(`Prompts without entity/segments: ${promptsMissingSegments}`)
 
@@ -66,8 +68,9 @@ async function main() {
     data: { ...SENIOR_LIFESTYLE, userId: owner.id, gscSiteUrl: owner.gscSiteUrl },
   })
 
-  const [batches, prompts, generic] = await prisma.$transaction([
+  const [batches, competitors, prompts, generic] = await prisma.$transaction([
     prisma.batch.updateMany({ where: { projectId: null }, data: { projectId: project.id } }),
+    prisma.competitor.updateMany({ where: { projectId: null }, data: { projectId: project.id } }),
     prisma.$executeRaw`
       UPDATE "Prompt" p SET "projectId" = b."projectId"
       FROM "Batch" b
@@ -86,6 +89,7 @@ async function main() {
 
   console.log(`\nProject ${project.id} (${project.name})`)
   console.log(`Batches attached:          ${batches.count}`)
+  console.log(`Competitors attached:      ${competitors.count}`)
   console.log(`Prompts attached:          ${prompts}`)
   console.log(`Prompts entity/segments:   ${generic}`)
 }

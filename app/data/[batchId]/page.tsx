@@ -7,17 +7,12 @@ import { ChevronLeft } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
-async function getData(batchId: string, userId: string, userEmail: string | null | undefined) {
+async function getData(batchId: string) {
   const batch = await prisma.batch.findUnique({
     where: { id: batchId },
-    select: { id: true, name: true, userId: true, shares: { select: { email: true } } },
+    select: { id: true, name: true },
   })
   if (!batch) return null
-
-  const canAccess =
-    batch.userId === userId ||
-    batch.shares.some((s) => s.email === userEmail)
-  if (!canAccess) return null
 
   const prompts = await prisma.prompt.findMany({
     where: { batchId },
@@ -33,7 +28,7 @@ export default async function DataPage({ params }: { params: Promise<{ batchId: 
   if (!session?.user?.id) redirect('/login')
 
   const { batchId } = await params
-  const data = await getData(batchId, session.user.id, session.user.email)
+  const data = await getData(batchId)
   if (!data) notFound()
 
   const { batch, prompts } = data
@@ -103,11 +98,14 @@ export default async function DataPage({ params }: { params: Promise<{ batchId: 
                   {PLATFORMS.map((platform) => {
                     const r = resultsByPlatform[platform]
                     const isError = r?.responseText?.startsWith('[Error]')
+                    const isNoAIO = r?.responseText?.startsWith('[No AI Overview]')
                     return (
                       <>
                         <td key={`${prompt.id}-${platform}-ans`} className="px-3 py-2 align-top border-b border-l border-[#dde6ea] max-w-[200px]">
                           {r ? (
-                            isError ? (
+                            isNoAIO ? (
+                              <span className="text-[#8aadb8] italic">No AI Overview</span>
+                            ) : isError ? (
                               <span className="text-rose-500 italic">{r.responseText.slice(0, 80)}</span>
                             ) : (
                               <span className="text-[#1a1a1a] line-clamp-3">{r.responseText}</span>
@@ -117,14 +115,14 @@ export default async function DataPage({ params }: { params: Promise<{ batchId: 
                           )}
                         </td>
                         <td key={`${prompt.id}-${platform}-men`} className="px-3 py-2 align-top text-center border-b border-[#dde6ea]">
-                          {r && !isError ? (
+                          {r && !isError && !isNoAIO ? (
                             <span className={`font-bold ${r.isMentioned ? 'text-emerald-600' : 'text-[#c0cfd6]'}`}>
                               {r.isMentioned ? '✓' : '✗'}
                             </span>
                           ) : null}
                         </td>
                         <td key={`${prompt.id}-${platform}-cit`} className="px-3 py-2 align-top text-center border-b border-[#dde6ea]">
-                          {r && !isError ? (
+                          {r && !isError && !isNoAIO ? (
                             <span className={`font-bold ${r.isCited ? 'text-emerald-600' : 'text-[#c0cfd6]'}`}>
                               {r.isCited ? '✓' : '✗'}
                             </span>

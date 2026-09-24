@@ -1,6 +1,6 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Calendar } from 'lucide-react'
 
 export interface SessionOption {
@@ -22,18 +22,32 @@ export function RunSessionPicker({
   sessions,
   currentSessionId,
   basePath = '/dashboard',
+  projectId,
+  promptType,
 }: {
   sessions: SessionOption[]
   currentSessionId?: string
   basePath?: string
+  projectId?: string
+  promptType?: string
 }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   function handleChange(id: string) {
-    router.push(id ? `${basePath}?session=${id}` : basePath)
+    // Seed from the current URL so any param this component doesn't know about
+    // (level of care, a cross-segment scope like market=Cincinnati, competitor, …)
+    // survives the navigation instead of being silently dropped.
+    const params = new URLSearchParams(searchParams.toString())
+    if (projectId) params.set('project', projectId)
+    if (id) params.set('session', id)
+    else params.delete('session')
+    if (promptType) params.set('type', promptType)
+    const qs = params.toString()
+    router.push(qs ? `${basePath}?${qs}` : basePath)
   }
 
-  if (sessions.length < 2) return null
+  if (sessions.length < 1) return null
 
   const current = sessions.find((s) => s.id === currentSessionId)
 

@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { canWrite } from '@/lib/access'
 
-async function getAuthorizedBatch(batchId: string, userId: string) {
+async function getAuthorizedBatch(batchId: string, userId: string, userEmail: string | null | undefined) {
   const batch = await prisma.batch.findUnique({ where: { id: batchId } })
   if (!batch) return null
-  if (batch.userId !== userId) return null
+  if (!canWrite(userId, userEmail, batch.userId)) return null
   return batch
 }
 
@@ -20,7 +21,7 @@ export async function GET(
     }
 
     const { id } = await params
-    const batch = await getAuthorizedBatch(id, session.user.id)
+    const batch = await getAuthorizedBatch(id, session.user.id, session.user.email)
     if (!batch) {
       return NextResponse.json({ error: 'Not found or forbidden' }, { status: 404 })
     }
@@ -43,7 +44,7 @@ export async function POST(
     }
 
     const { id } = await params
-    const batch = await getAuthorizedBatch(id, session.user.id)
+    const batch = await getAuthorizedBatch(id, session.user.id, session.user.email)
     if (!batch) {
       return NextResponse.json({ error: 'Not found or forbidden' }, { status: 404 })
     }
@@ -76,7 +77,7 @@ export async function DELETE(
     }
 
     const { id } = await params
-    const batch = await getAuthorizedBatch(id, session.user.id)
+    const batch = await getAuthorizedBatch(id, session.user.id, session.user.email)
     if (!batch) {
       return NextResponse.json({ error: 'Not found or forbidden' }, { status: 404 })
     }

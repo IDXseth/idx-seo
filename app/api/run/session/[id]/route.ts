@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { canWrite } from '@/lib/access'
 
 export async function DELETE(
   _req: Request,
@@ -24,7 +25,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    if (runSession.batch?.userId !== session.user.id) {
+    if (!runSession.batch?.userId || !canWrite(session.user.id, session.user.email, runSession.batch.userId)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

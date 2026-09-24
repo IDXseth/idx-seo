@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { queryPlatform, PlatformResult } from '@/lib/ai-clients'
 import { PLATFORMS } from '@/lib/utils'
 import { sendRunCompleteEmail } from '@/lib/email'
+import { getActiveCompetitors, matchCompetitors, saveCompetitorMentions, CompetitorInput } from '@/lib/competitors'
 
 export const maxDuration = 300
 
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
       ...(batchId ? { batchId } : {}),
       results: { none: {} },
     },
-    include: { batch: { select: { name: true } } },
+    include: { batch: { select: { name: true, userId: true } } },
   })
 
   if (prompts.length === 0) {
@@ -56,6 +57,16 @@ export async function POST(req: Request) {
   }
 
   const batchName = prompts[0]?.batch?.name
+
+  const competitorCache = new Map<string, Promise<CompetitorInput[]>>()
+  function getCompetitorsCached(userId: string): Promise<CompetitorInput[]> {
+    let entry = competitorCache.get(userId)
+    if (!entry) {
+      entry = getActiveCompetitors(userId)
+      competitorCache.set(userId, entry)
+    }
+    return entry
+  }
 
   const encoder = new TextEncoder()
 
@@ -75,12 +86,15 @@ export async function POST(req: Request) {
       send({ type: 'start', total })
 
       for (const prompt of prompts) {
-        const platformResults = await Promise.all(
-          PLATFORMS.map(async (platform) => {
-            const result = await withTimeout(queryPlatform(platform, prompt.promptText, prompt.communityName))
-            return { platform, result }
-          })
-        )
+        const [platformResults, competitors] = await Promise.all([
+          Promise.all(
+            PLATFORMS.map(async (platform) => {
+              const result = await withTimeout(queryPlatform(platform, prompt.promptText, prompt.communityName))
+              return { platform, result }
+            })
+          ),
+          getCompetitorsCached(prompt.batch.userId),
+        ])
 
         for (const { platform, result } of platformResults) {
           const saved = await prisma.result.create({
@@ -100,8 +114,14 @@ export async function POST(req: Request) {
                 url: c.url,
                 title: c.title,
                 domain: c.domain,
+                isExplicitCitation: c.isExplicitCitation,
               })),
             })
+          }
+
+          if (competitors.length > 0) {
+            const matches = await matchCompetitors(result.responseText, result.citations, competitors)
+            await saveCompetitorMentions(saved.id, matches)
           }
 
           if (result.error) errors++

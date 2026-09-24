@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { canWrite } from '@/lib/access'
 
 function computeNextRunAt(body: {
   frequency: string
@@ -46,8 +47,13 @@ export async function GET(req: Request) {
   const batchId = searchParams.get('batchId')
   if (!batchId) return NextResponse.json({ error: 'batchId required' }, { status: 400 })
 
+  const batch = await prisma.batch.findUnique({ where: { id: batchId }, select: { userId: true } })
+  if (!batch || !canWrite(session.user.id, session.user.email, batch.userId)) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
   const schedules = await prisma.schedule.findMany({
-    where: { batchId, batch: { userId: session.user.id } },
+    where: { batchId },
     orderBy: { createdAt: 'asc' },
   })
 
@@ -64,8 +70,10 @@ export async function POST(req: Request) {
 
   if (!batchId || !frequency) return NextResponse.json({ error: 'batchId and frequency required' }, { status: 400 })
 
-  const batch = await prisma.batch.findUnique({ where: { id: batchId, userId: session.user.id } })
-  if (!batch) return NextResponse.json({ error: 'Batch not found' }, { status: 404 })
+  const batch = await prisma.batch.findUnique({ where: { id: batchId } })
+  if (!batch || !canWrite(session.user.id, session.user.email, batch.userId)) {
+    return NextResponse.json({ error: 'Batch not found' }, { status: 404 })
+  }
 
   const nextRunAt = computeNextRunAt({ frequency, customDays, dayOfWeek, dayOfMonth, hour })
 
@@ -91,7 +99,7 @@ export async function PATCH(req: Request) {
     where: { id },
     include: { batch: { select: { userId: true } } },
   })
-  if (!existing || existing.batch.userId !== session.user.id) {
+  if (!existing || !canWrite(session.user.id, session.user.email, existing.batch.userId)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
@@ -132,7 +140,7 @@ export async function DELETE(req: Request) {
     where: { id },
     include: { batch: { select: { userId: true } } },
   })
-  if (!existing || existing.batch.userId !== session.user.id) {
+  if (!existing || !canWrite(session.user.id, session.user.email, existing.batch.userId)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
