@@ -1,12 +1,12 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getViewer, readablePromptWhere } from '@/lib/access'
 import { Badge } from '@/components/ui/badge'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
-import { PLATFORM_LABELS, PLATFORM_COLORS, YOUR_BRAND_NAME, YOUR_BRAND_DOMAIN } from '@/lib/utils'
-import { getActiveCompetitors, domainMatches, CompetitorInput } from '@/lib/competitors'
+import { PLATFORM_LABELS, PLATFORM_COLORS } from '@/lib/utils'
+import { getDetectionContext } from '@/lib/detection-context'
+import { splitMentions, citationPointsTo, type DetectionContext } from '@/lib/detection'
 import { SentimentBreakdown } from '@/components/sentiment-breakdown'
 import { ChevronLeft, ExternalLink, MapPin, Building2, Tag, Heart, Info } from 'lucide-react'
 
@@ -105,26 +105,25 @@ export default async function ResultsDetailPage({
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
 
-  // Competitor summary — how many of this prompt's platform results mention each tracked brand
-  let competitors: Awaited<ReturnType<typeof getActiveCompetitors>> = []
-  try {
-    const session = await auth()
-    if (session?.user?.id) competitors = await getActiveCompetitors(session.user.id)
-  } catch { /* not signed in / DB not configured */ }
+  // The same brand and competitors the prompt's runs were scored against, so
+  // highlights and badges here always agree with the stored results.
+  const ctx = await getDetectionContext(prompt)
+  const brand = ctx.brand
+  const competitors = ctx.competitors
 
   const mentionsByResult = await getCompetitorMentionsByResult(sortedResults.map((r) => r.id))
 
   const brandSummary = [
     {
       id: 'you',
-      brandName: YOUR_BRAND_NAME,
+      brandName: brand.label,
       isYou: true,
       mentionedCount: sortedResults.filter((r) => r.isMentioned).length,
       citedCount: sortedResults.filter((r) => r.isCited).length,
     },
     ...competitors.map((c) => ({
       id: c.id,
-      brandName: c.brandName,
+      brandName: c.label,
       isYou: false,
       mentionedCount: sortedResults.filter((r) => (mentionsByResult.get(r.id) ?? []).some((m) => m.competitorId === c.id && m.isMentioned)).length,
       citedCount: sortedResults.filter((r) => (mentionsByResult.get(r.id) ?? []).some((m) => m.competitorId === c.id && m.isCited)).length,
@@ -149,7 +148,7 @@ export default async function ResultsDetailPage({
         <Info className="h-4 w-4 text-[#177e89] flex-shrink-0 mt-0.5" />
         <div className="text-sm text-[#084c61] leading-relaxed">
           <span className="font-semibold">AI Visibility Results — </span>
-          This report shows how each AI platform responded to the prompt below. For each platform we record whether {YOUR_BRAND_NAME} was <span className="font-semibold">mentioned</span> by name, whether a <span className="font-semibold">{YOUR_BRAND_DOMAIN} link was cited</span> in the response, the overall <span className="font-semibold">sentiment</span> of the response, and the source URLs involved — split into <span className="font-semibold">Citations</span> the platform explicitly referenced in its answer and sources <span className="font-semibold">also surfaced in search</span> that it retrieved but didn&apos;t directly cite.
+          This report shows how each AI platform responded to the prompt below. For each platform we record whether {brand.label} was <span className="font-semibold">mentioned</span> by name, whether a <span className="font-semibold">{brand.domains[0] ?? 'brand'} link was cited</span> in the response, the overall <span className="font-semibold">sentiment</span> of the response, and the source URLs involved — split into <span className="font-semibold">Citations</span> the platform explicitly referenced in its answer and sources <span className="font-semibold">also surfaced in search</span> that it retrieved but didn&apos;t directly cite.
         </div>
       </div>
 
@@ -312,7 +311,7 @@ export default async function ResultsDetailPage({
                 {/* Brands detected (yours + tracked competitors) */}
                 {competitors.length > 0 && (() => {
                   const detected = [
-                    ...(result.isMentioned ? [{ id: 'you', brandName: YOUR_BRAND_NAME, isYou: true, sentiment: result.sentiment }] : []),
+                    ...(result.isMentioned ? [{ id: 'you', brandName: brand.label, isYou: true, sentiment: result.sentiment }] : []),
                     ...(mentionsByResult.get(result.id) ?? [])
                       .filter((m) => m.isMentioned)
                       .map((m) => ({ id: m.competitorId, brandName: m.brandName, isYou: false, sentiment: m.sentiment })),
@@ -348,7 +347,7 @@ export default async function ResultsDetailPage({
                   {isNoAIO ? (
                     <p className="text-xs text-[#8aadb8] italic">No AI Overview was served for this query.</p>
                   ) : (
-                    <p className="text-xs text-[#1a1a1a] leading-relaxed">{highlightTerms(result.responseText ?? '', prompt.communityName, competitors)}</p>
+                    <p className="text-xs text-[#1a1a1a] leading-relaxed">{highlightTerms(result.responseText ?? '', ctx)}</p>
                   )}
                 </div>
 
@@ -365,7 +364,7 @@ export default async function ResultsDetailPage({
                           </p>
                           <div className="space-y-1.5">
                             {explicitCitations.map((citation) => (
-                              <CitationLink key={citation.id} citation={citation} competitors={competitors} />
+                              <CitationLink key={citation.id} citation={citation} ctx={ctx} />
                             ))}
                           </div>
                         </div>
@@ -380,7 +379,7 @@ export default async function ResultsDetailPage({
                           </p>
                           <div className="space-y-1.5 opacity-75">
                             {additionalSources.map((citation) => (
-                              <CitationLink key={citation.id} citation={citation} competitors={competitors} />
+                              <CitationLink key={citation.id} citation={citation} ctx={ctx} />
                             ))}
                           </div>
                         </div>
@@ -397,66 +396,41 @@ export default async function ResultsDetailPage({
   )
 }
 
-const BRAND_TERMS = ['Senior Lifestyle Corporation', 'Senior Lifestyle']
-
-interface HighlightTerm {
-  term: string
-  brandName: string
-  isYou: boolean
-}
-
-// Highlights every occurrence of your brand's name (or the specific community's
-// name) in yellow, and every occurrence of a tracked competitor's brand name or
-// alias in blue — the same substring match matchCompetitors() uses to compute
-// isMentioned, so a highlighted mention here always agrees with the "Mentioned"
-// badge and the Brands Detected row above.
-function highlightTerms(
-  text: string,
-  communityName: string,
-  competitors: Array<{ id: string; brandName: string; aliases: string }>
-): React.ReactNode {
-  const yourTerms: HighlightTerm[] = [...new Set([communityName, ...BRAND_TERMS].filter(Boolean))]
-    .map((term) => ({ term, brandName: YOUR_BRAND_NAME, isYou: true }))
-  const competitorTerms: HighlightTerm[] = competitors.flatMap((c) =>
-    [c.brandName, ...c.aliases.split(',')]
-      .map((t) => t.trim())
-      .filter(Boolean)
-      .map((term) => ({ term, brandName: c.brandName, isYou: false }))
-  )
-  const terms = [...yourTerms, ...competitorTerms]
-  if (terms.length === 0) return text
-
-  // Sort longest-first so e.g. "Senior Lifestyle Corporation" matches before "Senior Lifestyle"
-  terms.sort((a, b) => b.term.length - a.term.length)
-  const pattern = new RegExp(`(${terms.map((t) => t.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi')
-  const parts = text.split(pattern)
-  return parts.map((part, i) => {
-    const match = terms.find((t) => t.term.toLowerCase() === part.toLowerCase())
-    if (!match) return part
-    return (
+// Highlights your brand's names (and the prompt's own entity) in yellow and
+// tracked competitors' names in blue, using detection's own whole-word
+// matching, so a highlight here always agrees with the "Mentioned" badge.
+function highlightTerms(text: string, ctx: DetectionContext): React.ReactNode {
+  const segments = splitMentions(text, [
+    { owner: { label: ctx.brand.label, isYou: true }, terms: [...ctx.brand.names, ctx.entityName ?? ''] },
+    ...ctx.competitors.map((c) => ({ owner: { label: c.label, isYou: false }, terms: c.names })),
+  ])
+  return segments.map((seg, i) =>
+    seg.owner ? (
       <mark
         key={i}
-        title={match.isYou ? 'Your brand' : `Tracked competitor: ${match.brandName}`}
-        className={match.isYou ? 'bg-yellow-100 text-yellow-900 rounded px-0.5' : 'bg-sky-100 text-sky-900 rounded px-0.5'}
+        title={seg.owner.isYou ? 'Your brand' : `Tracked competitor: ${seg.owner.label}`}
+        className={seg.owner.isYou ? 'bg-yellow-100 text-yellow-900 rounded px-0.5' : 'bg-sky-100 text-sky-900 rounded px-0.5'}
       >
-        {part}
+        {seg.text}
       </mark>
+    ) : (
+      seg.text
     )
-  })
+  )
 }
 
 function CitationLink({
   citation,
-  competitors,
+  ctx,
 }: {
   citation: { id: string; url: string; title: string; domain: string }
-  competitors: CompetitorInput[]
+  ctx: DetectionContext
 }) {
-  const owner = domainMatches(citation.domain, YOUR_BRAND_DOMAIN)
-    ? { label: YOUR_BRAND_NAME, isYou: true }
+  const owner = citationPointsTo(citation, ctx.brand.domains)
+    ? { label: ctx.brand.label, isYou: true }
     : (() => {
-        const c = competitors.find((c) => domainMatches(citation.domain, c.domain))
-        return c ? { label: c.brandName, isYou: false } : null
+        const c = ctx.competitors.find((c) => citationPointsTo(citation, c.domains))
+        return c ? { label: c.label, isYou: false } : null
       })()
   return (
     <a

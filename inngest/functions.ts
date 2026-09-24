@@ -1,10 +1,8 @@
 import { inngest } from '@/lib/inngest'
 import { prisma } from '@/lib/prisma'
-import { queryPlatform } from '@/lib/ai-clients'
-import { PLATFORMS } from '@/lib/utils'
 import { sendRunCompleteEmail } from '@/lib/email'
 import { refreshGscCache, refreshGscQueryCache, crawlCommunityPages } from '@/lib/gsc'
-import { getActiveCompetitors, matchCompetitors, saveCompetitorMentions } from '@/lib/competitors'
+import { runPromptOnPlatforms } from '@/lib/run-prompt'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -113,7 +111,7 @@ export const runSinglePrompt = inngest.createFunction(
     }
 
     const prompt = await step.run('fetch-prompt', async () => {
-      return prisma.prompt.findUnique({ where: { id: promptId }, include: { batch: { select: { userId: true } } } })
+      return prisma.prompt.findUnique({ where: { id: promptId }, include: { batch: { select: { userId: true, projectId: true } } } })
     })
 
     if (!prompt) {
@@ -142,44 +140,7 @@ export const runSinglePrompt = inngest.createFunction(
     })
 
     await step.run('query-and-save', async () => {
-      const [platformResults, competitors] = await Promise.all([
-        Promise.all(
-          PLATFORMS.map(async (platform) => {
-            const result = await queryPlatform(platform, prompt.promptText, prompt.communityName, prompt.city ?? undefined)
-            return { platform, result }
-          })
-        ),
-        getActiveCompetitors(prompt.batch.userId),
-      ])
-
-      for (const { platform, result } of platformResults) {
-        const saved = await prisma.result.create({
-          data: {
-            promptId,
-            runSessionId,
-            platform,
-            responseText: result.responseText,
-            isMentioned: result.isMentioned,
-            isCited: result.isCited,
-            sentiment: result.sentiment,
-          },
-        })
-        if (result.citations.length > 0) {
-          await prisma.citation.createMany({
-            data: result.citations.map((c) => ({
-              resultId: saved.id,
-              url: c.url,
-              title: c.title,
-              domain: c.domain,
-              isExplicitCitation: c.isExplicitCitation,
-            })),
-          })
-        }
-        if (competitors.length > 0) {
-          const matches = await matchCompetitors(result.responseText, result.citations, competitors)
-          await saveCompetitorMentions(saved.id, matches)
-        }
-      }
+      await runPromptOnPlatforms(prompt, { runSessionId })
 
       await prisma.$executeRaw`UPDATE "Prompt" SET "jobStatus" = 'done' WHERE id = ${promptId}`
       await prisma.$executeRaw`UPDATE "BatchRun" SET "doneCount" = "doneCount" + 1 WHERE id = ${batchRunId}`

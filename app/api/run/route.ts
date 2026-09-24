@@ -1,25 +1,11 @@
 import { prisma } from '@/lib/prisma'
-import { queryPlatform, PlatformResult } from '@/lib/ai-clients'
-import { PLATFORMS } from '@/lib/utils'
 import { sendRunCompleteEmail } from '@/lib/email'
 import { getViewer, writableBatchWhere } from '@/lib/access'
-import { getActiveCompetitors, matchCompetitors, saveCompetitorMentions, CompetitorInput } from '@/lib/competitors'
+import { runPromptOnPlatforms } from '@/lib/run-prompt'
 
 export const maxDuration = 300
 
 const PLATFORM_TIMEOUT_MS = 28_000
-
-function withTimeout(promise: Promise<PlatformResult>): Promise<PlatformResult> {
-  return Promise.race([
-    promise,
-    new Promise<PlatformResult>((resolve) =>
-      setTimeout(
-        () => resolve({ responseText: '[Timeout]', isMentioned: false, isCited: false, citations: [], sentiment: 'neutral', error: 'Platform timed out' }),
-        PLATFORM_TIMEOUT_MS
-      )
-    ),
-  ])
-}
 
 // Returns unrun prompts for a batch (or all of the viewer's runnable batches). Used by the client loop.
 export async function GET(req: Request) {
@@ -57,7 +43,7 @@ export async function POST(req: Request) {
       batch: writableBatchWhere(viewer),
       results: { none: {} },
     },
-    include: { batch: { select: { name: true, userId: true } } },
+    include: { batch: { select: { name: true, userId: true, projectId: true } } },
   })
 
   if (prompts.length === 0) {
@@ -65,16 +51,6 @@ export async function POST(req: Request) {
   }
 
   const batchName = prompts[0]?.batch?.name
-
-  const competitorCache = new Map<string, Promise<CompetitorInput[]>>()
-  function getCompetitorsCached(userId: string): Promise<CompetitorInput[]> {
-    let entry = competitorCache.get(userId)
-    if (!entry) {
-      entry = getActiveCompetitors(userId)
-      competitorCache.set(userId, entry)
-    }
-    return entry
-  }
 
   const encoder = new TextEncoder()
 
@@ -94,44 +70,9 @@ export async function POST(req: Request) {
       send({ type: 'start', total })
 
       for (const prompt of prompts) {
-        const [platformResults, competitors] = await Promise.all([
-          Promise.all(
-            PLATFORMS.map(async (platform) => {
-              const result = await withTimeout(queryPlatform(platform, prompt.promptText, prompt.communityName))
-              return { platform, result }
-            })
-          ),
-          getCompetitorsCached(prompt.batch.userId),
-        ])
+        const platformResults = await runPromptOnPlatforms(prompt, { timeoutMs: PLATFORM_TIMEOUT_MS })
 
-        for (const { platform, result } of platformResults) {
-          const saved = await prisma.result.create({
-            data: {
-              promptId: prompt.id,
-              platform,
-              responseText: result.responseText,
-              isMentioned: result.isMentioned,
-              isCited: result.isCited,
-            },
-          })
-
-          if (result.citations.length > 0) {
-            await prisma.citation.createMany({
-              data: result.citations.map((c) => ({
-                resultId: saved.id,
-                url: c.url,
-                title: c.title,
-                domain: c.domain,
-                isExplicitCitation: c.isExplicitCitation,
-              })),
-            })
-          }
-
-          if (competitors.length > 0) {
-            const matches = await matchCompetitors(result.responseText, result.citations, competitors)
-            await saveCompetitorMentions(saved.id, matches)
-          }
-
+        for (const { result } of platformResults) {
           if (result.error) errors++
           if (result.isMentioned) mentionedCount++
           if (result.isCited) citedCount++
