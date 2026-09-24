@@ -79,3 +79,18 @@ export function normalizeRow(raw: {
     isUnknownCare: care.isKnown === false,
   }
 }
+
+// Maps the senior-living columns onto the brand-agnostic Prompt.entityName /
+// Prompt.segments fields. Written alongside the legacy columns until they're dropped.
+export function toGenericFields(row: {
+  communityName: string
+  city: string
+  market: string
+  levelOfCare: string
+}): { entityName: string; segments: Record<string, string> } {
+  const segments: Record<string, string> = {}
+  if (row.market) segments.market = row.market
+  if (row.city) segments.city = row.city
+  if (row.levelOfCare) segments.levelOfCare = row.levelOfCare
+  return { entityName: row.communityName, segments }
+}

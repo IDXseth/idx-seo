@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
-import { normalizeRow } from '@/lib/normalize'
+import { normalizeRow, toGenericFields } from '@/lib/normalize'
 
 function normalizeKey(key: string): string {
   return key.toLowerCase().replace(/[\s_-]+/g, '_')
@@ -80,7 +80,7 @@ export async function POST(req: Request) {
 
     if (uniqueRows.length > 0) {
       await prisma.prompt.createMany({
-        data: uniqueRows.map((r) => ({ batchId: batch.id, ...r })),
+        data: uniqueRows.map((r) => ({ batchId: batch.id, ...r, ...toGenericFields(r) })),
       })
     }
 

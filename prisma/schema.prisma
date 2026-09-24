@@ -21,6 +21,7 @@ model User {
   accounts      Account[]
   sessions      Session[]
   batches       Batch[]
+  projects      Project[]
   sharedBatches ProjectShare[]
 }
 
@@ -70,12 +71,52 @@ model ProjectShare {
   @@unique([batchId, email])
 }
 
+// A tracked brand: one primary domain plus the brand names and competitors
+// that AI responses are scored against. Batches (prompt uploads) belong to a project.
+model Project {
+  id                String       @id @default(cuid())
+  name              String
+  primaryDomain     String       // bare hostname, e.g. "seniorlifestyle.com" (no protocol, no www)
+  additionalDomains String[]     @default([])  // other owned hostnames counted as citations
+  brandNames        String[]     @default([])  // names/aliases matched as brand mentions
+  sitemapUrl        String?
+  sitemapPathPrefix String?
+  gscSiteUrl        String?
+  segmentLabels     Json?        // display labels for Prompt.segments keys, e.g. {"market":"Market"}
+  logoUrl           String?
+  brandColor        String?
+  userId            String       // owner
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  competitors       Competitor[]
+  batches           Batch[]
+  prompts           Prompt[]
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@unique([userId, primaryDomain])
+}
+
+model Competitor {
+  id        String          @id @default(cuid())
+  projectId String
+  project   Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String
+  domain    String          // bare hostname, e.g. "brookdale.com"
+  aliases   String[]        @default([])
+  mentions  ResultMention[]
+  createdAt DateTime        @default(now())
+
+  @@unique([projectId, domain])
+}
+
 model Batch {
   id          String         @id @default(cuid())
   name        String
   fileName    String
   userId      String
   user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId   String?        // nullable until every batch is backfilled — see scripts/backfill-projects.ts
+  project     Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   isPrivate   Boolean        @default(true)
   shareToken  String?        @unique @default(cuid())
   prompts     Prompt[]
@@ -84,6 +125,8 @@ model Batch {
   runSessions RunSession[]
   schedules   Schedule[]
   createdAt   DateTime       @default(now())
+
+  @@index([projectId])
 }
 
 model BatchRun {
@@ -136,8 +179,13 @@ model Prompt {
   id            String   @id @default(cuid())
   batchId       String
   batch         Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  projectId     String?  // denormalized from Batch for project-scoped queries
+  project       Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   promptType    String   // "brand" | "nonbrand"
   category      String
+  entityName    String   @default("")  // location / product / service line the prompt is about
+  segments      Json?    // arbitrary dimensions, e.g. {"market":"Chicago","levelOfCare":"Memory Care"}
+  // Legacy senior-living columns — superseded by entityName/segments, dropped once all readers move over.
   communityName String
   city          String
   market        String
@@ -147,6 +195,8 @@ model Prompt {
   jobError      String?
   results       Result[]
   createdAt     DateTime @default(now())
+
+  @@index([projectId])
 }
 
 model Result {
@@ -160,8 +210,25 @@ model Result {
   isMentioned  Boolean     @default(false)
   isCited      Boolean     @default(false)
   sentiment    String      @default("neutral")  // "positive" | "neutral" | "negative"
+  brandPosition Int?       // 1-based order the project's brand appears among tracked brands; null if not mentioned
   citations    Citation[]
+  mentions     ResultMention[]  // per-competitor detection; the project's own brand stays on the fields above
   runAt        DateTime    @default(now())
+}
+
+model ResultMention {
+  id           String     @id @default(cuid())
+  resultId     String
+  result       Result     @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  competitorId String
+  competitor   Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  isMentioned  Boolean    @default(false)
+  isCited      Boolean    @default(false)
+  position     Int?       // 1-based order among tracked brands; null if not mentioned
+  sentiment    String     @default("neutral")  // "positive" | "neutral" | "negative"
+
+  @@unique([resultId, competitorId])
+  @@index([competitorId])
 }
 
 model Citation {

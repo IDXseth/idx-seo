@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeRow } from '@/lib/normalize'
+import { normalizeRow, toGenericFields } from '@/lib/normalize'
 
 export const maxDuration = 60
 
@@ -63,6 +63,7 @@ export async function POST() {
         market: norm.market,
         levelOfCare: norm.levelOfCare,
         promptText: norm.promptText,
+        ...toGenericFields(norm),
       },
     })
     updated++
