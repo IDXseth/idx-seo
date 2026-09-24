@@ -7,7 +7,7 @@ import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
 import { getSessionList } from '@/lib/run-sessions'
 import { getPromptSetList } from '@/lib/prompt-sets'
-import { promptScope } from '@/lib/access'
+import { promptScope } from '@/lib/projects'
 
 export const dynamic = 'force-dynamic'
 

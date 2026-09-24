@@ -1,5 +1,5 @@
 import { prisma } from './prisma'
-import { promptScope } from './access'
+import { promptScope } from './projects'
 import type { SessionOption } from '@/components/run-session-picker'
 
 // Shared by the dashboard and every segment detail page (category/market/care-level/

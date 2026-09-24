@@ -1,5 +1,5 @@
 import { prisma } from './prisma'
-import { getActiveCompetitors } from './competitors'
+import { competitorScope, getActiveCompetitors } from './competitors'
 import { cleanTerms, type BrandTarget, type DetectionContext } from './detection'
 import { YOUR_BRAND_NAME, YOUR_BRAND_DOMAIN } from './utils'
 
@@ -35,10 +35,10 @@ export async function getBrandTarget(projectId: string | null): Promise<BrandTar
 }
 
 export async function getDetectionContext(prompt: PromptForDetection): Promise<DetectionContext> {
+  const projectId = prompt.projectId ?? prompt.batch.projectId
   const [brand, competitors] = await Promise.all([
-    getBrandTarget(prompt.projectId ?? prompt.batch.projectId),
-    // Competitors are still managed per user; they move onto projects with the project UI.
-    getActiveCompetitors(prompt.batch.userId),
+    getBrandTarget(projectId),
+    getActiveCompetitors(competitorScope(projectId, prompt.batch.userId)),
   ])
   return {
     brand,

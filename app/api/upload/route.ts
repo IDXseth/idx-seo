@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
 import { normalizeRow, toGenericFields } from '@/lib/normalize'
+import { getActiveProject } from '@/lib/projects'
 
 function normalizeKey(key: string): string {
   return key.toLowerCase().replace(/[\s_-]+/g, '_')
@@ -49,9 +50,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Fetch all prompt texts already owned by this user to prevent cross-batch duplication
+    const project = await getActiveProject()
+    if (!project) {
+      return NextResponse.json({ error: 'Create or select a project before uploading prompts' }, { status: 400 })
+    }
+
+    // Skip prompts already tracked anywhere in this project (the dashboard counts each prompt text once)
     const existingPrompts = await prisma.prompt.findMany({
-      where: { batch: { userId } },
+      where: { batch: { projectId: project.id } },
       select: { promptText: true },
     })
     const existingTexts = new Set(existingPrompts.map((p) => p.promptText))
@@ -59,7 +65,7 @@ export async function POST(req: Request) {
     const parsedRows = rows.map((row) => normalizeRow({
       promptType: getField(row, 'prompt_type', 'type', 'promptType') || 'nonbrand',
       category: getField(row, 'category'),
-      communityName: getField(row, 'community_name', 'community', 'communityName'),
+      communityName: getField(row, 'entity', 'entity_name', 'community_name', 'community', 'communityName'),
       city: getField(row, 'city'),
       market: getField(row, 'market'),
       levelOfCare: getField(row, 'level_of_care', 'care_level', 'levelOfCare'),
@@ -75,12 +81,13 @@ export async function POST(req: Request) {
         name: batchName,
         fileName: file.name,
         userId,
+        projectId: project.id,
       },
     })
 
     if (uniqueRows.length > 0) {
       await prisma.prompt.createMany({
-        data: uniqueRows.map((r) => ({ batchId: batch.id, ...r, ...toGenericFields(r) })),
+        data: uniqueRows.map((r) => ({ batchId: batch.id, projectId: project.id, ...r, ...toGenericFields(r) })),
       })
     }
 

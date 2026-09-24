@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { canViewSiteHealth } from '@/lib/access'
+import { getActiveProject } from '@/lib/projects'
+import { competitorScope } from '@/lib/competitors'
 import { generatePromptSuggestions } from '@/lib/prompt-suggestions'
 
 export const maxDuration = 60
@@ -24,7 +26,7 @@ export async function POST(req: Request) {
     } = body
 
     const result = await generatePromptSuggestions({
-      userId: session.user.id,
+      competitorScope: competitorScope((await getActiveProject())?.id, session.user.id),
       useGscQueries: await canViewSiteHealth({ id: session.user.id, email: session.user.email?.toLowerCase() ?? null }),
       communityName: String(communityName).trim(),
       city: String(city).trim(),

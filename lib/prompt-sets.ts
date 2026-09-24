@@ -1,5 +1,5 @@
 import { prisma } from './prisma'
-import { promptScope } from './access'
+import { promptScope } from './projects'
 
 export interface PromptSetOption {
   id: string

@@ -9,7 +9,8 @@ import { getSegmentTrendData } from '@/lib/segment-trend'
 import { getCompetitorLeaderboard, getBrandSeries, getBrandTrendSeries, CompetitorLeaderboardEntry, BrandComparison, BrandTrendSeries } from '@/lib/competitor-stats'
 import { getSessionList } from '@/lib/run-sessions'
 import { getPromptSetList } from '@/lib/prompt-sets'
-import { promptScope } from '@/lib/access'
+import { promptScope, getActiveProject } from '@/lib/projects'
+import { competitorScope } from '@/lib/competitors'
 
 export const dynamic = 'force-dynamic'
 
@@ -58,7 +59,7 @@ async function getCategoryData(name: string, sessionId?: string, promptType?: st
   const trendData = sessionId ? [] : await getSegmentTrendData({ category: decodedName, ...scopeFilter })
   const promptIds = prompts.map((p) => p.id)
   const competitorLeaderboard = userId
-    ? await getCompetitorLeaderboard(promptIds, userId, sessionId)
+    ? await getCompetitorLeaderboard(promptIds, competitorScope((await getActiveProject())?.id, userId), sessionId)
     : null
   const brandComparison = await getBrandSeries({
     promptId: { in: promptIds },

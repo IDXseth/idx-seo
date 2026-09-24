@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { sendRunCompleteEmail } from '@/lib/email'
-import { getViewer, writableBatchWhere } from '@/lib/access'
+import { getViewer } from '@/lib/access'
+import { activeWritableBatchWhere } from '@/lib/projects'
 import { runPromptOnPlatforms } from '@/lib/run-prompt'
 
 export const maxDuration = 300
@@ -16,7 +17,7 @@ export async function GET(req: Request) {
   const batchId = searchParams.get('batchId') ?? undefined
 
   const prompts = await prisma.prompt.findMany({
-    where: { ...(batchId ? { batchId } : {}), batch: writableBatchWhere(viewer), results: { none: {} } },
+    where: { ...(batchId ? { batchId } : {}), batch: await activeWritableBatchWhere(viewer), results: { none: {} } },
     select: {
       id: true,
       promptText: true,
@@ -40,7 +41,7 @@ export async function POST(req: Request) {
   const prompts = await prisma.prompt.findMany({
     where: {
       ...(batchId ? { batchId } : {}),
-      batch: writableBatchWhere(viewer),
+      batch: await activeWritableBatchWhere(viewer),
       results: { none: {} },
     },
     include: { batch: { select: { name: true, userId: true, projectId: true } } },

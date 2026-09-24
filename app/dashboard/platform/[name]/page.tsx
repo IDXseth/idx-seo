@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
-import { promptScope } from '@/lib/access'
+import { promptScope } from '@/lib/projects'
 import { PLATFORM_LABELS, PLATFORM_COLORS } from '@/lib/utils'
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { SentimentBreakdown } from '@/components/sentiment-breakdown'

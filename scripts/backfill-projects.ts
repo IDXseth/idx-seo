@@ -68,7 +68,7 @@ async function main() {
     data: { ...SENIOR_LIFESTYLE, userId: owner.id, gscSiteUrl: owner.gscSiteUrl },
   })
 
-  const [batches, competitors, prompts, generic] = await prisma.$transaction([
+  const [batches, competitors, prompts, generic, duplicateCompetitors] = await prisma.$transaction([
     prisma.batch.updateMany({ where: { projectId: null }, data: { projectId: project.id } }),
     prisma.competitor.updateMany({ where: { projectId: null }, data: { projectId: project.id } }),
     prisma.$executeRaw`
@@ -85,11 +85,24 @@ async function main() {
           'levelOfCare', NULLIF("levelOfCare", '')
         ))
       WHERE "segments" IS NULL`,
+    // Competitors used to be per user, so merging them into one project can
+    // track the same domain twice. Keep the oldest per domain and switch the
+    // rest off (not delete — their past CompetitorMention rows stay intact).
+    prisma.$executeRaw`
+      UPDATE "Competitor" c SET "active" = false
+      WHERE c."projectId" = ${project.id} AND c."active" = true
+        AND EXISTS (
+          SELECT 1 FROM "Competitor" o
+          WHERE o."projectId" = c."projectId" AND o."active" = true
+            AND lower(o."domain") = lower(c."domain")
+            AND (o."createdAt", o."id") < (c."createdAt", c."id")
+        )`,
   ])
 
   console.log(`\nProject ${project.id} (${project.name})`)
   console.log(`Batches attached:          ${batches.count}`)
   console.log(`Competitors attached:      ${competitors.count}`)
+  console.log(`Duplicate competitors off: ${duplicateCompetitors}`)
   console.log(`Prompts attached:          ${prompts}`)
   console.log(`Prompts entity/segments:   ${generic}`)
 }

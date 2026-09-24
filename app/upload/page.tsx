@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback } from 'react'
+import { ActiveProjectBanner } from '@/components/active-project-banner'
 import { useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import { Button } from '@/components/ui/button'
@@ -148,6 +149,8 @@ export default function UploadPage() {
         <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Upload Prompts</h1>
         <p className="text-[#5a7a85] mt-1 text-sm">Upload a spreadsheet, or let AI suggest nonbrand prompts for you</p>
       </div>
+
+      <ActiveProjectBanner />
 
       <Tabs defaultValue="file" className="mb-6">
         <TabsList>

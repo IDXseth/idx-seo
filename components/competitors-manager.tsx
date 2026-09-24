@@ -18,7 +18,15 @@ function emptyRow(): CompetitorRow {
   return { brandName: '', domain: '', aliases: '', active: true, dirty: true }
 }
 
-export function CompetitorsManager({ promptCount }: { promptCount: number }) {
+export function CompetitorsManager({
+  promptCount,
+  projectName,
+  canEdit,
+}: {
+  promptCount: number
+  projectName: string | null
+  canEdit: boolean
+}) {
   const [rows, setRows] = useState<CompetitorRow[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -89,6 +97,15 @@ export function CompetitorsManager({ promptCount }: { promptCount: number }) {
     }
   }
 
+  if (!projectName) {
+    return (
+      <div className="text-center py-24">
+        <p className="text-[#084c61] font-semibold">No project selected</p>
+        <p className="text-sm text-[#5a7a85] mt-1">Competitors are tracked per project. Create or select a project first.</p>
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24 text-[#8aadb8]">
@@ -101,7 +118,12 @@ export function CompetitorsManager({ promptCount }: { promptCount: number }) {
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Track Competitors</h1>
-        <p className="text-[#5a7a85] mt-1 text-sm">Add named competitors to monitor their mentions, citations, and sentiment alongside your own.</p>
+        <p className="text-[#5a7a85] mt-1 text-sm">
+          Competitors tracked for <span className="font-semibold text-[#084c61]">{projectName}</span> — their mentions, citations, and sentiment alongside your own.
+        </p>
+        {!canEdit && (
+          <p className="text-xs text-[#8aadb8] mt-2">Only the project owner can change this list.</p>
+        )}
       </div>
 
       <div className="bg-[#e6f2f5] border border-[#b8d8e0] rounded-xl p-4 mb-6 flex gap-3">
@@ -122,6 +144,7 @@ export function CompetitorsManager({ promptCount }: { promptCount: number }) {
         </div>
       )}
 
+      <fieldset disabled={!canEdit} className="contents">
       <div className="bg-white rounded-xl border border-[#dde6ea] overflow-hidden mb-4">
         <div className="grid grid-cols-[1.3fr_1.3fr_1.6fr_0.7fr_32px] gap-3.5 px-5 py-3 bg-[#f5f8fa] border-b border-[#eef3f5]">
           <span className="text-[10px] font-bold text-[#8aadb8] uppercase tracking-wide">Competitor Brand</span>
@@ -209,7 +232,7 @@ export function CompetitorsManager({ promptCount }: { promptCount: number }) {
             <span className="font-semibold text-[#084c61]">Domain</span> — a citation counts for this competitor when the cited URL&apos;s domain matches exactly, or is a known subdomain (e.g. reviews.brookdale.com).
           </p>
           <p className="text-xs text-[#5a7a85] leading-relaxed">
-            <span className="font-semibold text-[#084c61]">Aliases</span> — the response text is scanned case-insensitively for any alias to catch a mention even when the AI doesn&apos;t include a link.
+            <span className="font-semibold text-[#084c61]">Aliases</span> — the response text is scanned for the brand name or any alias as a whole word, in any capitalization, to catch a mention even when the AI doesn&apos;t include a link.
           </p>
         </div>
       </div>
@@ -228,6 +251,7 @@ export function CompetitorsManager({ promptCount }: { promptCount: number }) {
           {saving ? 'Saving…' : 'Save & Start Tracking'}
         </Button>
       </div>
+      </fieldset>
     </div>
   )
 }

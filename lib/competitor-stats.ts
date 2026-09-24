@@ -1,5 +1,6 @@
 import { prisma } from './prisma'
-import { PLATFORMS, YOUR_BRAND_NAME, YOUR_BRAND_DOMAIN } from './utils'
+import { PLATFORMS } from './utils'
+import { getActiveBrand } from './projects'
 import type { Prisma } from '@prisma/client'
 
 // ─── Brand comparison series (all brands, one shared shape) ────────────────
@@ -81,7 +82,7 @@ export async function getBrandSeries(resultWhere: { promptId: { in: string[] }; 
     }
   }
 
-  const yourBrand = buildSeries('you', YOUR_BRAND_NAME, (r) => ({ isMentioned: r.isMentioned, isCited: r.isCited }))
+  const yourBrand = buildSeries('you', (await getActiveBrand()).label, (r) => ({ isMentioned: r.isMentioned, isCited: r.isCited }))
 
   const competitorNames = new Map<string, string>()
   for (const r of results) {
@@ -167,16 +168,16 @@ function buildEntry(id: string, brandName: string, domain: string, isYou: boolea
 
 // Head-to-head "you vs. tracked competitors" leaderboard for an arbitrary set of prompts
 // (a category, market, care level, or community's prompts, or a single prompt).
-// Returns null when the viewer has no active competitors to compare against.
+// Returns null when there are no active competitors to compare against.
 export async function getCompetitorLeaderboard(
   promptIds: string[],
-  userId: string,
+  competitorWhere: Prisma.CompetitorWhereInput,
   sessionId?: string
 ): Promise<CompetitorLeaderboardEntry[] | null> {
   if (promptIds.length === 0) return null
 
   try {
-    const competitors = await prisma.competitor.findMany({ where: { userId, active: true } })
+    const competitors = await prisma.competitor.findMany({ where: { ...competitorWhere, active: true } })
     if (competitors.length === 0) return null
 
     const resultWhere = {
@@ -195,7 +196,8 @@ export async function getCompetitorLeaderboard(
       }),
     ])
 
-    const brandEntry = buildEntry('you', YOUR_BRAND_NAME, YOUR_BRAND_DOMAIN, true, brandResults)
+    const brand = await getActiveBrand()
+    const brandEntry = buildEntry('you', brand.label, brand.domains[0] ?? '', true, brandResults)
 
     const competitorEntries = competitors.map((c) => {
       const rows: RateRow[] = mentions
@@ -309,5 +311,5 @@ export async function getBrandTrendSeries(promptWhere: Prisma.PromptWhereInput):
     }))
     .sort((a, b) => a.label.localeCompare(b.label))
 
-  return [{ id: 'you', label: YOUR_BRAND_NAME, points: yourPoints }, ...competitorSeries]
+  return [{ id: 'you', label: (await getActiveBrand()).label, points: yourPoints }, ...competitorSeries]
 }

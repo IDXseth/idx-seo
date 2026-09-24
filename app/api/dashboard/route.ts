@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { PLATFORMS } from '@/lib/utils'
-import { getViewer, readablePromptWhere } from '@/lib/access'
+import { getViewer } from '@/lib/access'
+import { activeBatchWhere } from '@/lib/projects'
 
 export async function GET() {
   const viewer = await getViewer()
   if (!viewer) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Every query below is limited to prompts in batches this viewer can read.
-  const pw = readablePromptWhere(viewer)
+  // Every query below is limited to prompts the viewer can read in the active project.
+  const pw = { batch: await activeBatchWhere(viewer) }
   const rw = { prompt: pw }
 
   try {

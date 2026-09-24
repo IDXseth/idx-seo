@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { PLATFORMS } from '@/lib/utils'
-import { getViewer, readablePromptWhere } from '@/lib/access'
+import { getViewer } from '@/lib/access'
+import { activeBatchWhere } from '@/lib/projects'
 
 export async function GET(req: Request) {
   const viewer = await getViewer()
@@ -28,7 +29,7 @@ export async function GET(req: Request) {
     }
 
     const prompts = await prisma.prompt.findMany({
-      where: { AND: [whereClause, readablePromptWhere(viewer)] },
+      where: { AND: [whereClause, { batch: await activeBatchWhere(viewer) }] },
       include: {
         results: {
           include: { citations: true },

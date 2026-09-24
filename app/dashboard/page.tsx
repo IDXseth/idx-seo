@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import { PLATFORMS, formatPercent } from '@/lib/utils'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -17,8 +18,9 @@ import { getGscMetrics, getPageCrawlResults } from '@/lib/gsc'
 import { getSessionList } from '@/lib/run-sessions'
 import { getPromptSetList } from '@/lib/prompt-sets'
 import { getBrandSeries } from '@/lib/competitor-stats'
-import { promptScope, getViewer, canViewSiteHealth } from '@/lib/access'
-import { slugify } from '@/lib/utils'
+import { getViewer, canViewSiteHealth } from '@/lib/access'
+import { promptScope, getActiveProject, canCreateProjects } from '@/lib/projects'
+import { slugify, YOUR_BRAND_DOMAIN } from '@/lib/utils'
 import { APP_DASHBOARD_TAGLINE } from '@/lib/app-config'
 import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink, Download, Users } from 'lucide-react'
 
@@ -594,9 +596,12 @@ export default async function DashboardPage({
   }
   // Optimization Priority is about your own site's schema/indexing health,
   // not mention data — always your own brand's, regardless of the "Viewing" picker.
-  // The GSC/sitemap data is one brand's private dataset until it moves onto Project.
+  // The GSC/sitemap data is the Senior Lifestyle site's until it moves onto Project,
+  // so it's only shown in that project, and only to people allowed to see it.
   const viewer = await getViewer().catch(() => null)
-  if (data && !competitorId && viewer && (await canViewSiteHealth(viewer).catch(() => false))) {
+  const activeProject = await getActiveProject().catch(() => null)
+  const showSiteHealth = activeProject?.primaryDomain === YOUR_BRAND_DOMAIN
+  if (data && !competitorId && viewer && showSiteHealth && (await canViewSiteHealth(viewer).catch(() => false))) {
     try {
       const [gscMetrics, crawlResults] = await Promise.all([
         getGscMetrics().catch(() => undefined),
@@ -612,10 +617,10 @@ export default async function DashboardPage({
     return (
       <div>
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Dashboard</h1>
+          <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>{activeProject?.name ?? 'Dashboard'}</h1>
           <p className="text-[#5a7a85] mt-1 text-sm">{APP_DASHBOARD_TAGLINE}</p>
         </div>
-        <EmptyDashboard />
+        {activeProject ? <EmptyDashboard /> : <NoProject canCreate={!!viewer && canCreateProjects(viewer)} />}
       </div>
     )
   }
@@ -638,13 +643,13 @@ export default async function DashboardPage({
       <div className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>
-            {currentPromptSet ? currentPromptSet.name : 'Dashboard'}
+            {activeProject?.name ?? 'Dashboard'}
           </h1>
           <p className="text-[#5a7a85] mt-1 text-sm">
             {currentSession
               ? `Showing data from ${new Date(currentSession.startedAt).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`
               : currentPromptSet
-              ? 'AI mention and citation monitoring for this prompt set'
+              ? `Prompt set: ${currentPromptSet.name}`
               : APP_DASHBOARD_TAGLINE}
           </p>
         </div>
@@ -968,6 +973,27 @@ function TabGrid<T>({
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {items.map(renderCard)}
+    </div>
+  )
+}
+
+function NoProject({ canCreate }: { canCreate: boolean }) {
+  return (
+    <div className="bg-white rounded-2xl border border-[#dde6ea] px-8 py-12 text-center">
+      <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-[#e6f2f5] mb-4">
+        <Layers className="h-7 w-7 text-[#177e89]" />
+      </div>
+      <h2 className="text-xl font-bold text-[#084c61] mb-1" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>No projects yet</h2>
+      <p className="text-[#5a7a85] text-sm max-w-md mx-auto mb-6">
+        {canCreate
+          ? 'A project tracks one brand in AI answers — its names, its domain, and the competitors to compare it against.'
+          : 'Once a project is shared with you, its results will appear here.'}
+      </p>
+      {canCreate && (
+        <Link href="/projects/new" className="inline-flex items-center gap-2 rounded-lg bg-[#084c61] px-4 py-2 text-sm font-medium text-white hover:bg-[#054166]">
+          Create your first project <ArrowRight className="h-4 w-4" />
+        </Link>
+      )}
     </div>
   )
 }

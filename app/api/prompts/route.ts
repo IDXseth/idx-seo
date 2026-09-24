@@ -50,7 +50,7 @@ export async function POST(req: Request) {
 
   const batch = await prisma.batch.findUnique({
     where: { id: batchId },
-    select: { userId: true },
+    select: { userId: true, projectId: true },
   })
 
   if (!batch) return NextResponse.json({ error: 'Batch not found' }, { status: 404 })
@@ -68,6 +68,7 @@ export async function POST(req: Request) {
   const prompt = await prisma.prompt.create({
     data: {
       batchId,
+      projectId: batch.projectId,
       promptText: promptText.trim(),
       promptType,
       category: category.trim(),

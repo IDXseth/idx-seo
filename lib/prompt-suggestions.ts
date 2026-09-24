@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import type { Prisma } from '@prisma/client'
 import { normalizeLevelOfCare } from './normalize'
 import { getTopGscQueries } from './gsc'
 import { getActiveCompetitors } from './competitors'
@@ -28,7 +29,7 @@ const MAX_COUNT = 60
 const CLAUDE_TIMEOUT_MS = 45_000
 
 export interface SuggestionInput {
-  userId: string
+  competitorScope: Prisma.CompetitorWhereInput  // whose competitors to research
   // The GSC query cache is one brand's private search data — only ground on it for viewers allowed to see it.
   useGscQueries: boolean
   communityName: string
@@ -60,7 +61,7 @@ export async function generatePromptSuggestions(input: SuggestionInput): Promise
 
   const [topQueries, competitors] = await Promise.all([
     input.useGscQueries ? getTopGscQueries(40).catch(() => []) : Promise.resolve([] as string[]),
-    getActiveCompetitors(input.userId),
+    getActiveCompetitors(input.competitorScope),
   ])
   const competitorDomains = competitors.map((c) => c.domain)
 

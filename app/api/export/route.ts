@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { PLATFORM_LABELS } from '@/lib/utils'
-import { getViewer, readableBatchWhere, readablePromptWhere, type Viewer } from '@/lib/access'
+import { getViewer, type Viewer } from '@/lib/access'
+import { activeBatchWhere } from '@/lib/projects'
 import * as xlsx from 'xlsx'
 
 export const dynamic = 'force-dynamic'
@@ -29,7 +30,7 @@ async function exportSessionResults(viewer: Viewer, sessionId: string) {
   if (!runSession) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
 
   const results = await prisma.result.findMany({
-    where: { runSessionId: sessionId, prompt: readablePromptWhere(viewer) },
+    where: { runSessionId: sessionId, prompt: { batch: await activeBatchWhere(viewer) } },
     include: { prompt: true, citations: true },
     orderBy: [{ prompt: { communityName: 'asc' } }, { prompt: { city: 'asc' } }, { platform: 'asc' }],
   })
@@ -74,10 +75,10 @@ async function exportSessionResults(viewer: Viewer, sessionId: string) {
   })
 }
 
-// Exports every project's (batch's) prompt list, one sheet per project.
+// Exports every prompt set in the active project, one sheet per prompt set.
 async function exportAllPrompts(viewer: Viewer) {
   const batches = await prisma.batch.findMany({
-    where: readableBatchWhere(viewer),
+    where: await activeBatchWhere(viewer),
     orderBy: { createdAt: 'desc' },
     include: {
       prompts: { orderBy: { createdAt: 'asc' } },

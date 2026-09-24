@@ -7,6 +7,7 @@ import { useState, useRef, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { BarChart3, Upload, Play, Users, ChevronDown, LogOut, User } from 'lucide-react'
 import { GscSiteSelector } from './gsc-site-selector'
+import { ProjectSwitcher } from './project-switcher'
 import { APP_LOGO_URL, APP_OWNER_NAME, APP_PRODUCT_NAME } from '@/lib/app-config'
 
 const links = [
@@ -118,6 +119,10 @@ export function Nav() {
               {APP_PRODUCT_NAME}
             </p>
           </Link>
+
+          <div className="flex-1 flex justify-start pl-6">
+            <ProjectSwitcher />
+          </div>
 
           {/* Nav links + user menu */}
           <div className="flex items-center gap-1">

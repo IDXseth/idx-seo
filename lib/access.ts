@@ -47,15 +47,6 @@ export function readablePromptWhere(viewer: Viewer): Prisma.PromptWhereInput {
   return { batch: readableBatchWhere(viewer) }
 }
 
-// Prompt filter for the current request's viewer, for server-component data
-// functions to spread into their where clauses. Throws when nobody is signed in,
-// so a page that forgets its own auth check fails closed instead of open.
-export async function promptScope(): Promise<Prisma.PromptWhereInput> {
-  const viewer = await getViewer()
-  if (!viewer) throw new Error('Not signed in')
-  return readablePromptWhere(viewer)
-}
-
 // Batches a viewer can run, edit or delete — owner or super user, same rule as canWrite.
 export function writableBatchWhere(viewer: Viewer): Prisma.BatchWhereInput {
   return isSuperUser(viewer.email) ? {} : { userId: viewer.id }

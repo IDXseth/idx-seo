@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { inngest } from '@/lib/inngest'
 import { canWrite } from '@/lib/access'
+import { getActiveProject } from '@/lib/projects'
 
 export const maxDuration = 10
 
@@ -25,11 +26,14 @@ export async function POST(req: Request) {
     }
   }
 
+  // "Run all" (no batchId) covers the requester's own prompt sets in the active project.
+  const projectId = batchId ? undefined : (await getActiveProject())?.id
+
   // For re-runs, count ALL prompts in the batch; for first runs, count unrun only
   const isRerun = body.rerun === true
   const promptCount = await prisma.prompt.count({
     where: {
-      ...(batchId ? { batchId } : { batch: { userId: session.user.id } }),
+      ...(batchId ? { batchId } : { batch: { userId: session.user.id, ...(projectId ? { projectId } : {}) } }),
       ...(isRerun ? {} : { results: { none: {} } }),
     },
   })
@@ -61,7 +65,7 @@ export async function POST(req: Request) {
 
   await inngest.send({
     name: 'batch/run.requested',
-    data: { batchId, userId: session.user.id, batchRunId: batchRun.id, runSessionId: runSession.id, notifyEmail, isRerun },
+    data: { batchId, userId: session.user.id, projectId, batchRunId: batchRun.id, runSessionId: runSession.id, notifyEmail, isRerun },
   })
 
   return NextResponse.json({ batchRunId: batchRun.id, runSessionId: runSession.id, totalPrompts: promptCount })
