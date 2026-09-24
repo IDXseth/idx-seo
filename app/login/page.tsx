@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { signIn, useSession } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
+import { APP_LOGO_URL, APP_OWNER_NAME, APP_PRODUCT_NAME } from '@/lib/app-config'
 
 function LoginForm() {
   const searchParams = useSearchParams()
@@ -69,9 +70,13 @@ function LoginForm() {
       <div className="w-full max-w-md">
         {/* Logo / brand header */}
         <div className="flex flex-col items-center mb-8">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/sl-logo.png" alt="Senior Lifestyle" className="w-64 h-auto object-contain mb-3 rounded-xl p-4" style={{ backgroundColor: '#084c61' }} />
-          <p className="text-sm text-[#5a7a85] font-medium">AI Visibility Dashboard</p>
+          {APP_LOGO_URL ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={APP_LOGO_URL} alt={APP_OWNER_NAME} className="w-64 h-auto object-contain mb-3 rounded-xl p-4" style={{ backgroundColor: '#084c61' }} />
+          ) : (
+            <h1 className="text-2xl font-bold text-[#084c61] mb-2" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>{APP_OWNER_NAME}</h1>
+          )}
+          <p className="text-sm text-[#5a7a85] font-medium">{APP_PRODUCT_NAME}</p>
         </div>
 
         <div className="bg-white rounded-2xl border border-[#dde6ea] shadow-sm overflow-hidden">

@@ -19,6 +19,7 @@ import { getProjectList } from '@/lib/projects'
 import { getBrandSeries } from '@/lib/competitor-stats'
 import { promptScope, getViewer, canViewSiteHealth } from '@/lib/access'
 import { slugify } from '@/lib/utils'
+import { APP_DASHBOARD_TAGLINE } from '@/lib/app-config'
 import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink, Download, Users } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -612,7 +613,7 @@ export default async function DashboardPage({
       <div>
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Dashboard</h1>
-          <p className="text-[#5a7a85] mt-1 text-sm">AI mention and citation monitoring across your senior living portfolio</p>
+          <p className="text-[#5a7a85] mt-1 text-sm">{APP_DASHBOARD_TAGLINE}</p>
         </div>
         <EmptyDashboard />
       </div>
@@ -644,7 +645,7 @@ export default async function DashboardPage({
               ? `Showing data from ${new Date(currentSession.startedAt).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`
               : currentProject
               ? 'AI mention and citation monitoring for this project'
-              : 'AI mention and citation monitoring across your senior living portfolio'}
+              : APP_DASHBOARD_TAGLINE}
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">

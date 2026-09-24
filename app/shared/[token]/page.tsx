@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { PLATFORMS, PLATFORM_LABELS, formatPercent } from '@/lib/utils'
 import { BarChart3, Target, Quote, Layers } from 'lucide-react'
 import Link from 'next/link'
+import { APP_INITIALS, APP_OWNER_NAME, APP_PRODUCT_NAME, APP_TITLE } from '@/lib/app-config'
 
 export const dynamic = 'force-dynamic'
 
@@ -79,14 +80,14 @@ export default async function SharedBatchPage({ params }: Props) {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-white/15">
-              <span className="text-white font-bold text-sm tracking-tight select-none">SL</span>
+              <span className="text-white font-bold text-sm tracking-tight select-none">{APP_INITIALS}</span>
             </div>
             <div>
               <p className="text-sm font-bold text-white leading-none" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>
-                Senior Lifestyle
+                {APP_OWNER_NAME}
               </p>
               <p className="text-[11px] text-white/65 leading-none mt-0.5 font-medium tracking-wide">
-                AI Visibility Dashboard
+                {APP_PRODUCT_NAME}
               </p>
             </div>
           </div>
@@ -215,7 +216,7 @@ export default async function SharedBatchPage({ params }: Props) {
           <p className="text-xs text-[#8aadb8]">
             Powered by{' '}
             <Link href="/" className="text-[#177e89] hover:underline">
-              Senior Lifestyle AI Visibility Dashboard
+              {APP_TITLE}
             </Link>
           </p>
         </div>

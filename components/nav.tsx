@@ -7,6 +7,7 @@ import { useState, useRef, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { BarChart3, Upload, Play, Users, ChevronDown, LogOut, User } from 'lucide-react'
 import { GscSiteSelector } from './gsc-site-selector'
+import { APP_LOGO_URL, APP_OWNER_NAME, APP_PRODUCT_NAME } from '@/lib/app-config'
 
 const links = [
   { href: '/dashboard', label: 'Dashboard', icon: BarChart3 },
@@ -105,10 +106,16 @@ export function Nav() {
         <div className="flex h-16 items-center justify-between">
           {/* Brand */}
           <Link href="/dashboard" className="flex items-center gap-3 group">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/sl-logo.png" alt="Senior Lifestyle" className="h-9 w-auto object-contain flex-shrink-0" />
+            {APP_LOGO_URL ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={APP_LOGO_URL} alt={APP_OWNER_NAME} className="h-9 w-auto object-contain flex-shrink-0" />
+            ) : (
+              <span className="text-sm font-bold text-white leading-none" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>
+                {APP_OWNER_NAME}
+              </span>
+            )}
             <p className="text-[11px] text-white/65 leading-none font-medium tracking-wide">
-              AI Visibility Dashboard
+              {APP_PRODUCT_NAME}
             </p>
           </Link>
 

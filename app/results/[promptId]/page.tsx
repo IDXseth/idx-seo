@@ -149,7 +149,7 @@ export default async function ResultsDetailPage({
         <Info className="h-4 w-4 text-[#177e89] flex-shrink-0 mt-0.5" />
         <div className="text-sm text-[#084c61] leading-relaxed">
           <span className="font-semibold">AI Visibility Results — </span>
-          This report shows how each AI platform responded to the prompt below. For each platform we record whether Senior Lifestyle was <span className="font-semibold">mentioned</span> by name, whether a <span className="font-semibold">seniorlifestyle.com link was cited</span> in the response, the overall <span className="font-semibold">sentiment</span> of the response, and the source URLs involved — split into <span className="font-semibold">Citations</span> the platform explicitly referenced in its answer and sources <span className="font-semibold">also surfaced in search</span> that it retrieved but didn&apos;t directly cite.
+          This report shows how each AI platform responded to the prompt below. For each platform we record whether {YOUR_BRAND_NAME} was <span className="font-semibold">mentioned</span> by name, whether a <span className="font-semibold">{YOUR_BRAND_DOMAIN} link was cited</span> in the response, the overall <span className="font-semibold">sentiment</span> of the response, and the source URLs involved — split into <span className="font-semibold">Citations</span> the platform explicitly referenced in its answer and sources <span className="font-semibold">also surfaced in search</span> that it retrieved but didn&apos;t directly cite.
         </div>
       </div>
 
