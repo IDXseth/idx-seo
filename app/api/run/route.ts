@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { queryPlatform, PlatformResult } from '@/lib/ai-clients'
 import { PLATFORMS } from '@/lib/utils'
 import { sendRunCompleteEmail } from '@/lib/email'
+import { getViewer, writableBatchWhere } from '@/lib/access'
 import { getActiveCompetitors, matchCompetitors, saveCompetitorMentions, CompetitorInput } from '@/lib/competitors'
 
 export const maxDuration = 300
@@ -20,13 +21,16 @@ function withTimeout(promise: Promise<PlatformResult>): Promise<PlatformResult> 
   ])
 }
 
-// Returns unrun prompts for a batch (or all batches). Used by the client loop.
+// Returns unrun prompts for a batch (or all of the viewer's runnable batches). Used by the client loop.
 export async function GET(req: Request) {
+  const viewer = await getViewer()
+  if (!viewer) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
   const { searchParams } = new URL(req.url)
   const batchId = searchParams.get('batchId') ?? undefined
 
   const prompts = await prisma.prompt.findMany({
-    where: { ...(batchId ? { batchId } : {}), results: { none: {} } },
+    where: { ...(batchId ? { batchId } : {}), batch: writableBatchWhere(viewer), results: { none: {} } },
     select: {
       id: true,
       promptText: true,
@@ -40,6 +44,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const viewer = await getViewer()
+  if (!viewer) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
   const body = await req.json().catch(() => ({}))
   const batchId = body.batchId as string | undefined
   const notifyEmail = body.email as string | undefined
@@ -47,6 +54,7 @@ export async function POST(req: Request) {
   const prompts = await prisma.prompt.findMany({
     where: {
       ...(batchId ? { batchId } : {}),
+      batch: writableBatchWhere(viewer),
       results: { none: {} },
     },
     include: { batch: { select: { name: true, userId: true } } },

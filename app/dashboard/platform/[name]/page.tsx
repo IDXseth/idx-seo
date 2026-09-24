@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
+import { promptScope } from '@/lib/access'
 import { PLATFORM_LABELS, PLATFORM_COLORS } from '@/lib/utils'
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { SentimentBreakdown } from '@/components/sentiment-breakdown'
@@ -53,7 +54,7 @@ export default async function PlatformDrillDownPage({
       where: {
         platform: name,
         ...(sessionId ? { runSessionId: sessionId } : {}),
-        ...(promptType ? { prompt: { promptType } } : {}),
+        prompt: { ...(await promptScope()), ...(promptType ? { promptType } : {}) },
       },
       include: {
         prompt: {
@@ -68,7 +69,7 @@ export default async function PlatformDrillDownPage({
         },
         citations: { select: { id: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { runAt: 'desc' },
     })
   } catch {
     // DB not configured

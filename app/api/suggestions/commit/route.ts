@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeRow } from '@/lib/normalize'
+import { normalizeRow, toGenericFields } from '@/lib/normalize'
 
 interface CommitSuggestion {
   category?: string
@@ -73,7 +73,7 @@ export async function POST(req: Request) {
 
   if (uniqueRows.length > 0) {
     await prisma.prompt.createMany({
-      data: uniqueRows.map((r) => ({ batchId: batch.id, ...r })),
+      data: uniqueRows.map((r) => ({ batchId: batch.id, ...r, ...toGenericFields(r) })),
     })
   }
 

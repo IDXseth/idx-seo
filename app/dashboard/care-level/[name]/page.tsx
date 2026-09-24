@@ -7,6 +7,7 @@ import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
 import { getSessionList } from '@/lib/run-sessions'
 import { getProjectList } from '@/lib/projects'
+import { promptScope } from '@/lib/access'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +27,7 @@ async function getCareLevelData(
   const decodedName = decodeURIComponent(name)
   const resultsFilter = sessionId ? { where: { runSessionId: sessionId } } : {}
   const scopeFilter = {
+    ...(await promptScope()),
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(market ? { market } : {}),

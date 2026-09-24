@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { auth } from '@/lib/auth'
+import { getViewer, canReadBatch } from '@/lib/access'
 import { prisma } from '@/lib/prisma'
 import { PLATFORMS, PLATFORM_LABELS } from '@/lib/utils'
 import { ChevronLeft } from 'lucide-react'
@@ -24,10 +24,11 @@ async function getData(batchId: string) {
 }
 
 export default async function DataPage({ params }: { params: Promise<{ batchId: string }> }) {
-  const session = await auth()
-  if (!session?.user?.id) redirect('/login')
+  const viewer = await getViewer()
+  if (!viewer) redirect('/login')
 
   const { batchId } = await params
+  if (!(await canReadBatch(viewer, batchId))) notFound()
   const data = await getData(batchId)
   if (!data) notFound()
 

@@ -1,23 +1,31 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { PLATFORMS } from '@/lib/utils'
+import { getViewer, readablePromptWhere } from '@/lib/access'
 
 export async function GET() {
+  const viewer = await getViewer()
+  if (!viewer) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Every query below is limited to prompts in batches this viewer can read.
+  const pw = readablePromptWhere(viewer)
+  const rw = { prompt: pw }
+
   try {
     const [totalPrompts, totalResults, mentionedResults, citedResults] = await Promise.all([
-      prisma.prompt.count(),
-      prisma.result.count(),
-      prisma.result.count({ where: { isMentioned: true } }),
-      prisma.result.count({ where: { isCited: true } }),
+      prisma.prompt.count({ where: pw }),
+      prisma.result.count({ where: rw }),
+      prisma.result.count({ where: { ...rw, isMentioned: true } }),
+      prisma.result.count({ where: { ...rw, isCited: true } }),
     ])
 
     // Per-platform stats
     const platformStats = await Promise.all(
       PLATFORMS.map(async (platform) => {
         const [total, mentioned, cited] = await Promise.all([
-          prisma.result.count({ where: { platform } }),
-          prisma.result.count({ where: { platform, isMentioned: true } }),
-          prisma.result.count({ where: { platform, isCited: true } }),
+          prisma.result.count({ where: { ...rw, platform } }),
+          prisma.result.count({ where: { ...rw, platform, isMentioned: true } }),
+          prisma.result.count({ where: { ...rw, platform, isCited: true } }),
         ])
         return {
           platform,
@@ -33,13 +41,14 @@ export async function GET() {
     // Per-community stats
     const communities = await prisma.prompt.groupBy({
       by: ['communityName', 'city'],
+      where: pw,
       _count: { id: true },
     })
 
     const communityStats = await Promise.all(
       communities.map(async (c) => {
         const results = await prisma.result.findMany({
-          where: { prompt: { communityName: c.communityName } },
+          where: { prompt: { ...pw, communityName: c.communityName } },
           select: { isMentioned: true, isCited: true },
         })
         const total = results.length
@@ -58,13 +67,14 @@ export async function GET() {
     // Per-category stats
     const categories = await prisma.prompt.groupBy({
       by: ['category'],
+      where: pw,
       _count: { id: true },
     })
 
     const categoryStats = await Promise.all(
       categories.map(async (c) => {
         const results = await prisma.result.findMany({
-          where: { prompt: { category: c.category } },
+          where: { prompt: { ...pw, category: c.category } },
           select: { isMentioned: true, isCited: true },
         })
         const total = results.length
@@ -82,13 +92,14 @@ export async function GET() {
     // Per-levelOfCare stats
     const careLevels = await prisma.prompt.groupBy({
       by: ['levelOfCare'],
+      where: pw,
       _count: { id: true },
     })
 
     const careLevelStats = await Promise.all(
       careLevels.map(async (c) => {
         const results = await prisma.result.findMany({
-          where: { prompt: { levelOfCare: c.levelOfCare } },
+          where: { prompt: { ...pw, levelOfCare: c.levelOfCare } },
           select: { isMentioned: true, isCited: true },
         })
         const total = results.length
@@ -106,13 +117,14 @@ export async function GET() {
     // Per-market stats
     const markets = await prisma.prompt.groupBy({
       by: ['market'],
+      where: pw,
       _count: { id: true },
     })
 
     const marketStats = await Promise.all(
       markets.map(async (m) => {
         const results = await prisma.result.findMany({
-          where: { prompt: { market: m.market } },
+          where: { prompt: { ...pw, market: m.market } },
           select: { isMentioned: true, isCited: true },
         })
         const total = results.length

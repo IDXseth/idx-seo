@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { inngest } from '@/lib/inngest'
+import { canWrite } from '@/lib/access'
 
 export const maxDuration = 10
 
@@ -16,6 +17,13 @@ export async function POST(req: Request) {
   const notifyEmail = body.email as string | undefined
   const triggeredBy = (body.triggeredBy as string | undefined) ?? 'manual'
   const scheduleId = body.scheduleId as string | undefined
+
+  if (batchId) {
+    const batch = await prisma.batch.findUnique({ where: { id: batchId }, select: { userId: true } })
+    if (!batch || !canWrite(session.user.id, session.user.email, batch.userId)) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+  }
 
   // For re-runs, count ALL prompts in the batch; for first runs, count unrun only
   const isRerun = body.rerun === true
@@ -53,7 +61,7 @@ export async function POST(req: Request) {
 
   await inngest.send({
     name: 'batch/run.requested',
-    data: { batchId, batchRunId: batchRun.id, runSessionId: runSession.id, notifyEmail, isRerun },
+    data: { batchId, userId: session.user.id, batchRunId: batchRun.id, runSessionId: runSession.id, notifyEmail, isRerun },
   })
 
   return NextResponse.json({ batchRunId: batchRun.id, runSessionId: runSession.id, totalPrompts: promptCount })

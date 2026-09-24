@@ -1,11 +1,14 @@
-import { auth } from '@/lib/auth'
+import { getViewer, canViewSiteHealth } from '@/lib/access'
 import { refreshGscCache, refreshGscQueryCache, crawlCommunityPages } from '@/lib/gsc'
 import { NextResponse } from 'next/server'
 
 export async function POST() {
-  const session = await auth()
-  if (!session?.user) {
+  const viewer = await getViewer()
+  if (!viewer) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  if (!(await canViewSiteHealth(viewer))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
   const result = await refreshGscCache()
   if (result.error) {

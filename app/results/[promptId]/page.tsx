@@ -1,7 +1,8 @@
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getViewer, readablePromptWhere } from '@/lib/access'
 import { Badge } from '@/components/ui/badge'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PLATFORM_LABELS, PLATFORM_COLORS, YOUR_BRAND_NAME, YOUR_BRAND_DOMAIN } from '@/lib/utils'
@@ -77,6 +78,13 @@ export default async function ResultsDetailPage({
   searchParams: Promise<{ session?: string }>
 }) {
   const [{ promptId }, { session: sessionParam }] = await Promise.all([params, searchParams])
+
+  const viewer = await getViewer().catch(() => null)
+  if (!viewer) redirect(`/login?callbackUrl=/results/${promptId}`)
+  const canRead = await prisma.prompt
+    .count({ where: { id: promptId, ...readablePromptWhere(viewer) } })
+    .catch(() => 0)
+  if (!canRead) notFound()
 
   let sessions: SessionOption[] = []
   try { sessions = await getSessionsForPrompt(promptId) } catch { /* DB not configured */ }

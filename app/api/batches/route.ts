@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { canWrite } from '@/lib/access'
+import { canWrite, readableBatchWhere } from '@/lib/access'
 
 export async function GET() {
   try {
@@ -13,7 +13,7 @@ export async function GET() {
     const { id: currentUserId, email: currentUserEmail } = session.user
 
     const batches = await prisma.batch.findMany({
-      where: {},
+      where: readableBatchWhere({ id: currentUserId, email: currentUserEmail?.toLowerCase() ?? null }),
       orderBy: { createdAt: 'desc' },
       include: {
         _count: { select: { prompts: true } },

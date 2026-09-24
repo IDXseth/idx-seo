@@ -7,6 +7,7 @@ import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
 import { getSessionList } from '@/lib/run-sessions'
 import { getProjectList } from '@/lib/projects'
+import { promptScope } from '@/lib/access'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,6 +15,7 @@ async function getMarketData(name: string, sessionId?: string, promptType?: stri
   const decodedName = decodeURIComponent(name)
   const resultsFilter = sessionId ? { where: { runSessionId: sessionId } } : {}
   const scopeFilter = {
+    ...(await promptScope()),
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
@@ -81,7 +83,7 @@ async function getMarketData(name: string, sessionId?: string, promptType?: stri
 // grid below always shows every level side by side.
 async function getMarketCareLevelBreakdown(name: string, sessionId?: string, promptType?: string, projectId?: string) {
   const decodedName = decodeURIComponent(name)
-  const scopeFilter = { ...(promptType ? { promptType } : {}), ...(projectId ? { batchId: projectId } : {}) }
+  const scopeFilter = { ...(await promptScope()), ...(promptType ? { promptType } : {}), ...(projectId ? { batchId: projectId } : {}) }
   const where = { market: decodedName, ...scopeFilter }
 
   const groups = await prisma.prompt.groupBy({ by: ['levelOfCare'], where, _count: { id: true } })

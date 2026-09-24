@@ -7,6 +7,7 @@ import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
 import { getSessionList } from '@/lib/run-sessions'
 import { getProjectList } from '@/lib/projects'
+import { promptScope } from '@/lib/access'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,6 +15,7 @@ async function getCommunityData(id: string, sessionId?: string, promptType?: str
   const decodedId = decodeURIComponent(id)
   const resultsFilter = sessionId ? { where: { runSessionId: sessionId } } : {}
   const scopeFilter = {
+    ...(await promptScope()),
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
@@ -27,7 +29,7 @@ async function getCommunityData(id: string, sessionId?: string, promptType?: str
   // in that other community's mentions/citations.
   const allCommunities = await prisma.prompt.groupBy({
     by: ['communityName'],
-    where: { communityName: { not: '' } },
+    where: { communityName: { not: '' }, ...(await promptScope()) },
   })
   const matched = allCommunities.find((c) => slugify(c.communityName) === decodedId)
   if (!matched) return null
@@ -79,7 +81,7 @@ async function getCommunityData(id: string, sessionId?: string, promptType?: str
 // grid below always shows every level side by side. Takes the already-resolved exact
 // communityName (see getCommunityData's slug matching) rather than re-resolving it.
 async function getCommunityCareLevelBreakdown(communityName: string, sessionId?: string, promptType?: string, projectId?: string) {
-  const scopeFilter = { ...(promptType ? { promptType } : {}), ...(projectId ? { batchId: projectId } : {}) }
+  const scopeFilter = { ...(await promptScope()), ...(promptType ? { promptType } : {}), ...(projectId ? { batchId: projectId } : {}) }
   const where = { communityName, ...scopeFilter }
 
   const groups = await prisma.prompt.groupBy({ by: ['levelOfCare'], where, _count: { id: true } })

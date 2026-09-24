@@ -9,6 +9,7 @@ import { getSegmentTrendData } from '@/lib/segment-trend'
 import { getCompetitorLeaderboard, getBrandSeries, getBrandTrendSeries, CompetitorLeaderboardEntry, BrandComparison, BrandTrendSeries } from '@/lib/competitor-stats'
 import { getSessionList } from '@/lib/run-sessions'
 import { getProjectList } from '@/lib/projects'
+import { promptScope } from '@/lib/access'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,6 +17,7 @@ async function getCategoryData(name: string, sessionId?: string, promptType?: st
   const decodedName = decodeURIComponent(name)
   const resultsFilter = sessionId ? { where: { runSessionId: sessionId } } : {}
   const scopeFilter = {
+    ...(await promptScope()),
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
@@ -78,7 +80,7 @@ async function getCategoryData(name: string, sessionId?: string, promptType?: st
 // grid below always shows every level side by side.
 async function getCategoryCareLevelBreakdown(name: string, sessionId?: string, promptType?: string, projectId?: string) {
   const decodedName = decodeURIComponent(name)
-  const scopeFilter = { ...(promptType ? { promptType } : {}), ...(projectId ? { batchId: projectId } : {}) }
+  const scopeFilter = { ...(await promptScope()), ...(promptType ? { promptType } : {}), ...(projectId ? { batchId: projectId } : {}) }
   const where = { category: decodedName, ...scopeFilter }
 
   const groups = await prisma.prompt.groupBy({ by: ['levelOfCare'], where, _count: { id: true } })

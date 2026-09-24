@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { canViewSiteHealth } from '@/lib/access'
 import { generatePromptSuggestions } from '@/lib/prompt-suggestions'
 
 export const maxDuration = 60
@@ -24,6 +25,7 @@ export async function POST(req: Request) {
 
     const result = await generatePromptSuggestions({
       userId: session.user.id,
+      useGscQueries: await canViewSiteHealth({ id: session.user.id, email: session.user.email?.toLowerCase() ?? null }),
       communityName: String(communityName).trim(),
       city: String(city).trim(),
       market: String(market).trim(),

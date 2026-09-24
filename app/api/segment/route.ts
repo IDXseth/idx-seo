@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { PLATFORMS } from '@/lib/utils'
+import { getViewer, readablePromptWhere } from '@/lib/access'
 
 export async function GET(req: Request) {
+  const viewer = await getViewer()
+  if (!viewer) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const { searchParams } = new URL(req.url)
   const type = searchParams.get('type') // community | category | careLevel | market
   const value = searchParams.get('value')
@@ -24,7 +28,7 @@ export async function GET(req: Request) {
     }
 
     const prompts = await prisma.prompt.findMany({
-      where: whereClause,
+      where: { AND: [whereClause, readablePromptWhere(viewer)] },
       include: {
         results: {
           include: { citations: true },

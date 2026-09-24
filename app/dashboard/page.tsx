@@ -17,23 +17,25 @@ import { getGscMetrics, getPageCrawlResults } from '@/lib/gsc'
 import { getSessionList } from '@/lib/run-sessions'
 import { getProjectList } from '@/lib/projects'
 import { getBrandSeries } from '@/lib/competitor-stats'
+import { promptScope, getViewer, canViewSiteHealth } from '@/lib/access'
 import { slugify } from '@/lib/utils'
 import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink, Download, Users } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
 async function getTrendData(promptType?: string, projectId?: string, careLevel?: string): Promise<TrendPoint[]> {
+  const scope = await promptScope()
   const promptFilter = {
+    ...scope,
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
   }
-  const hasPromptFilter = Object.keys(promptFilter).length > 0
 
   const sessions = await prisma.runSession.findMany({
     where: {
       status: 'done',
-      results: projectId ? { some: { prompt: { batchId: projectId } } } : { some: {} },
+      results: { some: { prompt: projectId ? { ...scope, batchId: projectId } : scope } },
     },
     orderBy: { startedAt: 'asc' },
     select: {
@@ -41,7 +43,7 @@ async function getTrendData(promptType?: string, projectId?: string, careLevel?:
       startedAt: true,
       triggeredBy: true,
       results: {
-        where: hasPromptFilter ? { prompt: promptFilter } : undefined,
+        where: { prompt: promptFilter },
         select: { platform: true, isMentioned: true, isCited: true, sentiment: true },
       },
     },
@@ -85,7 +87,9 @@ async function getDashboardData(sessionId?: string, promptType?: string, project
   // One canonical prompt per unique promptText (first created wins) — prevents cross-batch
   // double-counting. Scoped to a single project's own prompts when one is selected, since
   // there's no cross-batch collision to worry about within one project.
+  const scope = await promptScope()
   const canonicalWhere = {
+    ...scope,
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
@@ -93,7 +97,7 @@ async function getDashboardData(sessionId?: string, promptType?: string, project
   const canonicalRows = await prisma.prompt.findMany({
     distinct: ['promptText'],
     orderBy: { createdAt: 'asc' },
-    where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
+    where: canonicalWhere,
     select: { id: true },
   })
   const canonicalIds = canonicalRows.map((r) => r.id)
@@ -241,13 +245,15 @@ async function getDashboardData(sessionId?: string, promptType?: string, project
 // (if any) is currently selected — so the picker always offers the full set rather
 // than collapsing to just the one already chosen.
 async function getCareLevelOptions(promptType?: string, projectId?: string): Promise<string[]> {
+  const scope = await promptScope()
   const where = {
+    ...scope,
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
   }
   const groups = await prisma.prompt.groupBy({
     by: ['levelOfCare'],
-    where: Object.keys(where).length > 0 ? where : undefined,
+    where: where,
   })
   return groups.map((g) => g.levelOfCare).filter(Boolean).sort()
 }
@@ -259,7 +265,9 @@ async function getCareLevelOptions(promptType?: string, projectId?: string): Pro
 // per-citation URLs (only isCited), so topCitationUrls is always empty here.
 
 async function getCompetitorOptions(promptType?: string, projectId?: string, careLevel?: string): Promise<{ id: string; brandName: string }[]> {
+  const scope = await promptScope()
   const canonicalWhere = {
+    ...scope,
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
@@ -267,7 +275,7 @@ async function getCompetitorOptions(promptType?: string, projectId?: string, car
   const canonicalIds = (
     await prisma.prompt.findMany({
       distinct: ['promptText'],
-      where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
+      where: canonicalWhere,
       select: { id: true },
     })
   ).map((r) => r.id)
@@ -282,7 +290,9 @@ async function getCompetitorOptions(promptType?: string, projectId?: string, car
 }
 
 async function getCompetitorDashboardData(competitorId: string, sessionId?: string, promptType?: string, projectId?: string, careLevel?: string) {
+  const scope = await promptScope()
   const canonicalWhere = {
+    ...scope,
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
@@ -290,7 +300,7 @@ async function getCompetitorDashboardData(competitorId: string, sessionId?: stri
   const canonicalRows = await prisma.prompt.findMany({
     distinct: ['promptText'],
     orderBy: { createdAt: 'asc' },
-    where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
+    where: canonicalWhere,
     select: { id: true, communityName: true, city: true, category: true, levelOfCare: true, market: true },
   })
   const canonicalIds = canonicalRows.map((r) => r.id)
@@ -394,17 +404,18 @@ async function getCompetitorDashboardData(competitorId: string, sessionId?: stri
 }
 
 async function getCompetitorTrendData(competitorId: string, promptType?: string, projectId?: string, careLevel?: string): Promise<TrendPoint[]> {
+  const scope = await promptScope()
   const promptFilter = {
+    ...scope,
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
   }
-  const hasPromptFilter = Object.keys(promptFilter).length > 0
 
   const sessions = await prisma.runSession.findMany({
     where: {
       status: 'done',
-      results: projectId ? { some: { prompt: { batchId: projectId } } } : { some: {} },
+      results: { some: { prompt: projectId ? { ...scope, batchId: projectId } : scope } },
     },
     orderBy: { startedAt: 'asc' },
     select: {
@@ -412,7 +423,7 @@ async function getCompetitorTrendData(competitorId: string, promptType?: string,
       startedAt: true,
       triggeredBy: true,
       results: {
-        where: hasPromptFilter ? { prompt: promptFilter } : undefined,
+        where: { prompt: promptFilter },
         select: {
           platform: true,
           competitorMentions: { where: { competitorId }, select: { isMentioned: true, isCited: true, sentiment: true } },
@@ -462,7 +473,9 @@ async function getCompetitorTrendData(competitorId: string, promptType?: string,
 // getBrandSeries directly instead. See lib/competitor-stats.ts.
 
 async function getBrandComparisonData(sessionId?: string, promptType?: string, projectId?: string, careLevel?: string) {
+  const scope = await promptScope()
   const canonicalWhere = {
+    ...scope,
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
@@ -470,7 +483,7 @@ async function getBrandComparisonData(sessionId?: string, promptType?: string, p
   const canonicalIds = (
     await prisma.prompt.findMany({
       distinct: ['promptText'],
-      where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
+      where: canonicalWhere,
       select: { id: true },
     })
   ).map((r) => r.id)
@@ -484,7 +497,9 @@ async function getBrandComparisonData(sessionId?: string, promptType?: string, p
 // ─── Sentiment breakdown ────────────────────────────────────────────────────
 
 async function getSentimentRows(sessionId?: string, promptType?: string, projectId?: string, careLevel?: string): Promise<{ sentiment: string; isMentioned: boolean }[]> {
+  const scope = await promptScope()
   const canonicalWhere = {
+    ...scope,
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
@@ -492,7 +507,7 @@ async function getSentimentRows(sessionId?: string, promptType?: string, project
   const canonicalIds = (
     await prisma.prompt.findMany({
       distinct: ['promptText'],
-      where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
+      where: canonicalWhere,
       select: { id: true },
     })
   ).map((r) => r.id)
@@ -509,7 +524,9 @@ async function getSentimentRows(sessionId?: string, promptType?: string, project
 }
 
 async function getCompetitorSentimentRows(competitorId: string, sessionId?: string, promptType?: string, projectId?: string, careLevel?: string): Promise<{ sentiment: string; isMentioned: boolean }[]> {
+  const scope = await promptScope()
   const canonicalWhere = {
+    ...scope,
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
@@ -517,7 +534,7 @@ async function getCompetitorSentimentRows(competitorId: string, sessionId?: stri
   const canonicalIds = (
     await prisma.prompt.findMany({
       distinct: ['promptText'],
-      where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
+      where: canonicalWhere,
       select: { id: true },
     })
   ).map((r) => r.id)
@@ -576,7 +593,9 @@ export default async function DashboardPage({
   }
   // Optimization Priority is about your own site's schema/indexing health,
   // not mention data — always your own brand's, regardless of the "Viewing" picker.
-  if (data && !competitorId) {
+  // The GSC/sitemap data is one brand's private dataset until it moves onto Project.
+  const viewer = await getViewer().catch(() => null)
+  if (data && !competitorId && viewer && (await canViewSiteHealth(viewer).catch(() => false))) {
     try {
       const [gscMetrics, crawlResults] = await Promise.all([
         getGscMetrics().catch(() => undefined),

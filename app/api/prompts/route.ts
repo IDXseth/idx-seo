@@ -1,23 +1,19 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { canWrite } from '@/lib/access'
+import { canWrite, canReadBatch, getViewer } from '@/lib/access'
+import { toGenericFields } from '@/lib/normalize'
 
 // GET /api/prompts?batchId=X — list prompts for a batch
 export async function GET(req: Request) {
-  const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const viewer = await getViewer()
+  if (!viewer) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
   const batchId = searchParams.get('batchId')
   if (!batchId) return NextResponse.json({ error: 'batchId required' }, { status: 400 })
 
-  const batch = await prisma.batch.findUnique({
-    where: { id: batchId },
-    select: { id: true },
-  })
-
-  if (!batch) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!(await canReadBatch(viewer, batchId))) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const prompts = await prisma.prompt.findMany({
     where: { batchId },
@@ -63,16 +59,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  const legacy = {
+    communityName: communityName.trim(),
+    city: city.trim(),
+    market: market.trim(),
+    levelOfCare,
+  }
   const prompt = await prisma.prompt.create({
     data: {
       batchId,
       promptText: promptText.trim(),
-      communityName: communityName.trim(),
       promptType,
       category: category.trim(),
-      city: city.trim(),
-      market: market.trim(),
-      levelOfCare,
+      ...legacy,
+      ...toGenericFields(legacy),
     },
   })
 

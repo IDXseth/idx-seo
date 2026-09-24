@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { PLATFORM_LABELS } from '@/lib/utils'
-import { auth } from '@/lib/auth'
+import { getViewer, readableBatchWhere, readablePromptWhere, type Viewer } from '@/lib/access'
 import * as xlsx from 'xlsx'
 
 export const dynamic = 'force-dynamic'
@@ -21,7 +21,7 @@ function sanitizeSheetName(name: string, used: Set<string>): string {
 }
 
 // Exports one run session's results (mentions/citations/sentiment per prompt).
-async function exportSessionResults(sessionId: string) {
+async function exportSessionResults(viewer: Viewer, sessionId: string) {
   const runSession = await prisma.runSession.findUnique({
     where: { id: sessionId },
     select: { id: true, startedAt: true },
@@ -29,7 +29,7 @@ async function exportSessionResults(sessionId: string) {
   if (!runSession) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
 
   const results = await prisma.result.findMany({
-    where: { runSessionId: sessionId },
+    where: { runSessionId: sessionId, prompt: readablePromptWhere(viewer) },
     include: { prompt: true, citations: true },
     orderBy: [{ prompt: { communityName: 'asc' } }, { prompt: { city: 'asc' } }, { platform: 'asc' }],
   })
@@ -75,14 +75,9 @@ async function exportSessionResults(sessionId: string) {
 }
 
 // Exports every project's (batch's) prompt list, one sheet per project.
-async function exportAllPrompts(userId: string, userEmail?: string | null) {
+async function exportAllPrompts(viewer: Viewer) {
   const batches = await prisma.batch.findMany({
-    where: {
-      OR: [
-        { userId },
-        ...(userEmail ? [{ shares: { some: { email: userEmail } } }] : []),
-      ],
-    },
+    where: readableBatchWhere(viewer),
     orderBy: { createdAt: 'desc' },
     include: {
       prompts: { orderBy: { createdAt: 'asc' } },
@@ -136,13 +131,13 @@ async function exportAllPrompts(userId: string, userEmail?: string | null) {
 }
 
 export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const viewer = await getViewer()
+  if (!viewer) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
     const sessionId = req.nextUrl.searchParams.get('session')
-    if (sessionId) return await exportSessionResults(sessionId)
-    return await exportAllPrompts(session.user.id, session.user.email)
+    if (sessionId) return await exportSessionResults(viewer, sessionId)
+    return await exportAllPrompts(viewer)
   } catch (error) {
     console.error('Export error:', error)
     return NextResponse.json({ error: 'Failed to export' }, { status: 500 })

@@ -49,8 +49,9 @@ function computeNextRunAt(schedule: {
 export const batchFanOut = inngest.createFunction(
   { id: 'batch-fan-out', triggers: [{ event: 'batch/run.requested' }] },
   async ({ event, step }) => {
-    const { batchId, batchRunId, runSessionId, isRerun } = event.data as {
+    const { batchId, userId, batchRunId, runSessionId, isRerun } = event.data as {
       batchId?: string
+      userId?: string  // set for "run all" (no batchId): only that user's batches
       batchRunId: string
       runSessionId: string
       isRerun?: boolean
@@ -60,7 +61,9 @@ export const batchFanOut = inngest.createFunction(
     const prompts = await step.run('fetch-prompts', async () => {
       return prisma.prompt.findMany({
         where: {
-          ...(batchId ? { batchId } : {}),
+          // Same scope /api/run/queue counted: one batch, or all of the requester's batches.
+          // Never every prompt in the database — an event with neither runs nothing.
+          ...(batchId ? { batchId } : { batch: { userId: userId ?? '' } }),
           // For re-runs include all; for first runs only unrun ones
           ...(isRerun ? {} : { results: { none: {} } }),
         },

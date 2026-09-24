@@ -29,6 +29,8 @@ const CLAUDE_TIMEOUT_MS = 45_000
 
 export interface SuggestionInput {
   userId: string
+  // The GSC query cache is one brand's private search data — only ground on it for viewers allowed to see it.
+  useGscQueries: boolean
   communityName: string
   city: string
   market: string
@@ -57,7 +59,7 @@ export async function generatePromptSuggestions(input: SuggestionInput): Promise
   const activeCategories = categories.length > 0 ? categories : [...SUGGESTION_CATEGORIES]
 
   const [topQueries, competitors] = await Promise.all([
-    getTopGscQueries(40).catch(() => []),
+    input.useGscQueries ? getTopGscQueries(40).catch(() => []) : Promise.resolve([] as string[]),
     getActiveCompetitors(input.userId),
   ])
   const competitorDomains = competitors.map((c) => c.domain)

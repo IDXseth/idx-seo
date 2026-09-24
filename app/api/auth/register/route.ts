@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
+import { isSuperUser } from '@/lib/access'
 
 export async function POST(req: Request) {
   try {
@@ -8,6 +9,12 @@ export async function POST(req: Request) {
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
+    }
+
+    // Super-user access is granted by email domain, and password sign-up never
+    // verifies the address — those accounts must come through Google sign-in.
+    if (isSuperUser(email)) {
+      return NextResponse.json({ error: 'Please sign in with Google to use this email address' }, { status: 403 })
     }
 
     if (password.length < 6) {
