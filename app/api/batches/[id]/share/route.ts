@@ -82,7 +82,7 @@ export async function POST(
       })
       sendShareInviteEmail({
         to: normalizedEmail,
-        batchName: batchWithToken?.name ?? 'AI Visibility Project',
+        batchName: batchWithToken?.name ?? 'AI Visibility Prompt Set',
         invitedByName: session.user.name,
         invitedByEmail: session.user.email,
         shareToken: batchWithToken?.shareToken,
@@ -91,8 +91,8 @@ export async function POST(
 
     return NextResponse.json(share)
   } catch (error) {
-    console.error('Share project error:', error)
-    return NextResponse.json({ error: 'Failed to share project' }, { status: 500 })
+    console.error('Share prompt set error:', error)
+    return NextResponse.json({ error: 'Failed to share prompt set' }, { status: 500 })
   }
 }
 

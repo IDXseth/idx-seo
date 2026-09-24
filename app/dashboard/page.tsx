@@ -7,7 +7,7 @@ import { BrandScorecards } from '@/components/brand-scorecards'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
-import { ProjectPicker } from '@/components/project-picker'
+import { PromptSetPicker } from '@/components/prompt-set-picker'
 import { CareLevelPicker } from '@/components/care-level-picker'
 import { CompetitorViewPicker } from '@/components/competitor-view-picker'
 import { OptimizationPriorityTable } from '@/components/optimization-priority-table'
@@ -15,7 +15,7 @@ import { SentimentBreakdown } from '@/components/sentiment-breakdown'
 import { getSitemapAnalysis, SitemapAnalysis } from '@/lib/sitemap'
 import { getGscMetrics, getPageCrawlResults } from '@/lib/gsc'
 import { getSessionList } from '@/lib/run-sessions'
-import { getProjectList } from '@/lib/projects'
+import { getPromptSetList } from '@/lib/prompt-sets'
 import { getBrandSeries } from '@/lib/competitor-stats'
 import { promptScope, getViewer, canViewSiteHealth } from '@/lib/access'
 import { slugify } from '@/lib/utils'
@@ -566,14 +566,14 @@ export default async function DashboardPage({
   let data: Awaited<ReturnType<typeof getDashboardData>> | null = null
   let trendData: TrendPoint[] = []
   let sessions: SessionOption[] = []
-  let projects: Awaited<ReturnType<typeof getProjectList>> = []
+  let promptSets: Awaited<ReturnType<typeof getPromptSetList>> = []
   let competitorOptions: Awaited<ReturnType<typeof getCompetitorOptions>> = []
   let brandComparison: Awaited<ReturnType<typeof getBrandComparisonData>> | null = null
   let sitemapAnalysis: SitemapAnalysis | null = null
   let sentimentRows: { sentiment: string; isMentioned: boolean }[] = []
   let careLevelOptions: string[] = []
   try {
-    ;[data, trendData, sessions, projects, competitorOptions, brandComparison, sentimentRows, careLevelOptions] = await Promise.all([
+    ;[data, trendData, sessions, promptSets, competitorOptions, brandComparison, sentimentRows, careLevelOptions] = await Promise.all([
       competitorId
         ? getCompetitorDashboardData(competitorId, sessionId, promptType, projectId, careLevel)
         : getDashboardData(sessionId, promptType, projectId, careLevel),
@@ -581,7 +581,7 @@ export default async function DashboardPage({
         ? getCompetitorTrendData(competitorId, promptType, projectId, careLevel)
         : getTrendData(promptType, projectId, careLevel),
       getSessionList(projectId),
-      getProjectList(),
+      getPromptSetList(),
       getCompetitorOptions(promptType, projectId, careLevel).catch(() => []),
       getBrandComparisonData(sessionId, promptType, projectId, careLevel).catch(() => null),
       competitorId
@@ -621,7 +621,7 @@ export default async function DashboardPage({
   }
 
   const currentSession = sessions.find((s) => s.id === sessionId)
-  const currentProject = projects.find((p) => p.id === projectId)
+  const currentPromptSet = promptSets.find((p) => p.id === projectId)
   const currentCompetitor = competitorOptions.find((c) => c.id === competitorId)
   const exportSessionId = !competitorId ? sessionId ?? (sessions.length === 1 ? sessions[0]?.id : undefined) : undefined
 
@@ -638,18 +638,18 @@ export default async function DashboardPage({
       <div className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>
-            {currentProject ? currentProject.name : 'Dashboard'}
+            {currentPromptSet ? currentPromptSet.name : 'Dashboard'}
           </h1>
           <p className="text-[#5a7a85] mt-1 text-sm">
             {currentSession
               ? `Showing data from ${new Date(currentSession.startedAt).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`
-              : currentProject
-              ? 'AI mention and citation monitoring for this project'
+              : currentPromptSet
+              ? 'AI mention and citation monitoring for this prompt set'
               : APP_DASHBOARD_TAGLINE}
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <ProjectPicker projects={projects} currentProjectId={projectId} promptType={promptType} />
+          <PromptSetPicker promptSets={promptSets} currentSetId={projectId} promptType={promptType} />
           <PromptTypeToggle value={promptTypeParam} basePath="/dashboard" sessionId={sessionId} projectId={projectId} />
           <RunSessionPicker sessions={sessions} currentSessionId={sessionId} projectId={projectId} promptType={promptType} />
           <CompetitorViewPicker

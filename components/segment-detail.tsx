@@ -8,7 +8,7 @@ import { BrandScorecards } from '@/components/brand-scorecards'
 import { BrandTrendChart } from '@/components/brand-trend-chart'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
-import { ProjectPicker, ProjectOption } from '@/components/project-picker'
+import { PromptSetPicker, PromptSetOption } from '@/components/prompt-set-picker'
 import { CareLevelPicker } from '@/components/care-level-picker'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { SentimentBreakdown } from '@/components/sentiment-breakdown'
@@ -92,7 +92,7 @@ interface SegmentDetailProps {
   brandTrend?: BrandTrendSeries[]
   promptTypeFilter?: PromptTypeFilter
   projectId?: string
-  projects?: ProjectOption[]
+  promptSets?: PromptSetOption[]
   careLevel?: string
   careLevels?: string[]
   careLevelBreakdown?: Array<{ levelOfCare: string; promptCount: number; mentionRate: number; citationRate: number }>
@@ -121,7 +121,7 @@ export function SegmentDetail({
   brandTrend,
   promptTypeFilter = 'all',
   projectId,
-  projects,
+  promptSets,
   careLevel,
   careLevels,
   careLevelBreakdown,
@@ -170,10 +170,10 @@ export function SegmentDetail({
           )}
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          {projects && (
-            <ProjectPicker
-              projects={projects}
-              currentProjectId={projectId}
+          {promptSets && (
+            <PromptSetPicker
+              promptSets={promptSets}
+              currentSetId={projectId}
               basePath={basePath ?? '/dashboard'}
               promptType={promptTypeFilter === 'all' ? undefined : promptTypeFilter}
             />

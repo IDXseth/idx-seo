@@ -441,7 +441,7 @@ function ShareModal({
       : null
 
   useEffect(() => {
-    fetch(`/api/projects/${batch.id}/share`)
+    fetch(`/api/batches/${batch.id}/share`)
       .then((r) => r.json())
       .then((data) => { if (Array.isArray(data)) setShares(data) })
       .catch(() => {})
@@ -453,7 +453,7 @@ function ShareModal({
     if (!inviteEmail.includes('@')) { setInviteError('Please enter a valid email address'); return }
     setInviting(true)
     try {
-      const res = await fetch(`/api/projects/${batch.id}/share`, {
+      const res = await fetch(`/api/batches/${batch.id}/share`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: inviteEmail.trim().toLowerCase() }),
@@ -468,7 +468,7 @@ function ShareModal({
 
   const handleRevoke = async (email: string) => {
     try {
-      await fetch(`/api/projects/${batch.id}/share`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) })
+      await fetch(`/api/batches/${batch.id}/share`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) })
       setShares((prev) => prev.filter((s) => s.email !== email))
     } catch {}
   }
@@ -477,10 +477,10 @@ function ShareModal({
     setTogglingLink(true)
     try {
       if (shareToken) {
-        const res = await fetch(`/api/projects/${batch.id}/share-link`, { method: 'DELETE' })
+        const res = await fetch(`/api/batches/${batch.id}/share-link`, { method: 'DELETE' })
         if (res.ok) { setShareToken(null); onShareTokenChange(batch.id, null) }
       } else {
-        const res = await fetch(`/api/projects/${batch.id}/share-link`, { method: 'POST' })
+        const res = await fetch(`/api/batches/${batch.id}/share-link`, { method: 'POST' })
         const data = await res.json()
         if (data.shareToken) { setShareToken(data.shareToken); onShareTokenChange(batch.id, data.shareToken) }
       }
@@ -493,7 +493,7 @@ function ShareModal({
       <div className="relative w-full max-w-md bg-white rounded-2xl border border-[#dde6ea] shadow-xl overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#dde6ea]">
           <div>
-            <h2 className="font-semibold text-[#084c61]">Share Project</h2>
+            <h2 className="font-semibold text-[#084c61]">Share Prompt Set</h2>
             <p className="text-xs text-[#5a7a85] mt-0.5 truncate max-w-xs">{batch.name}</p>
           </div>
           <button onClick={onClose} className="text-[#8aadb8] hover:text-[#084c61] transition-colors"><X className="h-5 w-5" /></button>
@@ -532,7 +532,7 @@ function ShareModal({
             <div className="flex items-center justify-between bg-[#f5f8fa] rounded-lg px-4 py-3">
               <div>
                 <p className="text-sm text-[#084c61] font-medium">{shareToken ? 'Link sharing enabled' : 'Link sharing disabled'}</p>
-                <p className="text-xs text-[#8aadb8] mt-0.5">{shareToken ? 'Anyone with the link can view this project' : 'Enable to share with anyone'}</p>
+                <p className="text-xs text-[#8aadb8] mt-0.5">{shareToken ? 'Anyone with the link can view this prompt set' : 'Enable to share with anyone'}</p>
               </div>
               <button onClick={handleToggleLink} disabled={togglingLink} className={`relative w-10 h-5 rounded-full transition-colors ${shareToken ? 'bg-[#177e89]' : 'bg-[#c5d7de]'}`}>
                 <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${shareToken ? 'translate-x-5' : 'translate-x-0'}`} />
@@ -558,7 +558,7 @@ function DeleteConfirmDialog({ batchName, onConfirm, onCancel }: { batchName: st
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
       <div className="relative w-full max-w-sm bg-white rounded-2xl border border-[#dde6ea] shadow-xl p-6">
-        <h2 className="font-semibold text-[#084c61] mb-2">Delete Project</h2>
+        <h2 className="font-semibold text-[#084c61] mb-2">Delete Prompt Set</h2>
         <p className="text-sm text-[#5a7a85] mb-6">
           Are you sure you want to delete <strong className="text-[#084c61]">{batchName}</strong>? This will also delete all prompts and results. This action cannot be undone.
         </p>
@@ -922,7 +922,7 @@ function BatchCard({
     if (!editName.trim() || editName.trim() === batch.name) { setEditMode(false); setEditName(batch.name); return }
     setSaving(true)
     try {
-      const res = await fetch(`/api/projects/${batch.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: editName.trim() }) })
+      const res = await fetch(`/api/batches/${batch.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: editName.trim() }) })
       if (res.ok) { onRename(batch.id, editName.trim()); setEditMode(false) }
     } catch {} finally { setSaving(false) }
   }
@@ -1136,7 +1136,7 @@ export default function RunPage() {
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return
     try {
-      const res = await fetch(`/api/projects/${deleteTarget.id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/batches/${deleteTarget.id}`, { method: 'DELETE' })
       if (res.ok) setBatches((prev) => prev.filter((b) => b.id !== deleteTarget.id))
     } catch {} finally { setDeleteTarget(null) }
   }

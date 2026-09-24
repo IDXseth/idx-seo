@@ -8,7 +8,7 @@ import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
 import { getCompetitorLeaderboard, getBrandSeries, getBrandTrendSeries, CompetitorLeaderboardEntry, BrandComparison, BrandTrendSeries } from '@/lib/competitor-stats'
 import { getSessionList } from '@/lib/run-sessions'
-import { getProjectList } from '@/lib/projects'
+import { getPromptSetList } from '@/lib/prompt-sets'
 import { promptScope } from '@/lib/access'
 
 export const dynamic = 'force-dynamic'
@@ -120,13 +120,13 @@ export default async function CategoryDetailPage({
 
   let data: Awaited<ReturnType<typeof getCategoryData>> = null
   let sessions: SessionOption[] = []
-  let projects: Awaited<ReturnType<typeof getProjectList>> = []
+  let promptSets: Awaited<ReturnType<typeof getPromptSetList>> = []
   let careLevelBreakdown: Awaited<ReturnType<typeof getCategoryCareLevelBreakdown>> = []
   try {
-    ;[data, sessions, projects, careLevelBreakdown] = await Promise.all([
+    ;[data, sessions, promptSets, careLevelBreakdown] = await Promise.all([
       getCategoryData(name, sessionId, promptType, projectId, userId, careLevel),
       getSessionList(projectId),
-      getProjectList(),
+      getPromptSetList(),
       getCategoryCareLevelBreakdown(name, sessionId, promptType, projectId),
     ])
   } catch { /* DB not configured */ }
@@ -158,7 +158,7 @@ export default async function CategoryDetailPage({
       brandTrend={data.brandTrend as BrandTrendSeries[]}
       promptTypeFilter={promptTypeParam}
       projectId={projectId}
-      projects={projects}
+      promptSets={promptSets}
       careLevel={careLevel}
       careLevels={careLevelBreakdown.map((c) => c.levelOfCare)}
       careLevelBreakdown={careLevelBreakdown}

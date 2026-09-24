@@ -148,9 +148,9 @@ export async function sendShareInviteEmail(invite: ShareInvite) {
           <!-- Body -->
           <tr>
             <td style="padding:32px 40px;">
-              <h2 style="margin:0 0 6px;font-size:18px;color:#084c61;">You've been invited to a project</h2>
+              <h2 style="margin:0 0 6px;font-size:18px;color:#084c61;">You've been invited to a prompt set</h2>
               <p style="margin:0 0 24px;font-size:14px;color:#5a7a85;line-height:1.6;">
-                <strong style="color:#084c61;">${fromLabel}</strong> has shared the project
+                <strong style="color:#084c61;">${fromLabel}</strong> has shared the prompt set
                 <strong style="color:#084c61;">${invite.batchName}</strong> with you on the ${APP_TITLE}.
               </p>
 
@@ -164,7 +164,7 @@ export async function sendShareInviteEmail(invite: ShareInvite) {
 
               <!-- Sign in CTA -->
               <p style="margin:0 0 16px;font-size:14px;color:#5a7a85;line-height:1.6;">
-                Sign in${shareUrl ? ' for full access and to run additional analyses' : ' to access the project'}:
+                Sign in${shareUrl ? ' for full access and to run additional analyses' : ' to access the prompt set'}:
               </p>
               <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
                 <tr>
@@ -178,7 +178,7 @@ export async function sendShareInviteEmail(invite: ShareInvite) {
               </table>
 
               <p style="margin:0;font-size:12px;color:#8aadb8;line-height:1.6;">
-                Sign in with <strong>${invite.to}</strong>. If you don't have an account yet, create one with this email address to access the shared project.
+                Sign in with <strong>${invite.to}</strong>. If you don't have an account yet, create one with this email address to access the shared prompt set.
               </p>
             </td>
           </tr>

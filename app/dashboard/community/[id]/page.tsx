@@ -6,7 +6,7 @@ import { SessionOption } from '@/components/run-session-picker'
 import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
 import { getSessionList } from '@/lib/run-sessions'
-import { getProjectList } from '@/lib/projects'
+import { getPromptSetList } from '@/lib/prompt-sets'
 import { promptScope } from '@/lib/access'
 
 export const dynamic = 'force-dynamic'
@@ -118,13 +118,13 @@ export default async function CommunityDetailPage({
   const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
   let data: Awaited<ReturnType<typeof getCommunityData>> = null
   let sessions: SessionOption[] = []
-  let projects: Awaited<ReturnType<typeof getProjectList>> = []
+  let promptSets: Awaited<ReturnType<typeof getPromptSetList>> = []
   let careLevelBreakdown: Awaited<ReturnType<typeof getCommunityCareLevelBreakdown>> = []
   try {
-    ;[data, sessions, projects] = await Promise.all([
+    ;[data, sessions, promptSets] = await Promise.all([
       getCommunityData(id, sessionId, promptType, projectId, careLevel),
       getSessionList(projectId),
-      getProjectList(),
+      getPromptSetList(),
     ])
     if (data) careLevelBreakdown = await getCommunityCareLevelBreakdown(data.communityName, sessionId, promptType, projectId)
   } catch { /* DB not configured */ }
@@ -152,7 +152,7 @@ export default async function CommunityDetailPage({
       trendData={data.trendData}
       promptTypeFilter={promptTypeParam}
       projectId={projectId}
-      projects={projects}
+      promptSets={promptSets}
       careLevel={careLevel}
       careLevels={careLevelBreakdown.map((c) => c.levelOfCare)}
       careLevelBreakdown={careLevelBreakdown}

@@ -110,7 +110,7 @@ export default async function SharedBatchPage({ params }: Props) {
           <div className="bg-white rounded-xl border border-[#dde6ea] py-16 text-center">
             <BarChart3 className="h-12 w-12 text-[#b8cdd3] mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-[#084c61] mb-2">No results yet</h3>
-            <p className="text-[#5a7a85] text-sm">This project hasn&apos;t been run against AI platforms yet.</p>
+            <p className="text-[#5a7a85] text-sm">This prompt set hasn&apos;t been run against AI platforms yet.</p>
           </div>
         ) : (
           <>

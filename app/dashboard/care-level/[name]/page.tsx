@@ -6,7 +6,7 @@ import { SessionOption } from '@/components/run-session-picker'
 import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
 import { getSessionList } from '@/lib/run-sessions'
-import { getProjectList } from '@/lib/projects'
+import { getPromptSetList } from '@/lib/prompt-sets'
 import { promptScope } from '@/lib/access'
 
 export const dynamic = 'force-dynamic'
@@ -96,12 +96,12 @@ export default async function CareLevelDetailPage({
   const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
   let data: Awaited<ReturnType<typeof getCareLevelData>> = null
   let sessions: SessionOption[] = []
-  let projects: Awaited<ReturnType<typeof getProjectList>> = []
+  let promptSets: Awaited<ReturnType<typeof getPromptSetList>> = []
   try {
-    ;[data, sessions, projects] = await Promise.all([
+    ;[data, sessions, promptSets] = await Promise.all([
       getCareLevelData(name, sessionId, promptType, projectId, market, category, communityName),
       getSessionList(projectId),
-      getProjectList(),
+      getPromptSetList(),
     ])
   } catch { /* DB not configured */ }
 
@@ -158,7 +158,7 @@ export default async function CareLevelDetailPage({
       trendData={data.trendData}
       promptTypeFilter={promptTypeParam}
       projectId={projectId}
-      projects={projects}
+      promptSets={promptSets}
     />
   )
 }

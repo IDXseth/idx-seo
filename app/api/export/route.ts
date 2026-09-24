@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 
 // Excel sheet names: max 31 chars, no [ ] : * ? / \
 function sanitizeSheetName(name: string, used: Set<string>): string {
-  const base = name.replace(/[\[\]:*?/\\]/g, ' ').trim().slice(0, 31) || 'Project'
+  const base = name.replace(/[\[\]:*?/\\]/g, ' ').trim().slice(0, 31) || 'Prompt set'
   let candidate = base
   let n = 2
   while (used.has(candidate.toLowerCase())) {
@@ -115,7 +115,7 @@ async function exportAllPrompts(viewer: Viewer) {
   }
 
   if (batches.length === 0) {
-    xlsx.utils.book_append_sheet(workbook, xlsx.utils.aoa_to_sheet([['No projects found']]), 'Prompts')
+    xlsx.utils.book_append_sheet(workbook, xlsx.utils.aoa_to_sheet([['No prompt sets found']]), 'Prompts')
   }
 
   const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' })

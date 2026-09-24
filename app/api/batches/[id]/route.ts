@@ -27,8 +27,8 @@ export async function DELETE(
     await prisma.batch.delete({ where: { id } })
     return NextResponse.json({ ok: true })
   } catch (error) {
-    console.error('Delete project error:', error)
-    return NextResponse.json({ error: 'Failed to delete project' }, { status: 500 })
+    console.error('Delete prompt set error:', error)
+    return NextResponse.json({ error: 'Failed to delete prompt set' }, { status: 500 })
   }
 }
 
@@ -66,7 +66,7 @@ export async function PATCH(
 
     return NextResponse.json(updated)
   } catch (error) {
-    console.error('Rename project error:', error)
-    return NextResponse.json({ error: 'Failed to rename project' }, { status: 500 })
+    console.error('Rename prompt set error:', error)
+    return NextResponse.json({ error: 'Failed to rename prompt set' }, { status: 500 })
   }
 }
