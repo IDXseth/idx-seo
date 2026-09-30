@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
+import { auth } from '@/lib/auth'
 import { PLATFORMS } from '@/lib/utils'
 import { SegmentDetail } from '@/components/segment-detail'
 import { SessionOption } from '@/components/run-session-picker'
@@ -7,10 +8,11 @@ import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
 import { getSessionList } from '@/lib/run-sessions'
 import { getProjectList } from '@/lib/projects'
+import { getCompetitorLeaderboard, getBrandSeries, getBrandTrendSeries, CompetitorLeaderboardEntry, BrandComparison, BrandTrendSeries } from '@/lib/competitor-stats'
 
 export const dynamic = 'force-dynamic'
 
-async function getMarketData(name: string, sessionId?: string, promptType?: string, projectId?: string, careLevel?: string) {
+async function getMarketData(name: string, sessionId?: string, promptType?: string, projectId?: string, userId?: string, careLevel?: string) {
   const decodedName = decodeURIComponent(name)
   const resultsFilter = sessionId ? { where: { runSessionId: sessionId } } : {}
   const scopeFilter = {
@@ -52,6 +54,17 @@ async function getMarketData(name: string, sessionId?: string, promptType?: stri
     .map(([domain, count]) => ({ domain, count, percentage: totalResults > 0 ? count / totalResults : 0 }))
 
   const trendData = sessionId ? [] : await getSegmentTrendData({ market: decodedName, ...scopeFilter })
+  const promptIds = prompts.map((p) => p.id)
+  const competitorLeaderboard = userId
+    ? await getCompetitorLeaderboard(promptIds, userId, sessionId)
+    : null
+  const brandComparison = await getBrandSeries({
+    promptId: { in: promptIds },
+    ...(sessionId ? { runSessionId: sessionId } : {}),
+  }).catch(() => null)
+  const brandTrend = sessionId
+    ? []
+    : await getBrandTrendSeries({ market: decodedName, ...scopeFilter }).catch(() => [])
 
   const communityGroups = new Map<string, { city: string; promptCount: number; mentioned: number; cited: number; total: number }>()
   for (const p of prompts) {
@@ -72,7 +85,7 @@ async function getMarketData(name: string, sessionId?: string, promptType?: stri
   return {
     name: decodedName, prompts,
     overview: { promptCount: prompts.length, mentionRate: totalResults > 0 ? mentioned / totalResults : 0, citationRate: totalResults > 0 ? cited / totalResults : 0 },
-    platformStats, topDomains, trendData, communityStats,
+    platformStats, topDomains, trendData, communityStats, competitorLeaderboard, brandComparison, brandTrend,
   }
 }
 
@@ -116,13 +129,16 @@ export default async function MarketDetailPage({
   const [{ name }, { session: sessionId, type, project: projectId, careLevel }] = await Promise.all([params, searchParams])
   const promptTypeParam: PromptTypeFilter = type === 'brand' || type === 'nonbrand' ? type : 'all'
   const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
+  const session = await auth().catch(() => null)
+  const userId = session?.user?.id
+
   let data: Awaited<ReturnType<typeof getMarketData>> = null
   let sessions: SessionOption[] = []
   let projects: Awaited<ReturnType<typeof getProjectList>> = []
   let careLevelBreakdown: Awaited<ReturnType<typeof getMarketCareLevelBreakdown>> = []
   try {
     ;[data, sessions, projects, careLevelBreakdown] = await Promise.all([
-      getMarketData(name, sessionId, promptType, projectId, careLevel),
+      getMarketData(name, sessionId, promptType, projectId, userId, careLevel),
       getSessionList(projectId),
       getProjectList(),
       getMarketCareLevelBreakdown(name, sessionId, promptType, projectId),
@@ -151,6 +167,9 @@ export default async function MarketDetailPage({
       sessions={sessions}
       basePath={`/dashboard/market/${encodeURIComponent(name)}`}
       trendData={data.trendData}
+      competitorLeaderboard={data.competitorLeaderboard as CompetitorLeaderboardEntry[] | null}
+      brandComparison={data.brandComparison as BrandComparison | null}
+      brandTrend={data.brandTrend as BrandTrendSeries[]}
       communityStats={data.communityStats}
       promptTypeFilter={promptTypeParam}
       projectId={projectId}
