@@ -32,7 +32,8 @@ export const APP_LOGO_URL = env(process.env.NEXT_PUBLIC_APP_LOGO_URL, '/sl-logo.
 
 // Color theme: becomes <html data-theme>, which app/globals.css uses to swap
 // the --c-* palette. Empty = the default (Senior Lifestyle) palette.
-export const APP_THEME = env(process.env.NEXT_PUBLIC_APP_THEME, '')
+// Case and stray quotes are ignored, so "IDX" or "'idx'" also select idx.
+export const APP_THEME = env(process.env.NEXT_PUBLIC_APP_THEME, '').replace(/["']/g, '').toLowerCase()
 
 // For a team that all signs in with Google: no email/password sign-in or
 // sign-up, and no email notifications, so no Resend key is needed.
