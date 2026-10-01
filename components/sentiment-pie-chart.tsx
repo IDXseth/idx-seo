@@ -51,16 +51,21 @@ export function SentimentPieChart({ counts }: { counts: SentimentCounts }) {
               data={data}
               dataKey="value"
               nameKey="name"
-              innerRadius="55%"
-              outerRadius="85%"
+              innerRadius="50%"
+              outerRadius="75%"
               paddingAngle={2}
               cornerRadius={3}
               stroke="#fff"
               strokeWidth={2}
-              label={({ percent }) => `${Math.round((percent ?? 0) * 100)}%`}
+              // Direct labels use ink text, never the slice's own color. Styled
+              // here rather than via the Pie's style prop, whose fill would
+              // override every slice's Cell color.
+              label={({ x, y, textAnchor, percent }) => (
+                <text x={x} y={y} textAnchor={textAnchor} dominantBaseline="central" style={{ fontSize: 11, fontWeight: 600, fill: 'var(--c-ink)' }}>
+                  {`${Math.round((percent ?? 0) * 100)}%`}
+                </text>
+              )}
               labelLine={false}
-              // Direct labels use ink text, never the slice's own color.
-              style={{ fontSize: 11, fontWeight: 600, fill: 'var(--c-ink)' }}
             >
               {data.map((d) => (
                 <Cell key={d.name} fill={d.color} />

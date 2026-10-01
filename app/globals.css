@@ -43,6 +43,40 @@
   --c-highlight-soft: #ffd47a;
 }
 
+/* IDX (www.idx.inc), from its global-variables.css: near-black aubergine
+   primary-1, cream primary-2 page, warm grey base-N scale, neon-yellow
+   primary-4 highlight on the dark nav, secondary-1 blue for links (the brand's
+   pink and mint fail text contrast on white). Muted and subtle text use
+   base-7 (6.1:1 on white) and base-5 (3.4:1). */
+[data-theme="idx"] {
+  --c-ink: #110719;          /* primary-1 */
+  --c-ink-hover: #292030;    /* primary-1-light-10 */
+  --c-ink-deep: #0d0513;     /* primary-1-dark-25 */
+  --c-ink-soft: #3c3441;     /* base-9 */
+  --c-accent: #0068ff;       /* secondary-1 */
+  --c-accent-faint: #bfd9ff; /* secondary-1-light-75 */
+  --c-tint-strong: #cce1ff;
+  --c-tint: #e6f0ff;
+  --c-tint-soft: #f2f7ff;
+  --c-text: #110719;
+  --c-muted: #676069;        /* base-7 */
+  --c-subtle: #8f8a8e;       /* base-5 */
+  --c-faint: #b8b5b4;        /* base-3 */
+  --c-line-strong: #cecbc8;  /* base-2 */
+  --c-line-strong-2: #cecbc8;
+  --c-line-strong-3: #cecbc8;
+  --c-line-strong-4: #cecbc8;
+  --c-line: #e2e1db;         /* base-1 */
+  --c-line-soft-2: #e9e9e4;  /* base-1-light-25 */
+  --c-line-soft: #f1f0ed;    /* base-1-light-50 */
+  --c-page: #f7f6ee;         /* primary-2 */
+  --c-surface-2: #f3f2ea;
+  --c-surface: #f7f6ee;      /* primary-2 */
+  --c-surface-soft: #fbfbf7; /* primary-2-light-50 */
+  --c-highlight: #eeff00;    /* primary-4 */
+  --c-highlight-soft: #f7ff80; /* primary-4-light-50 */
+}
+
 body {
   background: var(--c-page);
   color: var(--c-text);
