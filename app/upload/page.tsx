@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback } from 'react'
+import { ActiveProjectBanner, useActiveProject } from '@/components/active-project-banner'
 import { useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import { Button } from '@/components/ui/button'
@@ -10,7 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, X, Info, TriangleAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { normalizeRow, KNOWN_LEVELS_OF_CARE } from '@/lib/normalize'
+import { normalizeRow, KNOWN_LEVELS_OF_CARE, COLUMN_ALIASES } from '@/lib/normalize'
+import { PRESET_LABELS } from '@/lib/segment-labels'
 import { SuggestPromptsPanel } from '@/components/suggest-prompts-panel'
 
 interface ParsedRow {
@@ -40,7 +42,7 @@ function getField(row: Record<string, unknown>, ...keys: string[]): string {
   return ''
 }
 
-function parseSpreadsheet(file: File): Promise<ParsedRow[]> {
+function parseSpreadsheet(file: File, seniorLiving: boolean): Promise<ParsedRow[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = (e) => {
@@ -48,14 +50,14 @@ function parseSpreadsheet(file: File): Promise<ParsedRow[]> {
         const workbook = XLSX.read(e.target?.result, { type: 'array' })
         const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]) as Record<string, unknown>[]
         resolve(rows.map((row) => normalizeRow({
-          promptType: getField(row, 'prompt_type', 'type', 'promptType') || 'nonbrand',
-          category: getField(row, 'category'),
-          communityName: getField(row, 'community_name', 'community', 'communityName'),
-          city: getField(row, 'city'),
-          market: getField(row, 'market'),
-          levelOfCare: getField(row, 'level_of_care', 'care_level', 'levelOfCare'),
-          promptText: getField(row, 'prompt', 'prompt_text', 'promptText'),
-        })))
+          promptType: getField(row, ...COLUMN_ALIASES.promptType) || 'nonbrand',
+          category: getField(row, ...COLUMN_ALIASES.category),
+          communityName: getField(row, ...COLUMN_ALIASES.communityName),
+          city: getField(row, ...COLUMN_ALIASES.city),
+          market: getField(row, ...COLUMN_ALIASES.market),
+          levelOfCare: getField(row, ...COLUMN_ALIASES.levelOfCare),
+          promptText: getField(row, ...COLUMN_ALIASES.promptText),
+        }, { seniorLiving })))
       } catch (err) { reject(err) }
     }
     reader.onerror = reject
@@ -63,7 +65,12 @@ function parseSpreadsheet(file: File): Promise<ParsedRow[]> {
   })
 }
 
-const EXPECTED_COLUMNS = ['prompt_type', 'category', 'community_name', 'city', 'market', 'level_of_care', 'prompt']
+// Column names shown in the format guide — the preset's wording; every alias in
+// COLUMN_ALIASES is still accepted.
+const EXPECTED_COLUMNS = {
+  'senior-living': ['prompt_type', 'category', 'community_name', 'city', 'market', 'level_of_care', 'prompt'],
+  general: ['prompt_type', 'category', 'location', 'city', 'market', 'service', 'prompt'],
+}
 
 export default function UploadPage() {
   const router = useRouter()
@@ -77,6 +84,9 @@ export default function UploadPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [skippedCount, setSkippedCount] = useState(0)
+  const project = useActiveProject()
+  const labels = project?.labels ?? PRESET_LABELS.general
+  const seniorLiving = labels.preset === 'senior-living'
 
   const handleFile = async (f: File) => {
     if (!f.name.match(/\.(xlsx|csv|xls)$/i)) {
@@ -87,18 +97,19 @@ export default function UploadPage() {
     setError(null)
     setBatchName(f.name.replace(/\.[^.]+$/, ''))
     try {
-      setPreview(await parseSpreadsheet(f))
+      setPreview(await parseSpreadsheet(f, seniorLiving))
     } catch {
       setError('Failed to parse file. Please check the format.')
     }
   }
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
+  // Not memoized: handleFile reads the project's preset, which loads after first render.
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
     const f = e.dataTransfer.files[0]
     if (f) await handleFile(f)
-  }, [])
+  }
 
   const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragging(true) }, [])
   const handleDragLeave = useCallback(() => setIsDragging(false), [])
@@ -145,9 +156,11 @@ export default function UploadPage() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Upload Prompts</h1>
-        <p className="text-[#5a7a85] mt-1 text-sm">Upload a spreadsheet, or let AI suggest nonbrand prompts for you</p>
+        <h1 className="text-2xl font-bold text-(--c-ink)" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Upload Prompts</h1>
+        <p className="text-(--c-muted) mt-1 text-sm">Upload a spreadsheet, or let AI suggest nonbrand prompts for you</p>
       </div>
+
+      <ActiveProjectBanner info={project} />
 
       <Tabs defaultValue="file" className="mb-6">
         <TabsList>
@@ -156,24 +169,24 @@ export default function UploadPage() {
         </TabsList>
 
         <TabsContent value="suggest">
-          <SuggestPromptsPanel />
+          <SuggestPromptsPanel key={labels.preset} labels={labels} />
         </TabsContent>
 
         <TabsContent value="file">
 
       {/* Format guide */}
-      <div className="bg-[#e6f2f5] border border-[#b8d8e0] rounded-xl p-4 mb-6 flex gap-3">
-        <Info className="h-4 w-4 text-[#177e89] flex-shrink-0 mt-0.5" />
+      <div className="bg-(--c-tint) border border-(--c-accent-faint) rounded-xl p-4 mb-6 flex gap-3">
+        <Info className="h-4 w-4 text-(--c-accent) flex-shrink-0 mt-0.5" />
         <div>
-          <p className="text-sm font-semibold text-[#084c61] mb-2">Expected spreadsheet columns</p>
+          <p className="text-sm font-semibold text-(--c-ink) mb-2">Expected spreadsheet columns</p>
           <div className="flex flex-wrap gap-1.5">
-            {EXPECTED_COLUMNS.map((col) => (
-              <code key={col} className="text-xs bg-white border border-[#b8d8e0] text-[#084c61] px-2 py-0.5 rounded-md font-mono">
+            {EXPECTED_COLUMNS[labels.preset].map((col) => (
+              <code key={col} className="text-xs bg-white border border-(--c-accent-faint) text-(--c-ink) px-2 py-0.5 rounded-md font-mono">
                 {col}
               </code>
             ))}
           </div>
-          <p className="text-xs text-[#177e89] mt-2">Column names are flexible — underscores, spaces, and camelCase are all recognized.</p>
+          <p className="text-xs text-(--c-accent) mt-2">Column names are flexible — underscores, spaces, and camelCase are all recognized.</p>
         </div>
       </div>
 
@@ -181,9 +194,9 @@ export default function UploadPage() {
       <div
         className={cn(
           'border-2 border-dashed rounded-xl p-12 text-center transition-all mb-6',
-          isDragging ? 'border-[#177e89] bg-[#e6f2f5]' :
+          isDragging ? 'border-(--c-accent) bg-(--c-tint)' :
           file ? 'border-emerald-400 bg-emerald-50' :
-          'border-[#dde6ea] bg-white hover:border-[#8aadb8] hover:bg-[#f5f8fa]'
+          'border-(--c-line) bg-white hover:border-(--c-subtle) hover:bg-(--c-surface)'
         )}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
@@ -233,10 +246,10 @@ export default function UploadPage() {
             <p className="text-sm text-emerald-700 font-medium">Upload successful! Redirecting to Run Prompts…</p>
           </div>
           {skippedCount > 0 && (
-            <div className="flex items-center gap-3 p-4 bg-[#e6f2f5] border border-[#b8d8e0] rounded-xl">
-              <Info className="h-5 w-5 text-[#177e89] flex-shrink-0" />
-              <p className="text-sm text-[#084c61]">
-                <span className="font-semibold">{skippedCount} prompt{skippedCount !== 1 ? 's' : ''}</span> already exist in your account and were not added again.
+            <div className="flex items-center gap-3 p-4 bg-(--c-tint) border border-(--c-accent-faint) rounded-xl">
+              <Info className="h-5 w-5 text-(--c-accent) flex-shrink-0" />
+              <p className="text-sm text-(--c-ink)">
+                <span className="font-semibold">{skippedCount} prompt{skippedCount !== 1 ? 's' : ''}</span> already exist in this project and were not added again.
               </p>
             </div>
           )}
@@ -253,7 +266,7 @@ export default function UploadPage() {
                 <TriangleAlert className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="text-sm font-semibold text-amber-800">
-                    {unknownCareRows.length} row{unknownCareRows.length !== 1 ? 's have' : ' has'} an unrecognized Level of Care value
+                    {unknownCareRows.length} row{unknownCareRows.length !== 1 ? 's have' : ' has'} an unrecognized {labels.levelOfCare} value
                   </p>
                   <p className="text-xs text-amber-700 mt-0.5">
                     Known values: {KNOWN_LEVELS_OF_CARE.join(', ')}. Unrecognized values will be stored as-is and shown highlighted below.
@@ -273,7 +286,7 @@ export default function UploadPage() {
                 value={batchName}
                 onChange={(e) => setBatchName(e.target.value)}
                 placeholder="Batch name"
-                className="px-3 py-1.5 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61] focus:border-transparent w-44"
+                className="px-3 py-1.5 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink) focus:border-transparent w-44"
               />
               <Button onClick={handleUpload} disabled={uploading}>
                 {uploading ? 'Uploading…' : 'Confirm Upload'}
@@ -290,11 +303,11 @@ export default function UploadPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Type</TableHead>
-                  <TableHead>Community</TableHead>
+                  <TableHead>{labels.entity}</TableHead>
                   <TableHead>City</TableHead>
-                  <TableHead>Market</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Level of Care</TableHead>
+                  <TableHead>{labels.market}</TableHead>
+                  <TableHead>{labels.category}</TableHead>
+                  <TableHead>{labels.levelOfCare}</TableHead>
                   <TableHead>Prompt</TableHead>
                 </TableRow>
               </TableHeader>

@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "tsx --test lib/*.test.ts",
     "db:seed": "npx tsx prisma/seed.ts"
   },
   "prisma": {

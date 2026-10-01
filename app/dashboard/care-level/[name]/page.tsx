@@ -7,7 +7,9 @@ import { SessionOption } from '@/components/run-session-picker'
 import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
 import { getSessionList } from '@/lib/run-sessions'
-import { getProjectList } from '@/lib/projects'
+import { getPromptSetList } from '@/lib/prompt-sets'
+import { promptScope, getActiveProject, getSegmentLabels } from '@/lib/projects'
+import { competitorScope } from '@/lib/competitors'
 import { getCompetitorLeaderboard, getBrandSeries, getBrandTrendSeries, CompetitorLeaderboardEntry, BrandComparison, BrandTrendSeries } from '@/lib/competitor-stats'
 
 export const dynamic = 'force-dynamic'
@@ -29,6 +31,7 @@ async function getCareLevelData(
   const decodedName = decodeURIComponent(name)
   const resultsFilter = sessionId ? { where: { runSessionId: sessionId } } : {}
   const scopeFilter = {
+    ...(await promptScope()),
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(market ? { market } : {}),
@@ -71,7 +74,7 @@ async function getCareLevelData(
   const trendData = sessionId ? [] : await getSegmentTrendData({ levelOfCare: decodedName, ...scopeFilter })
   const promptIds = prompts.map((p) => p.id)
   const competitorLeaderboard = userId
-    ? await getCompetitorLeaderboard(promptIds, userId, sessionId)
+    ? await getCompetitorLeaderboard(promptIds, competitorScope((await getActiveProject())?.id, userId), sessionId)
     : null
   const brandComparison = await getBrandSeries({
     promptId: { in: promptIds },
@@ -111,12 +114,12 @@ export default async function CareLevelDetailPage({
 
   let data: Awaited<ReturnType<typeof getCareLevelData>> = null
   let sessions: SessionOption[] = []
-  let projects: Awaited<ReturnType<typeof getProjectList>> = []
+  let promptSets: Awaited<ReturnType<typeof getPromptSetList>> = []
   try {
-    ;[data, sessions, projects] = await Promise.all([
+    ;[data, sessions, promptSets] = await Promise.all([
       getCareLevelData(name, sessionId, promptType, projectId, market, category, communityName, userId),
       getSessionList(projectId),
-      getProjectList(),
+      getPromptSetList(),
     ])
   } catch { /* DB not configured */ }
 
@@ -161,6 +164,7 @@ export default async function CareLevelDetailPage({
     <SegmentDetail
       title={title}
       backHref={backHref}
+      labels={await getSegmentLabels()}
       backLabel={backLabel}
       overview={data.overview}
       platformStats={data.platformStats}
@@ -176,7 +180,7 @@ export default async function CareLevelDetailPage({
       brandTrend={data.brandTrend as BrandTrendSeries[]}
       promptTypeFilter={promptTypeParam}
       projectId={projectId}
-      projects={projects}
+      promptSets={promptSets}
     />
   )
 }

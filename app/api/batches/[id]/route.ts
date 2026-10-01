@@ -1,0 +1,72 @@
+import { NextResponse } from 'next/server'
+import { auth } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { canWrite } from '@/lib/access'
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { id } = await params
+    const batch = await prisma.batch.findUnique({ where: { id } })
+
+    if (!batch) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+
+    if (!canWrite(session.user.id, session.user.email, batch.userId)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    await prisma.batch.delete({ where: { id } })
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error('Delete prompt set error:', error)
+    return NextResponse.json({ error: 'Failed to delete prompt set' }, { status: 500 })
+  }
+}
+
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { id } = await params
+    const { name } = await req.json()
+
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return NextResponse.json({ error: 'Name is required' }, { status: 400 })
+    }
+
+    const batch = await prisma.batch.findUnique({ where: { id } })
+
+    if (!batch) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+
+    if (!canWrite(session.user.id, session.user.email, batch.userId)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const updated = await prisma.batch.update({
+      where: { id },
+      data: { name: name.trim() },
+    })
+
+    return NextResponse.json(updated)
+  } catch (error) {
+    console.error('Rename prompt set error:', error)
+    return NextResponse.json({ error: 'Failed to rename prompt set' }, { status: 500 })
+  }
+}

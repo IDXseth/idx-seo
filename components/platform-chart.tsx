@@ -23,14 +23,14 @@ function CustomTooltip({ active, payload, label }: any) {
       style={{
         fontSize: 12,
         borderRadius: 8,
-        border: '1px solid #dde6ea',
+        border: '1px solid var(--c-line)',
         boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
         background: '#fff',
         padding: '10px 14px',
         minWidth: 160,
       }}
     >
-      <p style={{ fontWeight: 600, color: '#084c61', marginBottom: 6 }}>{label}</p>
+      <p style={{ fontWeight: 600, color: 'var(--c-ink)', marginBottom: 6 }}>{label}</p>
       {mentionEntry && (
         <p style={{ color: mentionEntry.fill, margin: '2px 0' }}>
           Mention Rate: <strong>{mentionEntry.value}%</strong>
@@ -41,7 +41,7 @@ function CustomTooltip({ active, payload, label }: any) {
           Citation Rate: <strong>{citationEntry.value}%</strong>
         </p>
       )}
-      <p style={{ color: '#8aadb8', marginTop: 8, fontSize: 11 }}>Click to drill down →</p>
+      <p style={{ color: 'var(--c-subtle)', marginTop: 8, fontSize: 11 }}>Click to drill down →</p>
     </div>
   )
 }
@@ -71,10 +71,10 @@ export function PlatformMentionChart({ data }: { data: PlatformStat[] }) {
           }
         }}
       >
-        <CartesianGrid strokeDasharray="3 3" stroke="#dde6ea" vertical={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--c-line)" vertical={false} />
         <XAxis
           dataKey="name"
-          tick={{ fontSize: 11, fill: '#5a7a85' }}
+          tick={{ fontSize: 11, fill: 'var(--c-muted)' }}
           angle={-30}
           textAnchor="end"
           interval={0}
@@ -83,19 +83,19 @@ export function PlatformMentionChart({ data }: { data: PlatformStat[] }) {
         />
         <YAxis
           tickFormatter={(v) => `${v}%`}
-          tick={{ fontSize: 11, fill: '#8aadb8' }}
+          tick={{ fontSize: 11, fill: 'var(--c-subtle)' }}
           domain={[0, 100]}
           axisLine={false}
           tickLine={false}
         />
-        <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f0f4f7' }} />
+        <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--c-page)' }} />
         <Legend
           wrapperStyle={{ fontSize: 12, paddingTop: 20 }}
           iconType="circle"
           iconSize={8}
         />
-        <Bar dataKey="Mention Rate" fill="#084c61" radius={[4, 4, 0, 0]} />
-        <Bar dataKey="Citation Rate" fill="#177e89" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="Mention Rate" fill="var(--c-ink)" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="Citation Rate" fill="var(--c-accent)" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   )

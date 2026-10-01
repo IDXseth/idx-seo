@@ -1,3 +1,5 @@
+import { detect, detectWithSentiment, type DetectionContext, type CompetitorMatch, type Sentiment } from './detection'
+
 async function resolveRedirect(url: string): Promise<string> {
   if (!url.includes('vertexaisearch.cloud.google.com')) return url
   try {
@@ -18,50 +20,20 @@ export interface PlatformCitation {
   isExplicitCitation: boolean
 }
 
-export interface PlatformResult {
+// What a platform returned, before any brand detection.
+export interface RawPlatformResult {
   responseText: string
-  isMentioned: boolean
-  isCited: boolean
-  sentiment: 'positive' | 'neutral' | 'negative'
   citations: PlatformCitation[]
   error?: string
 }
 
-export async function analyzeSentiment(
-  responseText: string,
-  communityName: string
-): Promise<'positive' | 'neutral' | 'negative'> {
-  if (!responseText || responseText.startsWith('[Error]') || responseText.startsWith('[Timeout]') || responseText.startsWith('[No AI Overview]')) {
-    return 'neutral'
-  }
-  try {
-    const { default: Anthropic } = await import('@anthropic-ai/sdk')
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-    const response = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 5,
-      messages: [{
-        role: 'user',
-        content: `How does this AI response portray "${communityName}"? Reply with exactly one word: positive, neutral, or negative.\n\n${responseText.slice(0, 1500)}`,
-      }],
-    })
-    const word = response.content[0]?.type === 'text' ? response.content[0].text.toLowerCase() : ''
-    if (word.includes('positive')) return 'positive'
-    if (word.includes('negative')) return 'negative'
-    return 'neutral'
-  } catch {
-    return 'neutral'
-  }
-}
-
-function checkMention(text: string, communityName: string): boolean {
-  if (!text) return false
-  const lower = text.toLowerCase()
-  return (
-    (!!communityName && lower.includes(communityName.toLowerCase())) ||
-    lower.includes('senior lifestyle corporation') ||
-    lower.includes('senior lifestyle')
-  )
+// A platform response scored for the project's brand and competitors.
+export interface PlatformResult extends RawPlatformResult {
+  isMentioned: boolean
+  isCited: boolean
+  sentiment: Sentiment
+  brandPosition: number | null
+  competitors: CompetitorMatch[]
 }
 
 function extractDomain(url: string): string {
@@ -93,24 +65,9 @@ function resolveCitationDomain(url: string, favicon?: string): string {
   return extractDomain(url)
 }
 
-function checkCited(
-  citations: Array<{ url: string; title: string; domain: string; isExplicitCitation: boolean }>,
-  _communityName: string
-): boolean {
-  // Only sources explicitly cited in the answer text count toward "Cited" —
-  // sources merely surfaced by a search step don't move this stat.
-  return citations.some(
-    (c) =>
-      c.isExplicitCitation &&
-      (c.url.toLowerCase().includes('seniorlifestyle.com') ||
-        c.domain.toLowerCase().includes('seniorlifestyle.com'))
-  )
-}
-
 async function queryChatGPT(
-  promptText: string,
-  communityName: string
-): Promise<PlatformResult> {
+  promptText: string
+): Promise<RawPlatformResult> {
   const { default: OpenAI } = await import('openai')
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
@@ -160,17 +117,12 @@ async function queryChatGPT(
   }
   const citations = [...citationMap.values()]
 
-  const isMentioned = checkMention(text, communityName)
-  const isCited = checkCited(citations, communityName)
-  const sentiment = await analyzeSentiment(text, communityName)
-
-  return { responseText: text, isMentioned, isCited, sentiment, citations }
+  return { responseText: text, citations }
 }
 
 async function queryClaude(
-  promptText: string,
-  communityName: string
-): Promise<PlatformResult> {
+  promptText: string
+): Promise<RawPlatformResult> {
   const { default: Anthropic } = await import('@anthropic-ai/sdk')
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -264,17 +216,12 @@ async function queryClaude(
   }
   const citations = [...citationMap.values()]
 
-  const isMentioned = checkMention(text, communityName)
-  const isCited = checkCited(citations, communityName)
-  const sentiment = await analyzeSentiment(text, communityName)
-
-  return { responseText: text, isMentioned, isCited, sentiment, citations }
+  return { responseText: text, citations }
 }
 
 async function queryGemini(
-  promptText: string,
-  communityName: string
-): Promise<PlatformResult> {
+  promptText: string
+): Promise<RawPlatformResult> {
   const { GoogleGenerativeAI } = await import('@google/generative-ai')
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
   const model = genAI.getGenerativeModel({
@@ -303,11 +250,7 @@ async function queryGemini(
       })
   )
 
-  const isMentioned = checkMention(text, communityName)
-  const isCited = checkCited(citations, communityName)
-  const sentiment = await analyzeSentiment(text, communityName)
-
-  return { responseText: text, isMentioned, isCited, sentiment, citations }
+  return { responseText: text, citations }
 }
 
 // AI Overview text_blocks (and their nested `items`, where present) each carry a
@@ -363,7 +306,7 @@ export function cleanLegacyAIOResponseText(text: string): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function parseSearchAPIResponse(data: any, communityName: string, engine?: string): Promise<PlatformResult> {
+async function parseSearchAPIResponse(data: any, engine?: string): Promise<RawPlatformResult> {
   let text = ''
   let citations: PlatformCitation[] = []
 
@@ -454,20 +397,15 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
   // No AI Overview (or answer/answer_box) was served — mark explicitly rather
   // than falling back to organic snippets which would be misleading as AIO data.
   if (!text) {
-    return { responseText: '[No AI Overview]', isMentioned: false, isCited: false, sentiment: 'neutral', citations: [] }
+    return { responseText: '[No AI Overview]', citations: [] }
   }
 
-  const isMentioned = checkMention(text, communityName)
-  const isCited = checkCited(citations, communityName)
-  const sentiment = await analyzeSentiment(text, communityName)
-
-  return { responseText: text, isMentioned, isCited, sentiment, citations }
+  return { responseText: text, citations }
 }
 
 async function queryPerplexity(
-  promptText: string,
-  communityName: string
-): Promise<PlatformResult> {
+  promptText: string
+): Promise<RawPlatformResult> {
   const response = await fetch('https://api.perplexity.ai/chat/completions', {
     method: 'POST',
     headers: {
@@ -513,11 +451,7 @@ async function queryPerplexity(
     citations.push({ url, title: r.title ?? extractDomain(url), domain: extractDomain(url), isExplicitCitation: false })
   }
 
-  const isMentioned = checkMention(text, communityName)
-  const isCited = checkCited(citations, communityName)
-  const sentiment = await analyzeSentiment(text, communityName)
-
-  return { responseText: text, isMentioned, isCited, sentiment, citations }
+  return { responseText: text, citations }
 }
 
 async function fetchFallbackCitations(
@@ -540,8 +474,7 @@ async function fetchFallbackCitations(
     const data = await response.json()
     // These are organic search results we fetched ourselves as a last-resort
     // supplement, not sources the platform actually cited or retrieved — never
-    // explicit, and fetchFallbackCitations only runs after isCited/isMentioned
-    // are already computed, so they can't move those stats either.
+    // explicit, so they can't move isCited (only explicit citations count).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (data.organic_results ?? []).slice(0, 5).map((r: any) => ({
       url: r.link ?? '',
@@ -556,9 +489,8 @@ async function fetchFallbackCitations(
 
 async function querySearchAPI(
   engine: string,
-  promptText: string,
-  communityName: string
-): Promise<PlatformResult> {
+  promptText: string
+): Promise<RawPlatformResult> {
   const apiKey = process.env.SEARCHAPI_KEY
   const url = new URL('https://www.searchapi.io/api/v1/search')
   url.searchParams.set('api_key', apiKey!)
@@ -578,14 +510,13 @@ async function querySearchAPI(
   }
 
   const data = await response.json()
-  return await parseSearchAPIResponse(data, communityName, engine)
+  return await parseSearchAPIResponse(data, engine)
 }
 
 async function queryGoogleAIO(
   promptText: string,
-  communityName: string,
   city?: string
-): Promise<PlatformResult> {
+): Promise<RawPlatformResult> {
   const apiKey = process.env.SEARCHAPI_KEY
 
   // Step 1: standard Google search — returns ai_overview + page_token when Google serves one.
@@ -628,7 +559,7 @@ async function queryGoogleAIO(
       })
       if (step2Res.ok) {
         const step2Data = await step2Res.json()
-        const result = await parseSearchAPIResponse(step2Data, communityName, 'google_ai_overview')
+        const result = await parseSearchAPIResponse(step2Data, 'google_ai_overview')
         if (result.responseText !== '[No AI Overview]') {
           // The page_token-expanded response sometimes comes back with text but
           // an empty reference_links array, even though the compact ai_overview
@@ -637,7 +568,6 @@ async function queryGoogleAIO(
           if (result.citations.length === 0 && step1Data.ai_overview) {
             const aio = step1Data.ai_overview
             result.citations = extractCitationsFromSources(aio.sources ?? aio.references ?? aio.links ?? [])
-            result.isCited = checkCited(result.citations, communityName)
           }
           return result
         }
@@ -647,48 +577,76 @@ async function queryGoogleAIO(
 
   // If engine=google returned ai_overview but no page_token, parse it directly
   if (step1Data.ai_overview) {
-    return await parseSearchAPIResponse(step1Data, communityName, 'google')
+    return await parseSearchAPIResponse(step1Data, 'google')
   }
 
-  return { responseText: '[No AI Overview]', isMentioned: false, isCited: false, sentiment: 'neutral', citations: [] }
+  return { responseText: '[No AI Overview]', citations: [] }
 }
 
-export async function queryPlatform(
-  platform: string,
-  promptText: string,
-  communityName: string,
-  city?: string
-): Promise<PlatformResult> {
+// Placeholder texts saved when a platform produced no real answer — never scored.
+const UNSCORED_PREFIXES = ['[Error]', '[Timeout]', '[No AI Overview]']
+
+// Scores a raw platform response for the project's brand and competitors.
+// Responses without a real answer still get a (negative) result for every
+// competitor, so competitor rates share Result's denominator.
+export async function scoreResult(raw: RawPlatformResult, ctx: DetectionContext): Promise<PlatformResult> {
+  const unscored = !!raw.error || UNSCORED_PREFIXES.some((p) => raw.responseText.startsWith(p))
+  const detection = unscored
+    ? detect('', [], ctx)
+    : await detectWithSentiment(raw.responseText, raw.citations, ctx)
+  return {
+    ...raw,
+    isMentioned: detection.brand.isMentioned,
+    isCited: detection.brand.isCited,
+    sentiment: detection.brand.sentiment,
+    brandPosition: detection.brand.position,
+    competitors: detection.competitors,
+  }
+}
+
+async function queryPlatformRaw(platform: string, promptText: string, city?: string): Promise<RawPlatformResult> {
   try {
-    let result: PlatformResult
+    let result: RawPlatformResult
     switch (platform) {
       case 'chatgpt':
-        result = await queryChatGPT(promptText, communityName); break
+        result = await queryChatGPT(promptText); break
       case 'claude':
-        result = await queryClaude(promptText, communityName); break
+        result = await queryClaude(promptText); break
       case 'gemini':
-        result = await queryGemini(promptText, communityName); break
+        result = await queryGemini(promptText); break
       case 'perplexity':
-        result = await queryPerplexity(promptText, communityName); break
+        result = await queryPerplexity(promptText); break
       case 'google_aio':
-        return await queryGoogleAIO(promptText, communityName, city)
+        return await queryGoogleAIO(promptText, city)
       default:
         throw new Error(`Unknown platform: ${platform}`)
     }
-    // For platforms that query AI directly, fall back to organic search citations when none returned
+    // For platforms that query AI directly, fall back to organic search citations when none returned.
+    // They're never explicit citations, so they can't move isCited.
     if (result.citations.length === 0 && !result.error) {
       result.citations = await fetchFallbackCitations(promptText)
     }
     return result
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    return {
-      responseText: `[Error] ${message}`,
-      isMentioned: false,
-      isCited: false,
-      sentiment: 'neutral' as const,
-      citations: [],
-      error: message,
-    }
+    return { responseText: `[Error] ${message}`, citations: [], error: message }
   }
+}
+
+export async function queryPlatform(
+  platform: string,
+  promptText: string,
+  ctx: DetectionContext,
+  options: { city?: string; timeoutMs?: number } = {}
+): Promise<PlatformResult> {
+  const query = queryPlatformRaw(platform, promptText, options.city)
+  const raw = options.timeoutMs
+    ? await Promise.race([
+        query,
+        new Promise<RawPlatformResult>((resolve) =>
+          setTimeout(() => resolve({ responseText: '[Timeout]', citations: [], error: 'Platform timed out' }), options.timeoutMs)
+        ),
+      ])
+    : await query
+  return scoreResult(raw, ctx)
 }

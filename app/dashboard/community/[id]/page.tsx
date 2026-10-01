@@ -6,7 +6,8 @@ import { SessionOption } from '@/components/run-session-picker'
 import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
 import { getSessionList } from '@/lib/run-sessions'
-import { getProjectList } from '@/lib/projects'
+import { getPromptSetList } from '@/lib/prompt-sets'
+import { promptScope, getSegmentLabels } from '@/lib/projects'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,6 +15,7 @@ async function getCommunityData(id: string, sessionId?: string, promptType?: str
   const decodedId = decodeURIComponent(id)
   const resultsFilter = sessionId ? { where: { runSessionId: sessionId } } : {}
   const scopeFilter = {
+    ...(await promptScope()),
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
@@ -27,7 +29,7 @@ async function getCommunityData(id: string, sessionId?: string, promptType?: str
   // in that other community's mentions/citations.
   const allCommunities = await prisma.prompt.groupBy({
     by: ['communityName'],
-    where: { communityName: { not: '' } },
+    where: { communityName: { not: '' }, ...(await promptScope()) },
   })
   const matched = allCommunities.find((c) => slugify(c.communityName) === decodedId)
   if (!matched) return null
@@ -79,7 +81,7 @@ async function getCommunityData(id: string, sessionId?: string, promptType?: str
 // grid below always shows every level side by side. Takes the already-resolved exact
 // communityName (see getCommunityData's slug matching) rather than re-resolving it.
 async function getCommunityCareLevelBreakdown(communityName: string, sessionId?: string, promptType?: string, projectId?: string) {
-  const scopeFilter = { ...(promptType ? { promptType } : {}), ...(projectId ? { batchId: projectId } : {}) }
+  const scopeFilter = { ...(await promptScope()), ...(promptType ? { promptType } : {}), ...(projectId ? { batchId: projectId } : {}) }
   const where = { communityName, ...scopeFilter }
 
   const groups = await prisma.prompt.groupBy({ by: ['levelOfCare'], where, _count: { id: true } })
@@ -116,13 +118,13 @@ export default async function CommunityDetailPage({
   const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
   let data: Awaited<ReturnType<typeof getCommunityData>> = null
   let sessions: SessionOption[] = []
-  let projects: Awaited<ReturnType<typeof getProjectList>> = []
+  let promptSets: Awaited<ReturnType<typeof getPromptSetList>> = []
   let careLevelBreakdown: Awaited<ReturnType<typeof getCommunityCareLevelBreakdown>> = []
   try {
-    ;[data, sessions, projects] = await Promise.all([
+    ;[data, sessions, promptSets] = await Promise.all([
       getCommunityData(id, sessionId, promptType, projectId, careLevel),
       getSessionList(projectId),
-      getProjectList(),
+      getPromptSetList(),
     ])
     if (data) careLevelBreakdown = await getCommunityCareLevelBreakdown(data.communityName, sessionId, promptType, projectId)
   } catch { /* DB not configured */ }
@@ -139,6 +141,7 @@ export default async function CommunityDetailPage({
     <SegmentDetail
       title={data.communityName}
       backHref={`/dashboard${dashboardQuery.toString() ? `?${dashboardQuery.toString()}` : ''}`}
+      labels={await getSegmentLabels()}
       backLabel="Dashboard"
       overview={data.overview}
       platformStats={data.platformStats}
@@ -150,7 +153,7 @@ export default async function CommunityDetailPage({
       trendData={data.trendData}
       promptTypeFilter={promptTypeParam}
       projectId={projectId}
-      projects={projects}
+      promptSets={promptSets}
       careLevel={careLevel}
       careLevels={careLevelBreakdown.map((c) => c.levelOfCare)}
       careLevelBreakdown={careLevelBreakdown}

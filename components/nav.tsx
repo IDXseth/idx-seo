@@ -7,6 +7,8 @@ import { useState, useRef, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { BarChart3, Upload, Play, Users, ChevronDown, LogOut, User } from 'lucide-react'
 import { GscSiteSelector } from './gsc-site-selector'
+import { ProjectSwitcher } from './project-switcher'
+import { APP_LOGO_URL, APP_OWNER_NAME, APP_PRODUCT_NAME } from '@/lib/app-config'
 
 const links = [
   { href: '/dashboard', label: 'Dashboard', icon: BarChart3 },
@@ -58,16 +60,16 @@ function UserMenu() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl border border-[#dde6ea] shadow-lg overflow-hidden z-50">
+        <div className="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl border border-(--c-line) shadow-lg overflow-hidden z-50">
           {/* User info */}
-          <div className="px-4 py-3 border-b border-[#dde6ea]">
-            <p className="text-sm font-semibold text-[#084c61] truncate">{user.name ?? 'User'}</p>
-            <p className="text-xs text-[#8aadb8] truncate">{user.email}</p>
+          <div className="px-4 py-3 border-b border-(--c-line)">
+            <p className="text-sm font-semibold text-(--c-ink) truncate">{user.name ?? 'User'}</p>
+            <p className="text-xs text-(--c-subtle) truncate">{user.email}</p>
           </div>
 
           {/* GSC domain selector */}
-          <div className="border-b border-[#dde6ea]">
-            <p className="px-4 pt-2.5 pb-1 text-xs font-semibold text-[#8aadb8] uppercase tracking-wide">
+          <div className="border-b border-(--c-line)">
+            <p className="px-4 pt-2.5 pb-1 text-xs font-semibold text-(--c-subtle) uppercase tracking-wide">
               GSC Domain
             </p>
             <GscSiteSelector />
@@ -77,7 +79,7 @@ function UserMenu() {
           <div className="py-1">
             <button
               disabled
-              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#5a7a85] opacity-50 cursor-not-allowed"
+              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-(--c-muted) opacity-50 cursor-not-allowed"
             >
               <User className="h-4 w-4" />
               Profile
@@ -100,17 +102,27 @@ export function Nav() {
   const pathname = usePathname()
 
   return (
-    <nav className="sticky top-0 z-50" style={{ background: 'linear-gradient(90deg, #084c61 0%, #054166 100%)' }}>
+    <nav className="sticky top-0 z-50" style={{ background: 'linear-gradient(90deg, var(--c-ink) 0%, var(--c-ink-hover) 100%)' }}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           {/* Brand */}
           <Link href="/dashboard" className="flex items-center gap-3 group">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/sl-logo.png" alt="Senior Lifestyle" className="h-9 w-auto object-contain flex-shrink-0" />
+            {APP_LOGO_URL ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={APP_LOGO_URL} alt={APP_OWNER_NAME} className="h-9 w-auto object-contain flex-shrink-0" />
+            ) : (
+              <span className="text-sm font-bold text-white leading-none" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>
+                {APP_OWNER_NAME}
+              </span>
+            )}
             <p className="text-[11px] text-white/65 leading-none font-medium tracking-wide">
-              AI Visibility Dashboard
+              {APP_PRODUCT_NAME}
             </p>
           </Link>
+
+          <div className="flex-1 flex justify-start pl-6">
+            <ProjectSwitcher />
+          </div>
 
           {/* Nav links + user menu */}
           <div className="flex items-center gap-1">
@@ -127,7 +139,7 @@ export function Nav() {
                       : 'text-white/70 hover:bg-white/10 hover:text-white'
                   )}
                 >
-                  <Icon className={cn('h-4 w-4', active ? 'text-[#ffc857]' : 'text-white/50')} />
+                  <Icon className={cn('h-4 w-4', active ? 'text-(--c-highlight)' : 'text-white/50')} />
                   {label}
                 </Link>
               )

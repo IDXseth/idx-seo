@@ -1,72 +1,61 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { canWrite } from '@/lib/access'
+import { getViewer } from '@/lib/access'
+import { canEditProject, readableProjectWhere } from '@/lib/projects'
+import { parseProjectSettings } from '@/lib/project-input'
 
-export async function DELETE(
-  _req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+const SETTINGS_SELECT = {
+  id: true,
+  name: true,
+  primaryDomain: true,
+  additionalDomains: true,
+  brandNames: true,
+  sitemapUrl: true,
+  sitemapPathPrefix: true,
+  segmentLabels: true,
+  userId: true,
+} as const
 
-    const { id } = await params
-    const batch = await prisma.batch.findUnique({ where: { id } })
+// GET /api/projects/[id] — a project's brand settings.
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const viewer = await getViewer()
+  if (!viewer) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    if (!batch) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    }
+  const { id } = await params
+  const project = await prisma.project.findFirst({
+    where: { AND: [{ id }, readableProjectWhere(viewer)] },
+    select: SETTINGS_SELECT,
+  })
+  if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-    if (!canWrite(session.user.id, session.user.email, batch.userId)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
-    await prisma.batch.delete({ where: { id } })
-    return NextResponse.json({ ok: true })
-  } catch (error) {
-    console.error('Delete project error:', error)
-    return NextResponse.json({ error: 'Failed to delete project' }, { status: 500 })
-  }
+  const { userId, ...settings } = project
+  return NextResponse.json({ ...settings, canEdit: canEditProject(viewer, { userId }) })
 }
 
-export async function PATCH(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// PATCH /api/projects/[id] — update brand settings. Takes effect on the next run;
+// existing results keep the detection they were scored with.
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const viewer = await getViewer()
+  if (!viewer) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { id } = await params
+  const existing = await prisma.project.findUnique({ where: { id }, select: { userId: true } })
+  if (!existing || !canEditProject(viewer, existing)) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
+  const { data, error } = parseProjectSettings(await req.json().catch(() => ({})))
+  if (!data) return NextResponse.json({ error }, { status: 400 })
+
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const project = await prisma.project.update({ where: { id }, data, select: SETTINGS_SELECT })
+    const { userId, ...settings } = project
+    return NextResponse.json({ ...settings, canEdit: canEditProject(viewer, { userId }) })
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      return NextResponse.json({ error: `A project for ${data.primaryDomain} already exists` }, { status: 409 })
     }
-
-    const { id } = await params
-    const { name } = await req.json()
-
-    if (!name || typeof name !== 'string' || !name.trim()) {
-      return NextResponse.json({ error: 'Name is required' }, { status: 400 })
-    }
-
-    const batch = await prisma.batch.findUnique({ where: { id } })
-
-    if (!batch) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    }
-
-    if (!canWrite(session.user.id, session.user.email, batch.userId)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
-    const updated = await prisma.batch.update({
-      where: { id },
-      data: { name: name.trim() },
-    })
-
-    return NextResponse.json(updated)
-  } catch (error) {
-    console.error('Rename project error:', error)
-    return NextResponse.json({ error: 'Failed to rename project' }, { status: 500 })
+    throw err
   }
 }

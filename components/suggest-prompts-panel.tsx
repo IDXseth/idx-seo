@@ -8,19 +8,9 @@ import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Sparkles, Info, Globe2, CheckCircle2, AlertCircle, Loader2, ArrowRight } from 'lucide-react'
 import { KNOWN_LEVELS_OF_CARE } from '@/lib/normalize'
+import { PRESET_LABELS, type SegmentLabels } from '@/lib/segment-labels'
+import { categoriesFor } from '@/lib/suggestion-categories'
 
-const SUGGESTION_CATEGORIES = [
-  'General Discovery',
-  'Care Specific',
-  'Cost & Financial Planning',
-  'Location Based',
-  'Best Of',
-  'Competitor / Options Comparison',
-  'Caregiver & Family Support',
-  'Daily Life & Amenities',
-  'Policy & Logistics',
-  'Reviews & Reputation',
-]
 
 // Shape returned by GET /api/competitors — the same Competitor records used
 // for AI-mention tracking on the /competitors page. Reused here (rather than
@@ -76,29 +66,29 @@ function CompetitorSitesSummary({ competitors }: { competitors: Competitor[] }) 
     <div>
       <div className="flex items-center justify-between gap-3 mb-2">
         <div className="flex items-center gap-2">
-          <Globe2 className="h-4 w-4 text-[#177e89]" />
-          <p className="text-sm font-semibold text-[#084c61]">Competitor sites used for research</p>
+          <Globe2 className="h-4 w-4 text-(--c-accent)" />
+          <p className="text-sm font-semibold text-(--c-ink)">Competitor sites used for research</p>
         </div>
-        <Link href="/competitors" className="flex items-center gap-1 text-xs text-[#177e89] hover:underline whitespace-nowrap">
+        <Link href="/competitors" className="flex items-center gap-1 text-xs text-(--c-accent) hover:underline whitespace-nowrap">
           Manage competitors <ArrowRight className="h-3 w-3" />
         </Link>
       </div>
-      <p className="text-xs text-[#5a7a85] mb-3">
+      <p className="text-xs text-(--c-muted) mb-3">
         Active competitors from your competitor list are researched with a domain-restricted web search when generating suggestions — the model can only search these exact domains for real FAQ/blog topics.
       </p>
 
       {active.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {active.map((c) => (
-            <span key={c.id} className="inline-flex items-center gap-1.5 bg-[#e6f2f5] border border-[#b8d8e0] text-[#084c61] text-xs px-2.5 py-1 rounded-full">
-              {c.brandName} <span className="text-[#5a7a85]">({c.domain})</span>
+            <span key={c.id} className="inline-flex items-center gap-1.5 bg-(--c-tint) border border-(--c-accent-faint) text-(--c-ink) text-xs px-2.5 py-1 rounded-full">
+              {c.brandName} <span className="text-(--c-muted)">({c.domain})</span>
             </span>
           ))}
         </div>
       ) : (
-        <p className="text-xs text-[#8aadb8]">
+        <p className="text-xs text-(--c-subtle)">
           No active competitors yet — suggestions will be generated from general knowledge instead. Add some on the{' '}
-          <Link href="/competitors" className="text-[#177e89] hover:underline">Competitors</Link> page to ground research in their real content.
+          <Link href="/competitors" className="text-(--c-accent) hover:underline">Competitors</Link> page to ground research in their real content.
         </p>
       )}
     </div>
@@ -107,7 +97,7 @@ function CompetitorSitesSummary({ competitors }: { competitors: Competitor[] }) 
 
 // ─── Main panel ──────────────────────────────────────────────────────────────
 
-export function SuggestPromptsPanel() {
+export function SuggestPromptsPanel({ labels = PRESET_LABELS['senior-living'] }: { labels?: SegmentLabels }) {
   const router = useRouter()
   const [competitors, setCompetitors] = useState<Competitor[]>([])
   const [loadingCompetitors, setLoadingCompetitors] = useState(true)
@@ -116,7 +106,10 @@ export function SuggestPromptsPanel() {
   const [city, setCity] = useState('')
   const [market, setMarket] = useState('')
   const [levelOfCare, setLevelOfCare] = useState('')
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([...SUGGESTION_CATEGORIES])
+  // Category toggles follow the project's industry preset. The parent keys this
+  // panel by preset, so the selection starts fresh when the preset changes.
+  const categoryOptions = categoriesFor(labels.preset)
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([...categoryOptions])
   const [count, setCount] = useState(20)
 
   const [generating, setGenerating] = useState(false)
@@ -208,51 +201,56 @@ export function SuggestPromptsPanel() {
   return (
     <div className="space-y-6">
       {/* Competitor sites */}
-      <div className="bg-white rounded-xl border border-[#dde6ea] p-5">
+      <div className="bg-white rounded-xl border border-(--c-line) p-5">
         {loadingCompetitors ? (
-          <p className="text-sm text-[#8aadb8]">Loading competitor sites…</p>
+          <p className="text-sm text-(--c-subtle)">Loading competitor sites…</p>
         ) : (
           <CompetitorSitesSummary competitors={competitors} />
         )}
       </div>
 
       {/* Generation form */}
-      <div className="bg-white rounded-xl border border-[#dde6ea] p-5 space-y-4">
+      <div className="bg-white rounded-xl border border-(--c-line) p-5 space-y-4">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-[#177e89]" />
-          <p className="text-sm font-semibold text-[#084c61]">Generate nonbrand prompt suggestions</p>
+          <Sparkles className="h-4 w-4 text-(--c-accent)" />
+          <p className="text-sm font-semibold text-(--c-ink)">Generate nonbrand prompt suggestions</p>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-medium text-[#5a7a85] block mb-1">Community name <span className="text-[#8aadb8] font-normal">(optional)</span></label>
+            <label className="text-xs font-medium text-(--c-muted) block mb-1">{labels.entity} <span className="text-(--c-subtle) font-normal">(optional)</span></label>
             <input type="text" value={communityName} onChange={(e) => setCommunityName(e.target.value)} placeholder="Leave blank for general, portfolio-wide prompts"
-              className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+              className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#5a7a85] block mb-1">Level of care</label>
-            <select value={levelOfCare} onChange={(e) => setLevelOfCare(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]">
-              <option value="">— Any —</option>
-              {KNOWN_LEVELS_OF_CARE.map((o) => <option key={o} value={o}>{o}</option>)}
-            </select>
+            <label className="text-xs font-medium text-(--c-muted) block mb-1">{labels.levelOfCare}</label>
+            {labels.preset === 'senior-living' ? (
+              <select value={levelOfCare} onChange={(e) => setLevelOfCare(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)">
+                <option value="">— Any —</option>
+                {KNOWN_LEVELS_OF_CARE.map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
+            ) : (
+              <input type="text" value={levelOfCare} onChange={(e) => setLevelOfCare(e.target.value)} placeholder="Any"
+                className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
+            )}
           </div>
           <div>
-            <label className="text-xs font-medium text-[#5a7a85] block mb-1">City</label>
+            <label className="text-xs font-medium text-(--c-muted) block mb-1">City</label>
             <input type="text" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Chicago"
-              className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+              className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#5a7a85] block mb-1">Market</label>
+            <label className="text-xs font-medium text-(--c-muted) block mb-1">{labels.market}</label>
             <input type="text" value={market} onChange={(e) => setMarket(e.target.value)} placeholder="Chicago Metro"
-              className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+              className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
           </div>
         </div>
 
         <div>
-          <label className="text-xs font-medium text-[#5a7a85] block mb-1.5">Categories</label>
+          <label className="text-xs font-medium text-(--c-muted) block mb-1.5">Categories</label>
           <div className="flex flex-wrap gap-1.5">
-            {SUGGESTION_CATEGORIES.map((cat) => {
+            {categoryOptions.map((cat) => {
               const active = selectedCategories.includes(cat)
               return (
                 <button
@@ -260,8 +258,8 @@ export function SuggestPromptsPanel() {
                   onClick={() => toggleCategory(cat)}
                   className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
                     active
-                      ? 'bg-[#084c61] border-[#084c61] text-white'
-                      : 'bg-white border-[#dde6ea] text-[#5a7a85] hover:border-[#8aadb8]'
+                      ? 'bg-(--c-ink) border-(--c-ink) text-white'
+                      : 'bg-white border-(--c-line) text-(--c-muted) hover:border-(--c-subtle)'
                   }`}
                 >
                   {cat}
@@ -273,9 +271,9 @@ export function SuggestPromptsPanel() {
 
         <div className="flex items-end gap-3">
           <div>
-            <label className="text-xs font-medium text-[#5a7a85] block mb-1">Number of prompts</label>
+            <label className="text-xs font-medium text-(--c-muted) block mb-1">Number of prompts</label>
             <input type="number" min={1} max={60} value={count} onChange={(e) => setCount(Number(e.target.value))}
-              className="w-28 px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+              className="w-28 px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
           </div>
           <Button onClick={handleGenerate} disabled={generating || selectedCategories.length === 0}>
             {generating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
@@ -293,10 +291,10 @@ export function SuggestPromptsPanel() {
 
       {/* Results */}
       {result && (
-        <div className="bg-white rounded-xl border border-[#dde6ea] overflow-hidden">
-          <div className="px-6 py-3 bg-[#e6f2f5] border-b border-[#b8d8e0] flex items-start gap-2.5">
-            <Info className="h-4 w-4 text-[#177e89] flex-shrink-0 mt-0.5" />
-            <div className="text-xs text-[#084c61] space-y-0.5">
+        <div className="bg-white rounded-xl border border-(--c-line) overflow-hidden">
+          <div className="px-6 py-3 bg-(--c-tint) border-b border-(--c-accent-faint) flex items-start gap-2.5">
+            <Info className="h-4 w-4 text-(--c-accent) flex-shrink-0 mt-0.5" />
+            <div className="text-xs text-(--c-ink) space-y-0.5">
               <p>
                 {result.usedFallback ? 'Generated from local templates.' : 'Generated with AI research.'}{' '}
                 {result.groundedInGsc ? 'Grounded in your Search Console query data.' : 'No Search Console query data was available yet.'}{' '}
@@ -304,7 +302,7 @@ export function SuggestPromptsPanel() {
                   ? `Researched: ${result.competitorDomains.join(', ')}.`
                   : 'No competitor sites were added, so no site research was performed.'}
               </p>
-              {result.note && <p className="text-[#5a7a85]">{result.note}</p>}
+              {result.note && <p className="text-(--c-muted)">{result.note}</p>}
             </div>
           </div>
 
@@ -312,15 +310,15 @@ export function SuggestPromptsPanel() {
             <div>
               <p className="font-semibold text-slate-900 text-sm">{result.suggestions.length} suggestions — {selected.size} selected</p>
               <div className="flex gap-3 mt-1">
-                <button onClick={() => setSelected(new Set(result.suggestions.map((_, i) => i)))} className="text-xs text-[#177e89] hover:underline">Select all</button>
-                <button onClick={() => setSelected(new Set())} className="text-xs text-[#177e89] hover:underline">Select none</button>
+                <button onClick={() => setSelected(new Set(result.suggestions.map((_, i) => i)))} className="text-xs text-(--c-accent) hover:underline">Select all</button>
+                <button onClick={() => setSelected(new Set())} className="text-xs text-(--c-accent) hover:underline">Select none</button>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <input
                 type="text" value={batchName} onChange={(e) => setBatchName(e.target.value)}
                 placeholder="Batch name"
-                className="px-3 py-1.5 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61] w-56"
+                className="px-3 py-1.5 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink) w-56"
               />
               <Button onClick={handleCommit} disabled={committing || selected.size === 0}>
                 {committing ? 'Saving…' : `Add ${selected.size} to new batch`}
@@ -350,7 +348,7 @@ export function SuggestPromptsPanel() {
                 <TableRow>
                   <TableHead className="w-8" />
                   <TableHead>Category</TableHead>
-                  <TableHead>Level of Care</TableHead>
+                  <TableHead>{labels.levelOfCare}</TableHead>
                   <TableHead>Prompt</TableHead>
                 </TableRow>
               </TableHeader>

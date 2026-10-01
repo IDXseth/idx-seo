@@ -8,7 +8,9 @@ import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
 import { getCompetitorLeaderboard, getBrandSeries, getBrandTrendSeries, CompetitorLeaderboardEntry, BrandComparison, BrandTrendSeries } from '@/lib/competitor-stats'
 import { getSessionList } from '@/lib/run-sessions'
-import { getProjectList } from '@/lib/projects'
+import { getPromptSetList } from '@/lib/prompt-sets'
+import { promptScope, getActiveProject, getSegmentLabels } from '@/lib/projects'
+import { competitorScope } from '@/lib/competitors'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,6 +18,7 @@ async function getCategoryData(name: string, sessionId?: string, promptType?: st
   const decodedName = decodeURIComponent(name)
   const resultsFilter = sessionId ? { where: { runSessionId: sessionId } } : {}
   const scopeFilter = {
+    ...(await promptScope()),
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
@@ -56,7 +59,7 @@ async function getCategoryData(name: string, sessionId?: string, promptType?: st
   const trendData = sessionId ? [] : await getSegmentTrendData({ category: decodedName, ...scopeFilter })
   const promptIds = prompts.map((p) => p.id)
   const competitorLeaderboard = userId
-    ? await getCompetitorLeaderboard(promptIds, userId, sessionId)
+    ? await getCompetitorLeaderboard(promptIds, competitorScope((await getActiveProject())?.id, userId), sessionId)
     : null
   const brandComparison = await getBrandSeries({
     promptId: { in: promptIds },
@@ -78,7 +81,7 @@ async function getCategoryData(name: string, sessionId?: string, promptType?: st
 // grid below always shows every level side by side.
 async function getCategoryCareLevelBreakdown(name: string, sessionId?: string, promptType?: string, projectId?: string) {
   const decodedName = decodeURIComponent(name)
-  const scopeFilter = { ...(promptType ? { promptType } : {}), ...(projectId ? { batchId: projectId } : {}) }
+  const scopeFilter = { ...(await promptScope()), ...(promptType ? { promptType } : {}), ...(projectId ? { batchId: projectId } : {}) }
   const where = { category: decodedName, ...scopeFilter }
 
   const groups = await prisma.prompt.groupBy({ by: ['levelOfCare'], where, _count: { id: true } })
@@ -118,13 +121,13 @@ export default async function CategoryDetailPage({
 
   let data: Awaited<ReturnType<typeof getCategoryData>> = null
   let sessions: SessionOption[] = []
-  let projects: Awaited<ReturnType<typeof getProjectList>> = []
+  let promptSets: Awaited<ReturnType<typeof getPromptSetList>> = []
   let careLevelBreakdown: Awaited<ReturnType<typeof getCategoryCareLevelBreakdown>> = []
   try {
-    ;[data, sessions, projects, careLevelBreakdown] = await Promise.all([
+    ;[data, sessions, promptSets, careLevelBreakdown] = await Promise.all([
       getCategoryData(name, sessionId, promptType, projectId, userId, careLevel),
       getSessionList(projectId),
-      getProjectList(),
+      getPromptSetList(),
       getCategoryCareLevelBreakdown(name, sessionId, promptType, projectId),
     ])
   } catch { /* DB not configured */ }
@@ -141,6 +144,7 @@ export default async function CategoryDetailPage({
     <SegmentDetail
       title={data.name}
       backHref={`/dashboard${dashboardQuery.toString() ? `?${dashboardQuery.toString()}` : ''}`}
+      labels={await getSegmentLabels()}
       backLabel="Dashboard"
       overview={data.overview}
       platformStats={data.platformStats}
@@ -156,7 +160,7 @@ export default async function CategoryDetailPage({
       brandTrend={data.brandTrend as BrandTrendSeries[]}
       promptTypeFilter={promptTypeParam}
       projectId={projectId}
-      projects={projects}
+      promptSets={promptSets}
       careLevel={careLevel}
       careLevels={careLevelBreakdown.map((c) => c.levelOfCare)}
       careLevelBreakdown={careLevelBreakdown}

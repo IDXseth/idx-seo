@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { PLATFORM_LABELS } from '@/lib/utils'
-import { auth } from '@/lib/auth'
+import { getViewer, type Viewer } from '@/lib/access'
+import { activeBatchWhere } from '@/lib/projects'
 import * as xlsx from 'xlsx'
 
 export const dynamic = 'force-dynamic'
 
 // Excel sheet names: max 31 chars, no [ ] : * ? / \
 function sanitizeSheetName(name: string, used: Set<string>): string {
-  const base = name.replace(/[\[\]:*?/\\]/g, ' ').trim().slice(0, 31) || 'Project'
+  const base = name.replace(/[\[\]:*?/\\]/g, ' ').trim().slice(0, 31) || 'Prompt set'
   let candidate = base
   let n = 2
   while (used.has(candidate.toLowerCase())) {
@@ -21,7 +22,7 @@ function sanitizeSheetName(name: string, used: Set<string>): string {
 }
 
 // Exports one run session's results (mentions/citations/sentiment per prompt).
-async function exportSessionResults(sessionId: string) {
+async function exportSessionResults(viewer: Viewer, sessionId: string) {
   const runSession = await prisma.runSession.findUnique({
     where: { id: sessionId },
     select: { id: true, startedAt: true },
@@ -29,7 +30,7 @@ async function exportSessionResults(sessionId: string) {
   if (!runSession) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
 
   const results = await prisma.result.findMany({
-    where: { runSessionId: sessionId },
+    where: { runSessionId: sessionId, prompt: { batch: await activeBatchWhere(viewer) } },
     include: { prompt: true, citations: true },
     orderBy: [{ prompt: { communityName: 'asc' } }, { prompt: { city: 'asc' } }, { platform: 'asc' }],
   })
@@ -74,15 +75,10 @@ async function exportSessionResults(sessionId: string) {
   })
 }
 
-// Exports every project's (batch's) prompt list, one sheet per project.
-async function exportAllPrompts(userId: string, userEmail?: string | null) {
+// Exports every prompt set in the active project, one sheet per prompt set.
+async function exportAllPrompts(viewer: Viewer) {
   const batches = await prisma.batch.findMany({
-    where: {
-      OR: [
-        { userId },
-        ...(userEmail ? [{ shares: { some: { email: userEmail } } }] : []),
-      ],
-    },
+    where: await activeBatchWhere(viewer),
     orderBy: { createdAt: 'desc' },
     include: {
       prompts: { orderBy: { createdAt: 'asc' } },
@@ -120,7 +116,7 @@ async function exportAllPrompts(userId: string, userEmail?: string | null) {
   }
 
   if (batches.length === 0) {
-    xlsx.utils.book_append_sheet(workbook, xlsx.utils.aoa_to_sheet([['No projects found']]), 'Prompts')
+    xlsx.utils.book_append_sheet(workbook, xlsx.utils.aoa_to_sheet([['No prompt sets found']]), 'Prompts')
   }
 
   const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' })
@@ -136,13 +132,13 @@ async function exportAllPrompts(userId: string, userEmail?: string | null) {
 }
 
 export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const viewer = await getViewer()
+  if (!viewer) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
     const sessionId = req.nextUrl.searchParams.get('session')
-    if (sessionId) return await exportSessionResults(sessionId)
-    return await exportAllPrompts(session.user.id, session.user.email)
+    if (sessionId) return await exportSessionResults(viewer, sessionId)
+    return await exportAllPrompts(viewer)
   } catch (error) {
     console.error('Export error:', error)
     return NextResponse.json({ error: 'Failed to export' }, { status: 500 })

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { isSuperUser } from '@/lib/access'
 import { prisma } from '@/lib/prisma'
-import { normalizeRow } from '@/lib/normalize'
+import { normalizeRow, toGenericFields } from '@/lib/normalize'
 
 export const maxDuration = 60
 
@@ -9,6 +10,10 @@ export async function POST() {
   const session = await auth()
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  // Operates on every project's data (or the one global GSC cache) — super users only.
+  if (!isSuperUser(session.user.email)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const prompts = await prisma.prompt.findMany({
@@ -63,6 +68,7 @@ export async function POST() {
         market: norm.market,
         levelOfCare: norm.levelOfCare,
         promptText: norm.promptText,
+        ...toGenericFields(norm),
       },
     })
     updated++

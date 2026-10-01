@@ -1,8 +1,21 @@
 import { Resend } from 'resend'
+import { APP_OWNER_NAME, APP_PRODUCT_NAME, APP_TITLE } from './app-config'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+// Created on first send, not at import: the Resend constructor throws without a
+// key, and every route importing this module is loaded during `next build`, so
+// a missing RESEND_API_KEY would otherwise fail the whole build. Without a key,
+// emails are skipped with a warning.
+let client: Resend | null = null
+function getResend(): Resend | null {
+  if (!process.env.RESEND_API_KEY) {
+    console.warn('RESEND_API_KEY is not set — skipping email')
+    return null
+  }
+  client ??= new Resend(process.env.RESEND_API_KEY)
+  return client
+}
 
-const FROM = 'AI Visibility Dashboard <notifications@resend.dev>'
+const FROM = `${APP_PRODUCT_NAME} <notifications@resend.dev>`
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://your-app.vercel.app'
 
 interface RunSummary {
@@ -43,8 +56,8 @@ export async function sendRunCompleteEmail(summary: RunSummary) {
           <!-- Header -->
           <tr>
             <td style="background:linear-gradient(90deg,#084c61 0%,#054166 100%);padding:32px 40px;">
-              <p style="margin:0;font-size:11px;font-weight:700;color:rgba(255,255,255,0.6);letter-spacing:1.5px;text-transform:uppercase;">Senior Lifestyle</p>
-              <h1 style="margin:4px 0 0;font-size:22px;font-weight:700;color:#ffffff;">AI Visibility Dashboard</h1>
+              <p style="margin:0;font-size:11px;font-weight:700;color:rgba(255,255,255,0.6);letter-spacing:1.5px;text-transform:uppercase;">${APP_OWNER_NAME}</p>
+              <h1 style="margin:4px 0 0;font-size:22px;font-weight:700;color:#ffffff;">${APP_PRODUCT_NAME}</h1>
             </td>
           </tr>
 
@@ -98,7 +111,7 @@ export async function sendRunCompleteEmail(summary: RunSummary) {
           <!-- Footer -->
           <tr>
             <td style="padding:20px 40px;border-top:1px solid #eef3f5;text-align:center;">
-              <p style="margin:0;font-size:11px;color:#8aadb8;">Senior Lifestyle AI Visibility Dashboard</p>
+              <p style="margin:0;font-size:11px;color:#8aadb8;">${APP_TITLE}</p>
             </td>
           </tr>
 
@@ -110,7 +123,7 @@ export async function sendRunCompleteEmail(summary: RunSummary) {
 </html>
 `
 
-  await resend.emails.send({ from: FROM, to: summary.to, subject, html })
+  await getResend()?.emails.send({ from: FROM, to: summary.to, subject, html })
 }
 
 interface ShareInvite {
@@ -139,18 +152,18 @@ export async function sendShareInviteEmail(invite: ShareInvite) {
           <!-- Header -->
           <tr>
             <td style="background:linear-gradient(90deg,#084c61 0%,#054166 100%);padding:32px 40px;">
-              <p style="margin:0;font-size:11px;font-weight:700;color:rgba(255,255,255,0.6);letter-spacing:1.5px;text-transform:uppercase;">Senior Lifestyle</p>
-              <h1 style="margin:4px 0 0;font-size:22px;font-weight:700;color:#ffffff;">AI Visibility Dashboard</h1>
+              <p style="margin:0;font-size:11px;font-weight:700;color:rgba(255,255,255,0.6);letter-spacing:1.5px;text-transform:uppercase;">${APP_OWNER_NAME}</p>
+              <h1 style="margin:4px 0 0;font-size:22px;font-weight:700;color:#ffffff;">${APP_PRODUCT_NAME}</h1>
             </td>
           </tr>
 
           <!-- Body -->
           <tr>
             <td style="padding:32px 40px;">
-              <h2 style="margin:0 0 6px;font-size:18px;color:#084c61;">You've been invited to a project</h2>
+              <h2 style="margin:0 0 6px;font-size:18px;color:#084c61;">You've been invited to a prompt set</h2>
               <p style="margin:0 0 24px;font-size:14px;color:#5a7a85;line-height:1.6;">
-                <strong style="color:#084c61;">${fromLabel}</strong> has shared the project
-                <strong style="color:#084c61;">${invite.batchName}</strong> with you on the Senior Lifestyle AI Visibility Dashboard.
+                <strong style="color:#084c61;">${fromLabel}</strong> has shared the prompt set
+                <strong style="color:#084c61;">${invite.batchName}</strong> with you on the ${APP_TITLE}.
               </p>
 
               ${shareUrl ? `
@@ -163,7 +176,7 @@ export async function sendShareInviteEmail(invite: ShareInvite) {
 
               <!-- Sign in CTA -->
               <p style="margin:0 0 16px;font-size:14px;color:#5a7a85;line-height:1.6;">
-                Sign in${shareUrl ? ' for full access and to run additional analyses' : ' to access the project'}:
+                Sign in${shareUrl ? ' for full access and to run additional analyses' : ' to access the prompt set'}:
               </p>
               <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
                 <tr>
@@ -177,7 +190,7 @@ export async function sendShareInviteEmail(invite: ShareInvite) {
               </table>
 
               <p style="margin:0;font-size:12px;color:#8aadb8;line-height:1.6;">
-                Sign in with <strong>${invite.to}</strong>. If you don't have an account yet, create one with this email address to access the shared project.
+                Sign in with <strong>${invite.to}</strong>. If you don't have an account yet, create one with this email address to access the shared prompt set.
               </p>
             </td>
           </tr>
@@ -185,7 +198,7 @@ export async function sendShareInviteEmail(invite: ShareInvite) {
           <!-- Footer -->
           <tr>
             <td style="padding:20px 40px;border-top:1px solid #eef3f5;text-align:center;">
-              <p style="margin:0;font-size:11px;color:#8aadb8;">Senior Lifestyle AI Visibility Dashboard</p>
+              <p style="margin:0;font-size:11px;color:#8aadb8;">${APP_TITLE}</p>
             </td>
           </tr>
 
@@ -196,7 +209,7 @@ export async function sendShareInviteEmail(invite: ShareInvite) {
 </body>
 </html>`
 
-  await resend.emails.send({
+  await getResend()?.emails.send({
     from: FROM,
     to: invite.to,
     subject: `${fromLabel} shared "${invite.batchName}" with you`,

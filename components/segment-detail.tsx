@@ -8,12 +8,14 @@ import { BrandScorecards } from '@/components/brand-scorecards'
 import { BrandTrendChart } from '@/components/brand-trend-chart'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
-import { ProjectPicker, ProjectOption } from '@/components/project-picker'
+import { PromptSetPicker, PromptSetOption } from '@/components/prompt-set-picker'
 import { CareLevelPicker } from '@/components/care-level-picker'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { SentimentBreakdown } from '@/components/sentiment-breakdown'
 import { PLATFORM_LABELS, PLATFORM_COLORS, formatPercent, slugify, cn } from '@/lib/utils'
-import { ChevronLeft, Target, Quote, FileText, ExternalLink, Trophy } from 'lucide-react'
+import { ChevronLeft, Target, Quote, FileText, ExternalLink } from 'lucide-react'
+import { CompetitorComparison } from '@/components/competitor-comparison'
+import { PRESET_LABELS, type SegmentLabels } from '@/lib/segment-labels'
 import type { CompetitorLeaderboardEntry, BrandComparison, BrandTrendSeries } from '@/lib/competitor-stats'
 
 interface Citation {
@@ -92,7 +94,7 @@ interface SegmentDetailProps {
   brandTrend?: BrandTrendSeries[]
   promptTypeFilter?: PromptTypeFilter
   projectId?: string
-  projects?: ProjectOption[]
+  promptSets?: PromptSetOption[]
   careLevel?: string
   careLevels?: string[]
   careLevelBreakdown?: Array<{ levelOfCare: string; promptCount: number; mentionRate: number; citationRate: number }>
@@ -100,6 +102,7 @@ interface SegmentDetailProps {
   // Carried into each level-of-care breakdown card's link so drilling into a level of care
   // from within Cincinnati lands on Cincinnati + that level, not the unfiltered level-of-care view.
   segmentDrillParam?: { key: string; value: string }
+  labels?: SegmentLabels  // the project's names for its dimensions
 }
 
 export function SegmentDetail({
@@ -121,11 +124,12 @@ export function SegmentDetail({
   brandTrend,
   promptTypeFilter = 'all',
   projectId,
-  projects,
+  promptSets,
   careLevel,
   careLevels,
   careLevelBreakdown,
   segmentDrillParam,
+  labels = PRESET_LABELS['senior-living'],
 }: SegmentDetailProps) {
   const platforms = platformStats.map((p) => p.platform)
 
@@ -142,20 +146,20 @@ export function SegmentDetail({
     <div className="space-y-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2">
-        <Link href={backHref} className="flex items-center gap-1 text-sm text-[#177e89] hover:text-[#084c61] font-medium transition-colors">
+        <Link href={backHref} className="flex items-center gap-1 text-sm text-(--c-accent) hover:text-(--c-ink) font-medium transition-colors">
           <ChevronLeft className="h-4 w-4" />
           {backLabel}
         </Link>
-        <span className="text-[#b8cdd3]">/</span>
-        <span className="text-sm text-[#5a7a85]">{title}</span>
+        <span className="text-(--c-faint)">/</span>
+        <span className="text-sm text-(--c-muted)">{title}</span>
       </div>
 
       {/* Page title + controls */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>{title}</h1>
+          <h1 className="text-2xl font-bold text-(--c-ink)" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>{title}</h1>
           {sessionId && (
-            <p className="text-xs text-[#8aadb8] mt-1">
+            <p className="text-xs text-(--c-subtle) mt-1">
               Filtered to a single run snapshot — <Link
                 href={(() => {
                   const [path, query] = backHref.split('?')
@@ -164,16 +168,16 @@ export function SegmentDetail({
                   const qs = params.toString()
                   return qs ? `${path}?${qs}` : path
                 })()}
-                className="underline hover:text-[#084c61]"
+                className="underline hover:text-(--c-ink)"
               >view all runs</Link>
             </p>
           )}
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          {projects && (
-            <ProjectPicker
-              projects={projects}
-              currentProjectId={projectId}
+          {promptSets && (
+            <PromptSetPicker
+              promptSets={promptSets}
+              currentSetId={projectId}
               basePath={basePath ?? '/dashboard'}
               promptType={promptTypeFilter === 'all' ? undefined : promptTypeFilter}
             />
@@ -181,6 +185,7 @@ export function SegmentDetail({
           <PromptTypeToggle value={promptTypeFilter} basePath={basePath ?? '/dashboard'} sessionId={sessionId} projectId={projectId} />
           {careLevels && (
             <CareLevelPicker
+              label={labels.levelOfCare}
               levels={careLevels}
               currentLevel={careLevel}
               basePath={basePath ?? '/dashboard'}
@@ -204,16 +209,16 @@ export function SegmentDetail({
       {/* Summary Stats */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { icon: <FileText className="h-5 w-5 text-[#084c61]" />, bg: 'bg-[#e6f2f5]', label: 'Prompts', value: overview.promptCount },
+          { icon: <FileText className="h-5 w-5 text-(--c-ink)" />, bg: 'bg-(--c-tint)', label: 'Prompts', value: overview.promptCount },
           { icon: <Target className="h-5 w-5 text-emerald-600" />, bg: 'bg-emerald-50', label: 'Mention Rate', value: formatPercent(overview.mentionRate) },
-          { icon: <Quote className="h-5 w-5 text-[#177e89]" />, bg: 'bg-[#e6f2f5]', label: 'Citation Rate', value: formatPercent(overview.citationRate) },
+          { icon: <Quote className="h-5 w-5 text-(--c-accent)" />, bg: 'bg-(--c-tint)', label: 'Citation Rate', value: formatPercent(overview.citationRate) },
         ].map(({ icon, bg, label, value }) => (
-          <div key={label} className="bg-white rounded-xl border border-[#dde6ea] p-5">
+          <div key={label} className="bg-white rounded-xl border border-(--c-line) p-5">
             <div className="flex items-center gap-3 mb-3">
               <div className={`p-2 rounded-lg ${bg}`}>{icon}</div>
-              <p className="text-xs font-medium text-[#5a7a85]">{label}</p>
+              <p className="text-xs font-medium text-(--c-muted)">{label}</p>
             </div>
-            <p className="text-3xl font-bold text-[#084c61] leading-none">{value}</p>
+            <p className="text-3xl font-bold text-(--c-ink) leading-none">{value}</p>
           </div>
         ))}
       </div>
@@ -221,7 +226,7 @@ export function SegmentDetail({
       {/* Communities in this market */}
       {communityStats && communityStats.length > 0 && (
         <div>
-          <h2 className="text-sm font-semibold text-[#084c61] mb-4">Communities in {title}</h2>
+          <h2 className="text-sm font-semibold text-(--c-ink) mb-4">{labels.entity} breakdown in {title}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {communityStats.map((c) => (
               <Scorecard
@@ -245,9 +250,9 @@ export function SegmentDetail({
 
       {/* Brand trend — all brands, aggregate view only */}
       {!sessionId && brandTrend && brandTrend.length > 1 && (
-        <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
-          <h2 className="text-sm font-semibold text-[#084c61] mb-1">Mention & Citation Rate Trend — All Brands</h2>
-          <p className="text-xs text-[#8aadb8] mb-4">How each tracked brand&apos;s visibility has moved across run sessions</p>
+        <div className="bg-white rounded-xl border border-(--c-line) p-6">
+          <h2 className="text-sm font-semibold text-(--c-ink) mb-1">Mention & Citation Rate Trend — All Brands</h2>
+          <p className="text-xs text-(--c-subtle) mb-4">How each tracked brand&apos;s visibility has moved across run sessions</p>
           <BrandTrendChart brands={brandTrend} />
         </div>
       )}
@@ -255,7 +260,7 @@ export function SegmentDetail({
       {/* Trend charts — aggregate view only */}
       {!sessionId && trendData && trendData.length > 0 && (
         <div>
-          <h2 className="text-sm font-semibold text-[#084c61] mb-4">Performance Over Time</h2>
+          <h2 className="text-sm font-semibold text-(--c-ink) mb-4">Performance Over Time</h2>
           <TrendCharts data={trendData} />
         </div>
       )}
@@ -264,15 +269,15 @@ export function SegmentDetail({
       {brandComparison && brandComparison.brands.length > 1 ? (
         <>
           <div>
-            <h2 className="text-sm font-semibold text-[#084c61] mb-4">Mention & Citation Rate by Brand</h2>
+            <h2 className="text-sm font-semibold text-(--c-ink) mb-4">Mention & Citation Rate by Brand</h2>
             <BrandScorecards brands={brandComparison.brands} promptCount={overview.promptCount} />
           </div>
           <SentimentBreakdown results={prompts.flatMap((p) => p.results)} />
         </>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
-            <h2 className="text-sm font-semibold text-[#084c61] mb-4">Performance by Platform</h2>
+          <div className="bg-white rounded-xl border border-(--c-line) p-6">
+            <h2 className="text-sm font-semibold text-(--c-ink) mb-4">Performance by Platform</h2>
             <PlatformMentionChart data={platformStats} />
           </div>
           <SentimentBreakdown results={prompts.flatMap((p) => p.results)} />
@@ -282,7 +287,7 @@ export function SegmentDetail({
       {/* Breakdown by Level of Care */}
       {careLevelBreakdown && careLevelBreakdown.length > 1 && (
         <div>
-          <h2 className="text-sm font-semibold text-[#084c61] mb-4">Breakdown by Level of Care</h2>
+          <h2 className="text-sm font-semibold text-(--c-ink) mb-4">Breakdown by {labels.levelOfCare}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {careLevelBreakdown.map((c) => {
               const params = new URLSearchParams()
@@ -308,19 +313,19 @@ export function SegmentDetail({
 
       {/* Top Citation Sources */}
       {topDomains.length > 0 && (
-        <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
-          <h2 className="text-sm font-semibold text-[#084c61] mb-5">Top Citation Sources</h2>
+        <div className="bg-white rounded-xl border border-(--c-line) p-6">
+          <h2 className="text-sm font-semibold text-(--c-ink) mb-5">Top Citation Sources</h2>
           <div className="space-y-3">
             {topDomains.map((d) => (
               <div key={d.domain} className="flex items-center gap-4">
-                <span className="text-sm text-[#084c61] font-medium w-48 truncate flex-shrink-0">{d.domain}</span>
-                <div className="flex-1 h-2 bg-[#eef3f5] rounded-full overflow-hidden">
+                <span className="text-sm text-(--c-ink) font-medium w-48 truncate flex-shrink-0">{d.domain}</span>
+                <div className="flex-1 h-2 bg-(--c-line-soft) rounded-full overflow-hidden">
                   <div
                     className="h-full rounded-full"
-                    style={{ width: `${(d.count / maxDomainCount) * 100}%`, background: '#177e89' }}
+                    style={{ width: `${(d.count / maxDomainCount) * 100}%`, background: 'var(--c-accent)' }}
                   />
                 </div>
-                <span className="text-xs text-[#5a7a85] w-16 text-right flex-shrink-0">
+                <span className="text-xs text-(--c-muted) w-16 text-right flex-shrink-0">
                   {d.count} · {formatPercent(d.percentage)}
                 </span>
               </div>
@@ -345,8 +350,8 @@ export function SegmentDetail({
           .slice(0, 10)
         if (topUrls.length === 0) return null
         return (
-          <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
-            <h2 className="text-sm font-semibold text-[#084c61] mb-5">Top Citation Pages</h2>
+          <div className="bg-white rounded-xl border border-(--c-line) p-6">
+            <h2 className="text-sm font-semibold text-(--c-ink) mb-5">Top Citation Pages</h2>
             <div className="space-y-2">
               {topUrls.map(({ url, title, domain, count }) => (
                 <a
@@ -354,14 +359,14 @@ export function SegmentDetail({
                   href={url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-3 p-2.5 rounded-lg bg-[#f5f8fa] hover:bg-[#e6f2f5] transition-colors group"
+                  className="flex items-center gap-3 p-2.5 rounded-lg bg-(--c-surface) hover:bg-(--c-tint) transition-colors group"
                 >
-                  <ExternalLink className="h-3.5 w-3.5 text-[#8aadb8] flex-shrink-0 group-hover:text-[#177e89] transition-colors" />
+                  <ExternalLink className="h-3.5 w-3.5 text-(--c-subtle) flex-shrink-0 group-hover:text-(--c-accent) transition-colors" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-[#084c61] truncate">{title}</p>
-                    <p className="text-[10px] text-[#8aadb8]">{domain}</p>
+                    <p className="text-xs font-medium text-(--c-ink) truncate">{title}</p>
+                    <p className="text-[10px] text-(--c-subtle)">{domain}</p>
                   </div>
-                  <span className="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#e6f2f5] text-[#084c61]">
+                  <span className="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-(--c-tint) text-(--c-ink)">
                     {count}
                   </span>
                 </a>
@@ -372,24 +377,24 @@ export function SegmentDetail({
       })()}
 
       {/* Prompts Table */}
-      <div className="bg-white rounded-xl border border-[#dde6ea] overflow-hidden">
-        <div className="px-6 py-4 border-b border-[#eef3f5]">
-          <h2 className="text-sm font-semibold text-[#084c61]">
+      <div className="bg-white rounded-xl border border-(--c-line) overflow-hidden">
+        <div className="px-6 py-4 border-b border-(--c-line-soft)">
+          <h2 className="text-sm font-semibold text-(--c-ink)">
             {promptTypeFilter === 'all' ? 'All Prompts' : promptTypeFilter === 'brand' ? 'Brand Prompts' : 'Non-brand Prompts'}
           </h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[#eef3f5] bg-[#f5f8fa]">
-                <th className="text-left px-6 py-3 font-medium text-[#5a7a85] text-xs min-w-[220px]">Prompt</th>
-                <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Type</th>
+              <tr className="border-b border-(--c-line-soft) bg-(--c-surface)">
+                <th className="text-left px-6 py-3 font-medium text-(--c-muted) text-xs min-w-[220px]">Prompt</th>
+                <th className="text-left px-4 py-3 font-medium text-(--c-muted) text-xs">Type</th>
                 {showCommunity && (
-                  <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs min-w-[160px]">Community</th>
+                  <th className="text-left px-4 py-3 font-medium text-(--c-muted) text-xs min-w-[160px]">{labels.entity}</th>
                 )}
-                <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Category</th>
-                <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Level of Care</th>
-                <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Sentiment</th>
+                <th className="text-left px-4 py-3 font-medium text-(--c-muted) text-xs">Category</th>
+                <th className="text-left px-4 py-3 font-medium text-(--c-muted) text-xs">{labels.levelOfCare}</th>
+                <th className="text-left px-4 py-3 font-medium text-(--c-muted) text-xs">Sentiment</th>
                 {platforms.map((platform) => (
                   <th
                     key={platform}
@@ -401,15 +406,15 @@ export function SegmentDetail({
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#f0f4f7]">
+            <tbody className="divide-y divide-(--c-page)">
               {prompts.map((prompt) => (
                 <tr
                   key={prompt.id}
-                  className="hover:bg-[#f5f8fa] cursor-pointer transition-colors"
+                  className="hover:bg-(--c-surface) cursor-pointer transition-colors"
                   onClick={() => { window.location.href = `/results/${prompt.id}` }}
                 >
                   <td className="px-6 py-4">
-                    <p className="line-clamp-2 text-[#1a1a1a] text-xs leading-relaxed">{prompt.promptText}</p>
+                    <p className="line-clamp-2 text-(--c-text) text-xs leading-relaxed">{prompt.promptText}</p>
                   </td>
                   <td className="px-4 py-4">
                     <Badge variant={prompt.promptType === 'brand' ? 'default' : 'secondary'}>
@@ -418,31 +423,31 @@ export function SegmentDetail({
                   </td>
                   {showCommunity && (
                     <td className="px-4 py-4">
-                      <p className="text-[#084c61] text-xs font-medium">{prompt.communityName || '—'}</p>
-                      {prompt.city && <p className="text-[#8aadb8] text-[10px] mt-0.5">{prompt.city}</p>}
+                      <p className="text-(--c-ink) text-xs font-medium">{prompt.communityName || '—'}</p>
+                      {prompt.city && <p className="text-(--c-subtle) text-[10px] mt-0.5">{prompt.city}</p>}
                     </td>
                   )}
-                  <td className="px-4 py-4 text-[#5a7a85] text-xs">{prompt.category || '—'}</td>
-                  <td className="px-4 py-4 text-[#5a7a85] text-xs">{prompt.levelOfCare || '—'}</td>
+                  <td className="px-4 py-4 text-(--c-muted) text-xs">{prompt.category || '—'}</td>
+                  <td className="px-4 py-4 text-(--c-muted) text-xs">{prompt.levelOfCare || '—'}</td>
                   <td className="px-4 py-4">
                     {(() => {
                       // Sentiment only means something on a response that actually
                       // mentions the brand — a majority over unmentioned responses too
                       // would misrepresent prompts where the brand barely came up.
                       const mentioned = prompt.results.filter((r) => r.isMentioned)
-                      if (mentioned.length === 0) return <span className="text-[#b8cdd3] text-xs">—</span>
+                      if (mentioned.length === 0) return <span className="text-(--c-faint) text-xs">—</span>
                       const pos = mentioned.filter((r) => r.sentiment === 'positive').length
                       const neg = mentioned.filter((r) => r.sentiment === 'negative').length
                       const neu = mentioned.filter((r) => r.sentiment === 'neutral').length
                       const majority = pos >= neg && pos >= neu ? 'positive' : neg >= pos && neg >= neu ? 'negative' : 'neutral'
                       if (majority === 'positive') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 w-fit">Positive</span>
                       if (majority === 'negative') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-50 text-rose-700 w-fit">Negative</span>
-                      return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#f0f4f7] text-[#8aadb8] w-fit">Neutral</span>
+                      return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-(--c-page) text-(--c-subtle) w-fit">Neutral</span>
                     })()}
                   </td>
                   {platforms.map((platform) => {
                     const result = prompt.results.find((r) => r.platform === platform)
-                    if (!result) return <td key={platform} className="px-4 py-4 text-[#b8cdd3] text-xs">—</td>
+                    if (!result) return <td key={platform} className="px-4 py-4 text-(--c-faint) text-xs">—</td>
                     return (
                       <td key={platform} className="px-4 py-4">
                         <PlatformCell responseText={result.responseText} isMentioned={result.isMentioned} isCited={result.isCited} />
@@ -459,143 +464,12 @@ export function SegmentDetail({
   )
 }
 
-function rateColor(rate: number) {
-  if (rate >= 0.6) return { text: 'text-emerald-600', bar: 'bg-emerald-500' }
-  if (rate >= 0.3) return { text: 'text-amber-600', bar: 'bg-amber-400' }
-  return { text: 'text-rose-600', bar: 'bg-rose-400' }
-}
-
-function CompetitorComparison({ entries }: { entries: CompetitorLeaderboardEntry[] }) {
-  const platforms = Object.keys(entries[0]?.platformMentionRates ?? {})
-  const brandColors: Record<string, string> = {}
-  const palette = ['#d97706', '#7c6fe0', '#e0708a', '#0ea5e9', '#65a30d', '#c026d3']
-  let paletteIdx = 0
-  for (const e of entries) {
-    brandColors[e.id] = e.isYou ? '#177e89' : palette[paletteIdx++ % palette.length]
-  }
-
-  return (
-    <div className="bg-white rounded-xl border border-[#dde6ea] overflow-hidden">
-      <div className="px-6 py-4 border-b border-[#eef3f5] flex items-center gap-2">
-        <Trophy className="h-4 w-4 text-[#177e89]" />
-        <h2 className="text-sm font-semibold text-[#084c61]">Competitor Comparison</h2>
-      </div>
-
-      {/* Leaderboard */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[#eef3f5] bg-[#f5f8fa]">
-              <th className="text-left px-6 py-3 font-medium text-[#5a7a85] text-xs">Brand</th>
-              <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Mention Rate</th>
-              <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Citation Rate</th>
-              <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Sentiment</th>
-              <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Share of Voice</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#f0f4f7]">
-            {entries.map((e) => {
-              const mc = rateColor(e.mentionRate)
-              const cc = rateColor(e.citationRate)
-              return (
-                <tr key={e.id} className={cn(e.isYou && 'bg-[#e6f2f5]')}>
-                  <td className={cn('px-6 py-3.5', e.isYou && 'border-l-2 border-[#177e89]')}>
-                    <div className="flex items-center gap-2.5">
-                      <div className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: brandColors[e.id] }} />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className={cn('text-xs font-semibold truncate', e.isYou ? 'text-[#084c61]' : 'text-[#1a1a1a]')}>{e.brandName}</p>
-                          {e.isYou && (
-                            <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold bg-[#084c61] text-white">You</span>
-                          )}
-                        </div>
-                        <p className="text-[10px] text-[#b8cdd3]">{e.domain}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5 w-32">
-                    <p className={cn('text-xs font-bold mb-1', mc.text)}>{formatPercent(e.mentionRate)}</p>
-                    <div className="h-1.5 bg-[#eef3f5] rounded-full overflow-hidden">
-                      <div className={cn('h-full rounded-full', mc.bar)} style={{ width: `${Math.round(e.mentionRate * 100)}%` }} />
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5 w-32">
-                    <p className={cn('text-xs font-bold mb-1', cc.text)}>{formatPercent(e.citationRate)}</p>
-                    <div className="h-1.5 bg-[#eef3f5] rounded-full overflow-hidden">
-                      <div className={cn('h-full rounded-full', cc.bar)} style={{ width: `${Math.round(e.citationRate * 100)}%` }} />
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5 w-36">
-                    {e.mentioned > 0 ? (
-                      <div className="flex items-center gap-1.5">
-                        <div className="flex-1 flex h-1.5 rounded-full overflow-hidden">
-                          <div className="bg-emerald-500" style={{ width: `${Math.round(e.sentiment.positive * 100)}%` }} />
-                          <div className="bg-slate-300" style={{ width: `${Math.round(e.sentiment.neutral * 100)}%` }} />
-                          <div className="bg-rose-400" style={{ width: `${Math.round(e.sentiment.negative * 100)}%` }} />
-                        </div>
-                        <span className="text-[10px] text-[#8aadb8] whitespace-nowrap">{formatPercent(e.sentiment.positive)} pos</span>
-                      </div>
-                    ) : (
-                      <span className="text-[10px] text-[#b8cdd3]">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <p className="text-sm font-extrabold text-[#084c61]">{formatPercent(e.shareOfVoice)}</p>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Platform breakdown */}
-      {platforms.length > 0 && (
-        <div className="px-6 py-5 border-t border-[#eef3f5]">
-          <p className="text-xs font-semibold text-[#084c61] mb-1">Mention Rate by AI Platform</p>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-4">
-            {entries.map((e) => (
-              <div key={e.id} className="flex items-center gap-1.5">
-                <div className="h-2 w-2 rounded-full" style={{ backgroundColor: brandColors[e.id] }} />
-                <span className={cn('text-[11px]', e.isYou ? 'text-[#084c61] font-semibold' : 'text-[#5a7a85]')}>{e.brandName}</span>
-              </div>
-            ))}
-          </div>
-          <div className="space-y-3">
-            {platforms.map((platform) => (
-              <div key={platform} className="grid grid-cols-[130px_1fr] gap-4 items-center">
-                <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full" style={{ backgroundColor: PLATFORM_COLORS[platform] }} />
-                  <span className="text-xs font-medium text-[#1a1a1a]">{PLATFORM_LABELS[platform]}</span>
-                </div>
-                <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${entries.length}, 1fr)` }}>
-                  {entries.map((e) => (
-                    <div key={e.id}>
-                      <div className="h-1 bg-[#eef3f5] rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full"
-                          style={{ width: `${Math.round(e.platformMentionRates[platform] * 100)}%`, backgroundColor: brandColors[e.id] }}
-                        />
-                      </div>
-                      <p className="text-[10px] text-[#8aadb8] mt-0.5">{formatPercent(e.platformMentionRates[platform])}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
 function PlatformCell({ responseText, isMentioned, isCited }: { responseText: string; isMentioned: boolean; isCited: boolean }) {
   const isNoAIO = responseText?.startsWith('[No AI Overview]')
   const isError = responseText?.startsWith('[Error]') || responseText?.startsWith('[Timeout]')
   if (isNoAIO || isError) {
     return (
-      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#f0f4f7] text-[#b8cdd3] w-fit italic">
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-(--c-page) text-(--c-faint) w-fit italic">
         {isNoAIO ? 'No AI Overview' : 'Error'}
       </span>
     )
@@ -604,12 +478,12 @@ function PlatformCell({ responseText, isMentioned, isCited }: { responseText: st
     <div className="flex flex-col gap-1">
       <span className={cn(
         'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold w-fit',
-        isMentioned ? 'bg-emerald-50 text-emerald-700' : 'bg-[#f0f4f7] text-[#8aadb8]'
+        isMentioned ? 'bg-emerald-50 text-emerald-700' : 'bg-(--c-page) text-(--c-subtle)'
       )}>
         {isMentioned ? 'Mentioned' : 'Not Mentioned'}
       </span>
       {isCited && (
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#e6f2f5] text-[#084c61] w-fit">
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-(--c-tint) text-(--c-ink) w-fit">
           Cited
         </span>
       )}

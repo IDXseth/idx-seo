@@ -1,24 +1,16 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-
-function normalizeDomain(domain: string): string {
-  return domain
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, '')
-    .replace(/^www\./, '')
-    .replace(/\/.*$/, '')
-}
+import { getViewer } from '@/lib/access'
+import { normalizeDomain } from '@/lib/detection'
+import { canEditCompetitor } from '@/lib/projects'
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const session = await auth()
-  const userId = session?.user?.id
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const viewer = await getViewer()
+  if (!viewer) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const existing = await prisma.competitor.findUnique({ where: { id } })
-  if (!existing || existing.userId !== userId) {
+  if (!existing || !(await canEditCompetitor(viewer, existing))) {
     return NextResponse.json({ error: 'Competitor not found' }, { status: 404 })
   }
 
@@ -39,12 +31,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const session = await auth()
-  const userId = session?.user?.id
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const viewer = await getViewer()
+  if (!viewer) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const existing = await prisma.competitor.findUnique({ where: { id } })
-  if (!existing || existing.userId !== userId) {
+  if (!existing || !(await canEditCompetitor(viewer, existing))) {
     return NextResponse.json({ error: 'Competitor not found' }, { status: 404 })
   }
 
