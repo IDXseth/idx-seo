@@ -13,6 +13,7 @@ import {
 import Link from 'next/link'
 import { useActiveProject } from '@/components/active-project-banner'
 import { PRESET_LABELS, type SegmentLabels } from '@/lib/segment-labels'
+import { GOOGLE_ONLY_SIGN_IN } from '@/lib/app-config'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -526,8 +527,13 @@ function ShareModal({
             {inviteError && <p className="text-xs text-rose-500 mt-1.5">{inviteError}</p>}
             {lastInvited && !inviteError && (
               <div className="mt-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 space-y-1">
-                <p className="font-semibold">Invite sent to {lastInvited}</p>
-                <p>They need to <strong>sign in or create an account</strong> at this app using that exact email address. Ask them to check their spam folder for the invitation email.</p>
+                {GOOGLE_ONLY_SIGN_IN ? <>
+                  <p className="font-semibold">Shared with {lastInvited}</p>
+                  <p>They&apos;ll see it after they <strong>sign in with Google</strong> at this app using that exact email address.</p>
+                </> : <>
+                  <p className="font-semibold">Invite sent to {lastInvited}</p>
+                  <p>They need to <strong>sign in or create an account</strong> at this app using that exact email address. Ask them to check their spam folder for the invitation email.</p>
+                </>}
               </div>
             )}
             {!loadingShares && shares.length > 0 && (
@@ -1197,6 +1203,9 @@ export default function RunPage() {
       </div>
 
       {/* Email notification */}
+      {GOOGLE_ONLY_SIGN_IN ? (
+        <p className="text-xs text-[#5a7a85] mb-6">Prompts run in the background — you can close this tab and check results later.</p>
+      ) : (
       <div className="bg-white rounded-xl border border-[#dde6ea] p-5 mb-6">
         <div className="flex items-center gap-2 mb-3">
           <Mail className="h-4 w-4 text-[#177e89]" />
@@ -1216,6 +1225,7 @@ export default function RunPage() {
           </p>
         )}
       </div>
+      )}
 
       {/* Progress */}
       {running !== null && (

@@ -2,8 +2,12 @@ import { NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { isSuperUser } from '@/lib/access'
+import { GOOGLE_ONLY_SIGN_IN } from '@/lib/app-config'
 
 export async function POST(req: Request) {
+  if (GOOGLE_ONLY_SIGN_IN) {
+    return NextResponse.json({ error: 'Please sign in with Google' }, { status: 403 })
+  }
   try {
     const { name, email, password } = await req.json()
 

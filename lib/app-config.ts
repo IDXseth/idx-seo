@@ -30,6 +30,10 @@ export const APP_DASHBOARD_TAGLINE = env(
 // APP_OWNER_NAME as a text wordmark instead.
 export const APP_LOGO_URL = env(process.env.NEXT_PUBLIC_APP_LOGO_URL, '/sl-logo.png')
 
+// For a team that all signs in with Google: no email/password sign-in or
+// sign-up, and no email notifications, so no Resend key is needed.
+export const GOOGLE_ONLY_SIGN_IN = process.env.NEXT_PUBLIC_GOOGLE_ONLY?.trim() === 'true'
+
 // "Senior Lifestyle" → "SL", for the small badge on shared pages.
 export const APP_INITIALS =
   APP_OWNER_NAME.split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 3).toUpperCase() || 'AI'

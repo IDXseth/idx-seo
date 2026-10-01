@@ -1,7 +1,19 @@
 import { Resend } from 'resend'
 import { APP_OWNER_NAME, APP_PRODUCT_NAME, APP_TITLE } from './app-config'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+// Created on first send, not at import: the Resend constructor throws without a
+// key, and every route importing this module is loaded during `next build`, so
+// a missing RESEND_API_KEY would otherwise fail the whole build. Without a key,
+// emails are skipped with a warning.
+let client: Resend | null = null
+function getResend(): Resend | null {
+  if (!process.env.RESEND_API_KEY) {
+    console.warn('RESEND_API_KEY is not set — skipping email')
+    return null
+  }
+  client ??= new Resend(process.env.RESEND_API_KEY)
+  return client
+}
 
 const FROM = `${APP_PRODUCT_NAME} <notifications@resend.dev>`
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://your-app.vercel.app'
@@ -111,7 +123,7 @@ export async function sendRunCompleteEmail(summary: RunSummary) {
 </html>
 `
 
-  await resend.emails.send({ from: FROM, to: summary.to, subject, html })
+  await getResend()?.emails.send({ from: FROM, to: summary.to, subject, html })
 }
 
 interface ShareInvite {
@@ -197,7 +209,7 @@ export async function sendShareInviteEmail(invite: ShareInvite) {
 </body>
 </html>`
 
-  await resend.emails.send({
+  await getResend()?.emails.send({
     from: FROM,
     to: invite.to,
     subject: `${fromLabel} shared "${invite.batchName}" with you`,
