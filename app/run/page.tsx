@@ -167,40 +167,40 @@ function ScheduleModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-white rounded-2xl border border-[#dde6ea] shadow-xl overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#dde6ea]">
+      <div className="relative w-full max-w-md bg-white rounded-2xl border border-(--c-line) shadow-xl overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-(--c-line)">
           <div>
-            <h2 className="font-semibold text-[#084c61]">Scheduled Runs</h2>
-            <p className="text-xs text-[#5a7a85] mt-0.5 truncate max-w-xs">{batch.name}</p>
+            <h2 className="font-semibold text-(--c-ink)">Scheduled Runs</h2>
+            <p className="text-xs text-(--c-muted) mt-0.5 truncate max-w-xs">{batch.name}</p>
           </div>
-          <button onClick={onClose} className="text-[#8aadb8] hover:text-[#084c61] transition-colors">
+          <button onClick={onClose} className="text-(--c-subtle) hover:text-(--c-ink) transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
 
         <div className="p-6 space-y-4">
-          {loading && <p className="text-sm text-[#8aadb8]">Loading…</p>}
+          {loading && <p className="text-sm text-(--c-subtle)">Loading…</p>}
 
           {!loading && schedules.length === 0 && !showForm && (
-            <p className="text-sm text-[#5a7a85]">No schedules yet. Add one to run prompts automatically.</p>
+            <p className="text-sm text-(--c-muted)">No schedules yet. Add one to run prompts automatically.</p>
           )}
 
           {schedules.map((s) => (
-            <div key={s.id} className="flex items-center justify-between bg-[#f5f8fa] rounded-lg px-4 py-3">
+            <div key={s.id} className="flex items-center justify-between bg-(--c-surface) rounded-lg px-4 py-3">
               <div>
-                <p className="text-sm font-medium text-[#084c61]">{formatScheduleLabel(s)}</p>
-                <p className="text-xs text-[#8aadb8] mt-0.5">
+                <p className="text-sm font-medium text-(--c-ink)">{formatScheduleLabel(s)}</p>
+                <p className="text-xs text-(--c-subtle) mt-0.5">
                   Next: {new Date(s.nextRunAt).toLocaleDateString()} — {s.enabled ? 'Active' : 'Paused'}
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => handleToggle(s.id, !s.enabled)}
-                  className={`relative w-9 h-5 rounded-full transition-colors ${s.enabled ? 'bg-[#177e89]' : 'bg-[#c5d7de]'}`}
+                  className={`relative w-9 h-5 rounded-full transition-colors ${s.enabled ? 'bg-(--c-accent)' : 'bg-(--c-line-strong-2)'}`}
                 >
                   <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${s.enabled ? 'translate-x-4' : ''}`} />
                 </button>
-                <button onClick={() => handleDelete(s.id)} className="text-[#b8cdd3] hover:text-rose-500 transition-colors">
+                <button onClick={() => handleDelete(s.id)} className="text-(--c-faint) hover:text-rose-500 transition-colors">
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
@@ -208,13 +208,13 @@ function ScheduleModal({
           ))}
 
           {showForm ? (
-            <div className="space-y-3 border border-[#dde6ea] rounded-xl p-4">
+            <div className="space-y-3 border border-(--c-line) rounded-xl p-4">
               <div>
-                <label className="text-xs font-medium text-[#5a7a85] block mb-1">Frequency</label>
+                <label className="text-xs font-medium text-(--c-muted) block mb-1">Frequency</label>
                 <select
                   value={frequency}
                   onChange={(e) => setFrequency(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+                  className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)"
                 >
                   <option value="daily">Daily</option>
                   <option value="weekly">Weekly</option>
@@ -225,11 +225,11 @@ function ScheduleModal({
 
               {frequency === 'weekly' && (
                 <div>
-                  <label className="text-xs font-medium text-[#5a7a85] block mb-1">Day of week</label>
+                  <label className="text-xs font-medium text-(--c-muted) block mb-1">Day of week</label>
                   <select
                     value={dayOfWeek}
                     onChange={(e) => setDayOfWeek(Number(e.target.value))}
-                    className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+                    className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)"
                   >
                     {DAYS_OF_WEEK.map((d, i) => <option key={d} value={i}>{d}</option>)}
                   </select>
@@ -238,32 +238,32 @@ function ScheduleModal({
 
               {frequency === 'monthly' && (
                 <div>
-                  <label className="text-xs font-medium text-[#5a7a85] block mb-1">Day of month</label>
+                  <label className="text-xs font-medium text-(--c-muted) block mb-1">Day of month</label>
                   <input
                     type="number" min={1} max={28} value={dayOfMonth}
                     onChange={(e) => setDayOfMonth(Number(e.target.value))}
-                    className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+                    className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)"
                   />
                 </div>
               )}
 
               {frequency === 'custom' && (
                 <div>
-                  <label className="text-xs font-medium text-[#5a7a85] block mb-1">Every N days</label>
+                  <label className="text-xs font-medium text-(--c-muted) block mb-1">Every N days</label>
                   <input
                     type="number" min={1} max={365} value={customDays}
                     onChange={(e) => setCustomDays(Number(e.target.value))}
-                    className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+                    className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)"
                   />
                 </div>
               )}
 
               <div>
-                <label className="text-xs font-medium text-[#5a7a85] block mb-1">Hour of day (UTC)</label>
+                <label className="text-xs font-medium text-(--c-muted) block mb-1">Hour of day (UTC)</label>
                 <select
                   value={hour}
                   onChange={(e) => setHour(Number(e.target.value))}
-                  className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+                  className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)"
                 >
                   {Array.from({ length: 24 }, (_, i) => (
                     <option key={i} value={i}>
@@ -281,7 +281,7 @@ function ScheduleModal({
           ) : (
             <button
               onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 text-sm text-[#177e89] hover:text-[#084c61] transition-colors"
+              className="flex items-center gap-2 text-sm text-(--c-accent) hover:text-(--c-ink) transition-colors"
             >
               <Plus className="h-4 w-4" />
               Add schedule
@@ -345,79 +345,79 @@ function AddPromptModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-white rounded-2xl border border-[#dde6ea] shadow-xl overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#dde6ea]">
+      <div className="relative w-full max-w-lg bg-white rounded-2xl border border-(--c-line) shadow-xl overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-(--c-line)">
           <div>
-            <h2 className="font-semibold text-[#084c61]">Add Prompt</h2>
-            <p className="text-xs text-[#5a7a85] mt-0.5 truncate max-w-xs">{batch.name}</p>
+            <h2 className="font-semibold text-(--c-ink)">Add Prompt</h2>
+            <p className="text-xs text-(--c-muted) mt-0.5 truncate max-w-xs">{batch.name}</p>
           </div>
-          <button onClick={onClose} className="text-[#8aadb8] hover:text-[#084c61] transition-colors">
+          <button onClick={onClose} className="text-(--c-subtle) hover:text-(--c-ink) transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
 
         <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
           <div>
-            <label className="text-xs font-medium text-[#5a7a85] block mb-1">Prompt text <span className="text-rose-500">*</span></label>
+            <label className="text-xs font-medium text-(--c-muted) block mb-1">Prompt text <span className="text-rose-500">*</span></label>
             <textarea
               value={promptText}
               onChange={(e) => setPromptText(e.target.value)}
               rows={3}
               placeholder="e.g. What are the best assisted living communities in Chicago?"
-              className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61] resize-none"
+              className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink) resize-none"
             />
           </div>
 
           <div>
-            <label className="text-xs font-medium text-[#5a7a85] block mb-1">{labels.entity} <span className="text-[#8aadb8] font-normal">(optional)</span></label>
+            <label className="text-xs font-medium text-(--c-muted) block mb-1">{labels.entity} <span className="text-(--c-subtle) font-normal">(optional)</span></label>
             <input
               type="text"
               value={communityName}
               onChange={(e) => setCommunityName(e.target.value)}
               placeholder={`Leave blank for a general prompt not about one ${labels.entity.toLowerCase()}`}
-              className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+              className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-[#5a7a85] block mb-1">Prompt type</label>
+              <label className="text-xs font-medium text-(--c-muted) block mb-1">Prompt type</label>
               <select
                 value={promptType}
                 onChange={(e) => setPromptType(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+                className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)"
               >
                 <option value="brand">Brand</option>
                 <option value="nonbrand">Non-brand</option>
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-[#5a7a85] block mb-1">{labels.levelOfCare}</label>
+              <label className="text-xs font-medium text-(--c-muted) block mb-1">{labels.levelOfCare}</label>
               <ServiceField
                 value={levelOfCare}
                 onChange={setLevelOfCare}
-                className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+                className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-[#5a7a85] block mb-1">City</label>
+              <label className="text-xs font-medium text-(--c-muted) block mb-1">City</label>
               <input type="text" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Chicago"
-                className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+                className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
             </div>
             <div>
-              <label className="text-xs font-medium text-[#5a7a85] block mb-1">{labels.market}</label>
+              <label className="text-xs font-medium text-(--c-muted) block mb-1">{labels.market}</label>
               <input type="text" value={market} onChange={(e) => setMarket(e.target.value)} placeholder="Midwest"
-                className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+                className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
             </div>
           </div>
 
           <div>
-            <label className="text-xs font-medium text-[#5a7a85] block mb-1">Category</label>
+            <label className="text-xs font-medium text-(--c-muted) block mb-1">Category</label>
             <input type="text" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Discovery"
-              className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+              className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
           </div>
 
           {error && <p className="text-xs text-rose-500">{error}</p>}
@@ -508,20 +508,20 @@ function ShareModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-white rounded-2xl border border-[#dde6ea] shadow-xl overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#dde6ea]">
+      <div className="relative w-full max-w-md bg-white rounded-2xl border border-(--c-line) shadow-xl overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-(--c-line)">
           <div>
-            <h2 className="font-semibold text-[#084c61]">Share Prompt Set</h2>
-            <p className="text-xs text-[#5a7a85] mt-0.5 truncate max-w-xs">{batch.name}</p>
+            <h2 className="font-semibold text-(--c-ink)">Share Prompt Set</h2>
+            <p className="text-xs text-(--c-muted) mt-0.5 truncate max-w-xs">{batch.name}</p>
           </div>
-          <button onClick={onClose} className="text-[#8aadb8] hover:text-[#084c61] transition-colors"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} className="text-(--c-subtle) hover:text-(--c-ink) transition-colors"><X className="h-5 w-5" /></button>
         </div>
         <div className="p-6 space-y-6">
           <div>
-            <div className="flex items-center gap-2 mb-3"><UserPlus className="h-4 w-4 text-[#177e89]" /><h3 className="text-sm font-semibold text-[#084c61]">Invite by email</h3></div>
+            <div className="flex items-center gap-2 mb-3"><UserPlus className="h-4 w-4 text-(--c-accent)" /><h3 className="text-sm font-semibold text-(--c-ink)">Invite by email</h3></div>
             <div className="flex gap-2">
               <input type="email" value={inviteEmail} onChange={(e) => { setInviteEmail(e.target.value); setInviteError(null) }} onKeyDown={(e) => e.key === 'Enter' && handleInvite()} placeholder="colleague@example.com"
-                className="flex-1 px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+                className="flex-1 px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
               <Button size="sm" onClick={handleInvite} disabled={inviting || !inviteEmail}>{inviting ? '…' : 'Add'}</Button>
             </div>
             {inviteError && <p className="text-xs text-rose-500 mt-1.5">{inviteError}</p>}
@@ -539,31 +539,31 @@ function ShareModal({
             {!loadingShares && shares.length > 0 && (
               <ul className="mt-3 space-y-2">
                 {shares.map((share) => (
-                  <li key={share.id} className="flex items-center justify-between text-sm bg-[#f5f8fa] rounded-lg px-3 py-2">
-                    <span className="text-[#084c61]">{share.email}</span>
-                    <button onClick={() => handleRevoke(share.email)} className="text-[#8aadb8] hover:text-rose-500 transition-colors"><X className="h-4 w-4" /></button>
+                  <li key={share.id} className="flex items-center justify-between text-sm bg-(--c-surface) rounded-lg px-3 py-2">
+                    <span className="text-(--c-ink)">{share.email}</span>
+                    <button onClick={() => handleRevoke(share.email)} className="text-(--c-subtle) hover:text-rose-500 transition-colors"><X className="h-4 w-4" /></button>
                   </li>
                 ))}
               </ul>
             )}
-            {loadingShares && <p className="text-xs text-[#8aadb8] mt-2">Loading…</p>}
-            {!loadingShares && shares.length === 0 && <p className="text-xs text-[#8aadb8] mt-2">No one has been invited yet</p>}
+            {loadingShares && <p className="text-xs text-(--c-subtle) mt-2">Loading…</p>}
+            {!loadingShares && shares.length === 0 && <p className="text-xs text-(--c-subtle) mt-2">No one has been invited yet</p>}
           </div>
-          <hr className="border-[#dde6ea]" />
+          <hr className="border-(--c-line)" />
           <div>
-            <div className="flex items-center gap-2 mb-3"><Link2 className="h-4 w-4 text-[#177e89]" /><h3 className="text-sm font-semibold text-[#084c61]">Shareable link</h3></div>
-            <div className="flex items-center justify-between bg-[#f5f8fa] rounded-lg px-4 py-3">
+            <div className="flex items-center gap-2 mb-3"><Link2 className="h-4 w-4 text-(--c-accent)" /><h3 className="text-sm font-semibold text-(--c-ink)">Shareable link</h3></div>
+            <div className="flex items-center justify-between bg-(--c-surface) rounded-lg px-4 py-3">
               <div>
-                <p className="text-sm text-[#084c61] font-medium">{shareToken ? 'Link sharing enabled' : 'Link sharing disabled'}</p>
-                <p className="text-xs text-[#8aadb8] mt-0.5">{shareToken ? 'Anyone with the link can view this prompt set' : 'Enable to share with anyone'}</p>
+                <p className="text-sm text-(--c-ink) font-medium">{shareToken ? 'Link sharing enabled' : 'Link sharing disabled'}</p>
+                <p className="text-xs text-(--c-subtle) mt-0.5">{shareToken ? 'Anyone with the link can view this prompt set' : 'Enable to share with anyone'}</p>
               </div>
-              <button onClick={handleToggleLink} disabled={togglingLink} className={`relative w-10 h-5 rounded-full transition-colors ${shareToken ? 'bg-[#177e89]' : 'bg-[#c5d7de]'}`}>
+              <button onClick={handleToggleLink} disabled={togglingLink} className={`relative w-10 h-5 rounded-full transition-colors ${shareToken ? 'bg-(--c-accent)' : 'bg-(--c-line-strong-2)'}`}>
                 <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${shareToken ? 'translate-x-5' : 'translate-x-0'}`} />
               </button>
             </div>
             {shareToken && shareUrl && (
               <div className="mt-3 flex gap-2">
-                <input readOnly value={shareUrl} className="flex-1 px-3 py-2 text-xs border border-[#dde6ea] rounded-lg bg-[#f5f8fa] text-[#5a7a85] truncate" />
+                <input readOnly value={shareUrl} className="flex-1 px-3 py-2 text-xs border border-(--c-line) rounded-lg bg-(--c-surface) text-(--c-muted) truncate" />
                 <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(shareUrl)}><Check className="h-4 w-4" /></Button>
               </div>
             )}
@@ -580,10 +580,10 @@ function DeleteConfirmDialog({ batchName, onConfirm, onCancel }: { batchName: st
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
-      <div className="relative w-full max-w-sm bg-white rounded-2xl border border-[#dde6ea] shadow-xl p-6">
-        <h2 className="font-semibold text-[#084c61] mb-2">Delete Prompt Set</h2>
-        <p className="text-sm text-[#5a7a85] mb-6">
-          Are you sure you want to delete <strong className="text-[#084c61]">{batchName}</strong>? This will also delete all prompts and results. This action cannot be undone.
+      <div className="relative w-full max-w-sm bg-white rounded-2xl border border-(--c-line) shadow-xl p-6">
+        <h2 className="font-semibold text-(--c-ink) mb-2">Delete Prompt Set</h2>
+        <p className="text-sm text-(--c-muted) mb-6">
+          Are you sure you want to delete <strong className="text-(--c-ink)">{batchName}</strong>? This will also delete all prompts and results. This action cannot be undone.
         </p>
         <div className="flex gap-3 justify-end">
           <Button variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
@@ -628,40 +628,40 @@ function PromptEditForm({
   const [levelOfCare, setLevelOfCare] = useState(prompt.levelOfCare)
 
   return (
-    <div className="px-3 py-3 rounded-lg bg-[#f5f8fa] space-y-2">
+    <div className="px-3 py-3 rounded-lg bg-(--c-surface) space-y-2">
       <textarea
         value={promptText}
         onChange={(e) => setPromptText(e.target.value)}
         rows={2}
-        className="w-full px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61] resize-none"
+        className="w-full px-2 py-1.5 text-xs border border-(--c-line) rounded-md focus:outline-none focus:ring-2 focus:ring-(--c-ink) resize-none"
       />
       <input
         value={communityName}
         onChange={(e) => setCommunityName(e.target.value)}
         placeholder={`${labels.entity} (optional)`}
-        className="w-full px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+        className="w-full px-2 py-1.5 text-xs border border-(--c-line) rounded-md focus:outline-none focus:ring-2 focus:ring-(--c-ink)"
       />
       <div className="grid grid-cols-2 gap-2">
-        <select value={promptType} onChange={(e) => setPromptType(e.target.value)} className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]">
+        <select value={promptType} onChange={(e) => setPromptType(e.target.value)} className="px-2 py-1.5 text-xs border border-(--c-line) rounded-md focus:outline-none focus:ring-2 focus:ring-(--c-ink)">
           <option value="brand">Brand</option>
           <option value="nonbrand">Non-brand</option>
         </select>
-        <ServiceField value={levelOfCare} onChange={setLevelOfCare} className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+        <ServiceField value={levelOfCare} onChange={setLevelOfCare} className="px-2 py-1.5 text-xs border border-(--c-line) rounded-md focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
       </div>
       <div className="grid grid-cols-3 gap-2">
-        <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
-        <input value={market} onChange={(e) => setMarket(e.target.value)} placeholder={labels.market} className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
-        <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Category" className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+        <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" className="px-2 py-1.5 text-xs border border-(--c-line) rounded-md focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
+        <input value={market} onChange={(e) => setMarket(e.target.value)} placeholder={labels.market} className="px-2 py-1.5 text-xs border border-(--c-line) rounded-md focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
+        <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Category" className="px-2 py-1.5 text-xs border border-(--c-line) rounded-md focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
       </div>
       <div className="flex gap-2 pt-1">
         <button
           onClick={() => onSave({ promptText, communityName, promptType, category, city, market, levelOfCare })}
           disabled={saving || !promptText.trim()}
-          className="text-[11px] font-semibold text-white bg-[#084c61] hover:bg-[#063a4a] px-2.5 py-1 rounded-md transition-colors disabled:opacity-50"
+          className="text-[11px] font-semibold text-white bg-(--c-ink) hover:bg-(--c-ink-deep) px-2.5 py-1 rounded-md transition-colors disabled:opacity-50"
         >
           {saving ? 'Saving…' : 'Save'}
         </button>
-        <button onClick={onCancel} className="text-[11px] text-[#5a7a85] hover:text-[#084c61] px-2.5 py-1 rounded-md transition-colors">Cancel</button>
+        <button onClick={onCancel} className="text-[11px] text-(--c-muted) hover:text-(--c-ink) px-2.5 py-1 rounded-md transition-colors">Cancel</button>
       </div>
     </div>
   )
@@ -726,8 +726,8 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
     } catch {} finally { setSaving(false) }
   }
 
-  if (loading) return <p className="text-xs text-[#8aadb8] py-2">Loading…</p>
-  if (prompts.length === 0) return <p className="text-xs text-[#8aadb8] py-2">No prompts.</p>
+  if (loading) return <p className="text-xs text-(--c-subtle) py-2">Loading…</p>
+  if (prompts.length === 0) return <p className="text-xs text-(--c-subtle) py-2">No prompts.</p>
 
   const sortedPrompts = sortBy === 'none'
     ? prompts
@@ -740,11 +740,11 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-end gap-1.5">
-        <label className="text-[10px] text-[#8aadb8]">Sort by</label>
+        <label className="text-[10px] text-(--c-subtle)">Sort by</label>
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as 'none' | 'community' | 'category')}
-          className="text-[10px] px-1.5 py-1 border border-[#dde6ea] rounded-md text-[#5a7a85] focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+          className="text-[10px] px-1.5 py-1 border border-(--c-line) rounded-md text-(--c-muted) focus:outline-none focus:ring-2 focus:ring-(--c-ink)"
         >
           <option value="none">Default</option>
           <option value="community">{labels.entity}</option>
@@ -759,7 +759,7 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
           const isCommunityConfirming = communityConfirm === p.communityName
           items.push(
             <div key={`group-${p.communityName}`} className="flex items-center justify-between gap-3 px-3 pt-3 pb-1">
-              <span className="text-[11px] font-semibold text-[#084c61] truncate">{p.communityName || '(no community)'} <span className="font-normal text-[#8aadb8]">({groupCount})</span></span>
+              <span className="text-[11px] font-semibold text-(--c-ink) truncate">{p.communityName || '(no community)'} <span className="font-normal text-(--c-subtle)">({groupCount})</span></span>
               {canWrite && (
                 isCommunityConfirming ? (
                   <div className="flex items-center gap-1 flex-shrink-0">
@@ -771,12 +771,12 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
                     >
                       {communityDeleting === p.communityName ? '…' : 'Yes'}
                     </button>
-                    <button onClick={() => setCommunityConfirm(null)} className="text-[10px] text-[#5a7a85] hover:text-[#084c61] px-1.5 py-0.5 rounded transition-colors">No</button>
+                    <button onClick={() => setCommunityConfirm(null)} className="text-[10px] text-(--c-muted) hover:text-(--c-ink) px-1.5 py-0.5 rounded transition-colors">No</button>
                   </div>
                 ) : (
                   <button
                     onClick={() => setCommunityConfirm(p.communityName)}
-                    className="flex items-center gap-1 text-[10px] text-[#b8cdd3] hover:text-rose-500 transition-colors flex-shrink-0"
+                    className="flex items-center gap-1 text-[10px] text-(--c-faint) hover:text-rose-500 transition-colors flex-shrink-0"
                     title="Remove this community and all its prompts"
                   >
                     <Trash2 className="h-3 w-3" />Remove community
@@ -801,10 +801,10 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
         }
         const isConfirming = confirmId === p.id
         items.push(
-          <div key={p.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-[#f5f8fa] group">
+          <div key={p.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-(--c-surface) group">
             <div className="min-w-0">
-              <p className="text-xs text-[#084c61] truncate">{p.promptText}</p>
-              <p className="text-[10px] text-[#8aadb8] truncate">{p.communityName || '(no community)'}</p>
+              <p className="text-xs text-(--c-ink) truncate">{p.promptText}</p>
+              <p className="text-[10px] text-(--c-subtle) truncate">{p.communityName || '(no community)'}</p>
             </div>
             {canWrite && (
               <div className="flex items-center gap-1 flex-shrink-0">
@@ -818,14 +818,14 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
                     >
                       {deleting === p.id ? '…' : 'Yes'}
                     </button>
-                    <button onClick={() => setConfirmId(null)} className="text-[10px] text-[#5a7a85] hover:text-[#084c61] px-1.5 py-0.5 rounded transition-colors">No</button>
+                    <button onClick={() => setConfirmId(null)} className="text-[10px] text-(--c-muted) hover:text-(--c-ink) px-1.5 py-0.5 rounded transition-colors">No</button>
                   </>
                 ) : (
                   <>
-                    <button onClick={() => setEditId(p.id)} className="text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Edit prompt">
+                    <button onClick={() => setEditId(p.id)} className="text-(--c-faint) hover:text-(--c-accent) transition-colors" title="Edit prompt">
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
-                    <button onClick={() => setConfirmId(p.id)} className="text-[#b8cdd3] hover:text-rose-500 transition-colors" title="Delete prompt">
+                    <button onClick={() => setConfirmId(p.id)} className="text-(--c-faint) hover:text-rose-500 transition-colors" title="Delete prompt">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </>
@@ -861,7 +861,7 @@ function RunHistoryPanel({
   }
 
   if (sessions.length === 0) {
-    return <p className="text-xs text-[#8aadb8] py-2">No runs recorded yet.</p>
+    return <p className="text-xs text-(--c-subtle) py-2">No runs recorded yet.</p>
   }
 
   return (
@@ -872,14 +872,14 @@ function RunHistoryPanel({
           ' at ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
         const isConfirming = confirmId === s.id
         return (
-          <div key={s.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-[#f5f8fa] group">
+          <div key={s.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-(--c-surface) group">
             <div className="flex items-center gap-2 min-w-0">
-              <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${s.status === 'done' ? 'bg-emerald-500' : s.status === 'running' ? 'bg-amber-400' : 'bg-[#b8cdd3]'}`} />
-              <span className="text-xs text-[#084c61] truncate">{label}</span>
-              <span className="text-[10px] text-[#8aadb8] flex-shrink-0">{s.triggeredBy}</span>
+              <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${s.status === 'done' ? 'bg-emerald-500' : s.status === 'running' ? 'bg-amber-400' : 'bg-(--c-faint)'}`} />
+              <span className="text-xs text-(--c-ink) truncate">{label}</span>
+              <span className="text-[10px] text-(--c-subtle) flex-shrink-0">{s.triggeredBy}</span>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <span className="text-[10px] text-[#8aadb8]">{s.resultCount} results</span>
+              <span className="text-[10px] text-(--c-subtle)">{s.resultCount} results</span>
               {isConfirming ? (
                 <div className="flex items-center gap-1">
                   <span className="text-[10px] text-rose-600 font-medium">Delete?</span>
@@ -892,7 +892,7 @@ function RunHistoryPanel({
                   </button>
                   <button
                     onClick={() => setConfirmId(null)}
-                    className="text-[10px] text-[#5a7a85] hover:text-[#084c61] px-1.5 py-0.5 rounded transition-colors"
+                    className="text-[10px] text-(--c-muted) hover:text-(--c-ink) px-1.5 py-0.5 rounded transition-colors"
                   >
                     No
                   </button>
@@ -900,7 +900,7 @@ function RunHistoryPanel({
               ) : (
                 <button
                   onClick={() => setConfirmId(s.id)}
-                  className="text-[#8aadb8] hover:text-rose-500 transition-colors"
+                  className="text-(--c-subtle) hover:text-rose-500 transition-colors"
                   title="Delete this run"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -961,36 +961,36 @@ function BatchCard({
               <div className="flex items-center gap-2 mb-1">
                 <input ref={inputRef} value={editName} onChange={(e) => setEditName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') saveRename(); if (e.key === 'Escape') { setEditMode(false); setEditName(batch.name) } }}
-                  className="flex-1 px-2 py-1 text-sm border border-[#084c61] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+                  className="flex-1 px-2 py-1 text-sm border border-(--c-ink) rounded-md focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
                 <button onClick={saveRename} disabled={saving} className="text-emerald-600 hover:text-emerald-700 transition-colors"><Check className="h-4 w-4" /></button>
-                <button onClick={() => { setEditMode(false); setEditName(batch.name) }} className="text-[#8aadb8] hover:text-[#084c61] transition-colors"><X className="h-4 w-4" /></button>
+                <button onClick={() => { setEditMode(false); setEditName(batch.name) }} className="text-(--c-subtle) hover:text-(--c-ink) transition-colors"><X className="h-4 w-4" /></button>
               </div>
             ) : (
               <div className="flex items-center gap-2 mb-1">
-                <h3 className="font-semibold text-[#084c61] truncate">{batch.name}</h3>
+                <h3 className="font-semibold text-(--c-ink) truncate">{batch.name}</h3>
                 {batch.canWrite && (
-                  <button onClick={() => setEditMode(true)} className="text-[#b8cdd3] hover:text-[#177e89] transition-colors shrink-0" title="Rename"><Pencil className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => setEditMode(true)} className="text-(--c-faint) hover:text-(--c-accent) transition-colors shrink-0" title="Rename"><Pencil className="h-3.5 w-3.5" /></button>
                 )}
               </div>
             )}
-            <p className="text-sm text-[#5a7a85]">{batch.fileName}</p>
+            <p className="text-sm text-(--c-muted)">{batch.fileName}</p>
             {batch.userEmail && (
-              <p className="text-xs text-[#8aadb8] mt-0.5">by {batch.userEmail}</p>
+              <p className="text-xs text-(--c-subtle) mt-0.5">by {batch.userEmail}</p>
             )}
             <div className="flex items-center gap-3 mt-2">
-              <span className="text-sm text-[#5a7a85]">{promptCount} prompts</span>
+              <span className="text-sm text-(--c-muted)">{promptCount} prompts</span>
               {batch.unrunCount > 0 ? (
                 <Badge variant="warning">{batch.unrunCount} unrun</Badge>
               ) : (
                 <Badge variant="success">All run</Badge>
               )}
-              <span className="text-xs text-[#8aadb8]">{new Date(batch.createdAt).toLocaleDateString()}</span>
+              <span className="text-xs text-(--c-subtle)">{new Date(batch.createdAt).toLocaleDateString()}</span>
             </div>
             {batch.lastRunAt && (() => {
               const d = new Date(batch.lastRunAt)
               const pad = (n: number) => String(n).padStart(2, '0')
               const label = `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-              return <p className="text-xs text-[#8aadb8] mt-1">Last run: {label}</p>
+              return <p className="text-xs text-(--c-subtle) mt-1">Last run: {label}</p>
             })()}
           </div>
 
@@ -1010,16 +1010,16 @@ function BatchCard({
             <Link href={`/data/${batch.id}`}><Button variant="outline" size="sm">Data</Button></Link>
             {batch.canWrite && (
               <>
-                <button onClick={() => onAddPrompt(batch)} className="p-1.5 text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Add prompt">
+                <button onClick={() => onAddPrompt(batch)} className="p-1.5 text-(--c-faint) hover:text-(--c-accent) transition-colors" title="Add prompt">
                   <Plus className="h-4 w-4" />
                 </button>
-                <button onClick={() => onSchedule(batch)} className="p-1.5 text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Schedule">
+                <button onClick={() => onSchedule(batch)} className="p-1.5 text-(--c-faint) hover:text-(--c-accent) transition-colors" title="Schedule">
                   <Calendar className="h-4 w-4" />
                 </button>
-                <button onClick={() => onShare(batch)} className="p-1.5 text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Share">
+                <button onClick={() => onShare(batch)} className="p-1.5 text-(--c-faint) hover:text-(--c-accent) transition-colors" title="Share">
                   <Share2 className="h-4 w-4" />
                 </button>
-                <button onClick={() => onDelete(batch.id)} className="p-1.5 text-[#b8cdd3] hover:text-rose-500 transition-colors" title="Delete">
+                <button onClick={() => onDelete(batch.id)} className="p-1.5 text-(--c-faint) hover:text-rose-500 transition-colors" title="Delete">
                   <Trash2 className="h-4 w-4" />
                 </button>
               </>
@@ -1028,10 +1028,10 @@ function BatchCard({
         </div>
 
         {/* Run history collapsible */}
-        <div className="mt-4 pt-3 border-t border-[#eef3f5]">
+        <div className="mt-4 pt-3 border-t border-(--c-line-soft)">
           <button
             onClick={() => setShowHistory((v) => !v)}
-            className="flex items-center gap-1.5 text-xs font-medium text-[#5a7a85] hover:text-[#084c61] transition-colors"
+            className="flex items-center gap-1.5 text-xs font-medium text-(--c-muted) hover:text-(--c-ink) transition-colors"
           >
             <History className="h-3.5 w-3.5" />
             Run History ({sessions.length})
@@ -1045,10 +1045,10 @@ function BatchCard({
         </div>
 
         {/* Prompts collapsible */}
-        <div className="mt-3 pt-3 border-t border-[#eef3f5]">
+        <div className="mt-3 pt-3 border-t border-(--c-line-soft)">
           <button
             onClick={() => setShowPrompts((v) => !v)}
-            className="flex items-center gap-1.5 text-xs font-medium text-[#5a7a85] hover:text-[#084c61] transition-colors"
+            className="flex items-center gap-1.5 text-xs font-medium text-(--c-muted) hover:text-(--c-ink) transition-colors"
           >
             <Plus className="h-3.5 w-3.5" />
             Prompts ({promptCount})
@@ -1180,8 +1180,8 @@ export default function RunPage() {
     <div className="max-w-4xl mx-auto">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Run Prompts</h1>
-          <p className="text-[#5a7a85] mt-1 text-sm">Send prompts to 5 AI platforms and capture responses</p>
+          <h1 className="text-2xl font-bold text-(--c-ink)" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Run Prompts</h1>
+          <p className="text-(--c-muted) mt-1 text-sm">Send prompts to 5 AI platforms and capture responses</p>
         </div>
         <div className="flex items-center gap-3">
           <Button variant="outline" onClick={fetchBatches} size="sm">
@@ -1204,23 +1204,23 @@ export default function RunPage() {
 
       {/* Email notification */}
       {GOOGLE_ONLY_SIGN_IN ? (
-        <p className="text-xs text-[#5a7a85] mb-6">Prompts run in the background — you can close this tab and check results later.</p>
+        <p className="text-xs text-(--c-muted) mb-6">Prompts run in the background — you can close this tab and check results later.</p>
       ) : (
-      <div className="bg-white rounded-xl border border-[#dde6ea] p-5 mb-6">
+      <div className="bg-white rounded-xl border border-(--c-line) p-5 mb-6">
         <div className="flex items-center gap-2 mb-3">
-          <Mail className="h-4 w-4 text-[#177e89]" />
-          <p className="text-sm font-semibold text-[#084c61]">Email notification (optional)</p>
+          <Mail className="h-4 w-4 text-(--c-accent)" />
+          <p className="text-sm font-semibold text-(--c-ink)">Email notification (optional)</p>
         </div>
-        <p className="text-xs text-[#5a7a85] mb-3">Prompts run in the background — you can close this tab. Enter your email to get notified when complete.</p>
+        <p className="text-xs text-(--c-muted) mb-3">Prompts run in the background — you can close this tab. Enter your email to get notified when complete.</p>
         <input
           type="email" value={notifyEmail}
           onChange={(e) => { setNotifyEmail(e.target.value); setEmailError(null) }}
           placeholder="you@example.com" disabled={running !== null}
-          className="w-full max-w-sm px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61] disabled:opacity-50 disabled:bg-[#f5f8fa]"
+          className="w-full max-w-sm px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink) disabled:opacity-50 disabled:bg-(--c-surface)"
         />
         {emailError && <p className="text-xs text-rose-500 mt-1.5">{emailError}</p>}
         {notifyEmail.trim() && !emailError && (
-          <p className="text-xs text-[#177e89] mt-1.5 flex items-center gap-1">
+          <p className="text-xs text-(--c-accent) mt-1.5 flex items-center gap-1">
             <CheckCircle2 className="h-3 w-3" />A summary will be emailed to {notifyEmail.trim()} when the run finishes
           </p>
         )}
@@ -1232,13 +1232,13 @@ export default function RunPage() {
         <Card className="mb-6">
           <CardContent className="p-5">
             <div className="flex items-center gap-3 mb-3">
-              <RefreshCw className="h-5 w-5 text-[#177e89] animate-spin" />
-              <span className="text-sm font-medium text-[#084c61]">Processing in background — you can close this tab</span>
-              <span className="ml-auto text-sm text-[#5a7a85]">{progress}%</span>
+              <RefreshCw className="h-5 w-5 text-(--c-accent) animate-spin" />
+              <span className="text-sm font-medium text-(--c-ink)">Processing in background — you can close this tab</span>
+              <span className="ml-auto text-sm text-(--c-muted)">{progress}%</span>
             </div>
             <Progress value={progress} className="h-2 mb-3" />
             {runStatus && (
-              <p className="text-xs text-[#5a7a85]">
+              <p className="text-xs text-(--c-muted)">
                 {runStatus.doneCount + runStatus.failCount} / {runStatus.totalPrompts} prompts complete
                 {runStatus.failCount > 0 && ` (${runStatus.failCount} errors)`}
               </p>
@@ -1271,19 +1271,19 @@ export default function RunPage() {
       )}
 
       {/* Tip about scheduled runs */}
-      <div className="flex items-center gap-2 text-xs text-[#8aadb8] mb-4">
+      <div className="flex items-center gap-2 text-xs text-(--c-subtle) mb-4">
         <Clock className="h-3.5 w-3.5" />
         <span>Use the <Calendar className="h-3 w-3 inline" /> calendar icon on each batch to schedule automatic re-runs for trend tracking.</span>
       </div>
 
       {loading ? (
-        <Card><CardContent className="py-12 text-center text-[#5a7a85]">Loading batches…</CardContent></Card>
+        <Card><CardContent className="py-12 text-center text-(--c-muted)">Loading batches…</CardContent></Card>
       ) : batches.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
-            <BarChart3 className="h-12 w-12 text-[#b8cdd3] mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-[#084c61] mb-2">No batches yet</h3>
-            <p className="text-[#5a7a85] mb-4">Upload a spreadsheet first to create a batch of prompts.</p>
+            <BarChart3 className="h-12 w-12 text-(--c-faint) mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-(--c-ink) mb-2">No batches yet</h3>
+            <p className="text-(--c-muted) mb-4">Upload a spreadsheet first to create a batch of prompts.</p>
             <Link href="/upload"><Button>Upload Spreadsheet</Button></Link>
           </CardContent>
         </Card>

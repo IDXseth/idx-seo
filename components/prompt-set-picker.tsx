@@ -43,15 +43,15 @@ export function PromptSetPicker({
 
   return (
     <div className="flex items-center gap-2">
-      <Layers className="h-4 w-4 text-[#5a7a85] shrink-0" />
+      <Layers className="h-4 w-4 text-(--c-muted) shrink-0" />
       <div className="flex flex-col">
-        <label className="text-[10px] font-semibold text-[#8aadb8] uppercase tracking-wider mb-0.5">
+        <label className="text-[10px] font-semibold text-(--c-subtle) uppercase tracking-wider mb-0.5">
           Prompt set
         </label>
         <select
           value={currentSetId ?? ''}
           onChange={(e) => handleChange(e.target.value)}
-          className="text-sm font-medium text-[#084c61] bg-white border border-[#dde6ea] rounded-lg px-3 py-1.5 pr-8 focus:outline-none focus:ring-2 focus:ring-[#177e89] cursor-pointer min-w-[200px]"
+          className="text-sm font-medium text-(--c-ink) bg-white border border-(--c-line) rounded-lg px-3 py-1.5 pr-8 focus:outline-none focus:ring-2 focus:ring-(--c-accent) cursor-pointer min-w-[200px]"
         >
           <option value="">All prompt sets</option>
           {promptSets.map((p) => (

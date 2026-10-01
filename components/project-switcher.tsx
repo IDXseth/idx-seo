@@ -68,7 +68,7 @@ export function ProjectSwitcher() {
     return data.canCreate ? (
       <Link
         href="/projects/new"
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold bg-[#ffc857] text-[#084c61] hover:bg-[#ffd47a] transition-colors"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold bg-(--c-highlight) text-(--c-ink) hover:bg-(--c-highlight-soft) transition-colors"
       >
         <Plus className="h-4 w-4" />
         New project
@@ -85,14 +85,14 @@ export function ProjectSwitcher() {
         aria-haspopup="listbox"
         aria-expanded={open}
       >
-        <FolderKanban className="h-4 w-4 text-[#ffc857]" />
+        <FolderKanban className="h-4 w-4 text-(--c-highlight)" />
         <span className="text-sm font-semibold max-w-[160px] truncate">{switching ? 'Switching…' : active?.name ?? 'Select project'}</span>
         <ChevronDown className={cn('h-3.5 w-3.5 text-white/60 transition-transform', open && 'rotate-180')} />
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full mt-2 w-72 bg-white rounded-xl border border-[#dde6ea] shadow-lg overflow-hidden z-50">
-          <p className="px-4 pt-3 pb-1 text-xs font-semibold text-[#8aadb8] uppercase tracking-wide">Projects</p>
+        <div className="absolute left-0 top-full mt-2 w-72 bg-white rounded-xl border border-(--c-line) shadow-lg overflow-hidden z-50">
+          <p className="px-4 pt-3 pb-1 text-xs font-semibold text-(--c-subtle) uppercase tracking-wide">Projects</p>
           <ul role="listbox" className="max-h-72 overflow-y-auto py-1">
             {data.projects.map((p) => (
               <li key={p.id}>
@@ -100,23 +100,23 @@ export function ProjectSwitcher() {
                   role="option"
                   aria-selected={p.id === active?.id}
                   onClick={() => switchTo(p.id)}
-                  className="w-full flex items-center gap-2.5 px-4 py-2 text-left hover:bg-[#f5f8fa] transition-colors"
+                  className="w-full flex items-center gap-2.5 px-4 py-2 text-left hover:bg-(--c-surface) transition-colors"
                 >
-                  <Check className={cn('h-4 w-4 flex-shrink-0 text-[#177e89]', p.id !== active?.id && 'invisible')} />
+                  <Check className={cn('h-4 w-4 flex-shrink-0 text-(--c-accent)', p.id !== active?.id && 'invisible')} />
                   <span className="min-w-0">
-                    <span className="block text-sm font-medium text-[#084c61] truncate">{p.name}</span>
-                    <span className="block text-xs text-[#8aadb8] truncate">{p.primaryDomain}</span>
+                    <span className="block text-sm font-medium text-(--c-ink) truncate">{p.name}</span>
+                    <span className="block text-xs text-(--c-subtle) truncate">{p.primaryDomain}</span>
                   </span>
                 </button>
               </li>
             ))}
           </ul>
-          <div className="border-t border-[#dde6ea] py-1">
+          <div className="border-t border-(--c-line) py-1">
             {active && (
               <Link
                 href={`/projects/${active.id}`}
                 onClick={() => setOpen(false)}
-                className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#5a7a85] hover:bg-[#f5f8fa] transition-colors"
+                className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-(--c-muted) hover:bg-(--c-surface) transition-colors"
               >
                 <Settings className="h-4 w-4" />
                 {active.canEdit ? 'Project settings' : 'View project settings'}
@@ -126,7 +126,7 @@ export function ProjectSwitcher() {
               <Link
                 href="/projects/new"
                 onClick={() => setOpen(false)}
-                className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#177e89] font-medium hover:bg-[#f5f8fa] transition-colors"
+                className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-(--c-accent) font-medium hover:bg-(--c-surface) transition-colors"
               >
                 <Plus className="h-4 w-4" />
                 New project

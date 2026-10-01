@@ -156,8 +156,8 @@ export default function UploadPage() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Upload Prompts</h1>
-        <p className="text-[#5a7a85] mt-1 text-sm">Upload a spreadsheet, or let AI suggest nonbrand prompts for you</p>
+        <h1 className="text-2xl font-bold text-(--c-ink)" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Upload Prompts</h1>
+        <p className="text-(--c-muted) mt-1 text-sm">Upload a spreadsheet, or let AI suggest nonbrand prompts for you</p>
       </div>
 
       <ActiveProjectBanner info={project} />
@@ -175,18 +175,18 @@ export default function UploadPage() {
         <TabsContent value="file">
 
       {/* Format guide */}
-      <div className="bg-[#e6f2f5] border border-[#b8d8e0] rounded-xl p-4 mb-6 flex gap-3">
-        <Info className="h-4 w-4 text-[#177e89] flex-shrink-0 mt-0.5" />
+      <div className="bg-(--c-tint) border border-(--c-accent-faint) rounded-xl p-4 mb-6 flex gap-3">
+        <Info className="h-4 w-4 text-(--c-accent) flex-shrink-0 mt-0.5" />
         <div>
-          <p className="text-sm font-semibold text-[#084c61] mb-2">Expected spreadsheet columns</p>
+          <p className="text-sm font-semibold text-(--c-ink) mb-2">Expected spreadsheet columns</p>
           <div className="flex flex-wrap gap-1.5">
             {EXPECTED_COLUMNS[labels.preset].map((col) => (
-              <code key={col} className="text-xs bg-white border border-[#b8d8e0] text-[#084c61] px-2 py-0.5 rounded-md font-mono">
+              <code key={col} className="text-xs bg-white border border-(--c-accent-faint) text-(--c-ink) px-2 py-0.5 rounded-md font-mono">
                 {col}
               </code>
             ))}
           </div>
-          <p className="text-xs text-[#177e89] mt-2">Column names are flexible — underscores, spaces, and camelCase are all recognized.</p>
+          <p className="text-xs text-(--c-accent) mt-2">Column names are flexible — underscores, spaces, and camelCase are all recognized.</p>
         </div>
       </div>
 
@@ -194,9 +194,9 @@ export default function UploadPage() {
       <div
         className={cn(
           'border-2 border-dashed rounded-xl p-12 text-center transition-all mb-6',
-          isDragging ? 'border-[#177e89] bg-[#e6f2f5]' :
+          isDragging ? 'border-(--c-accent) bg-(--c-tint)' :
           file ? 'border-emerald-400 bg-emerald-50' :
-          'border-[#dde6ea] bg-white hover:border-[#8aadb8] hover:bg-[#f5f8fa]'
+          'border-(--c-line) bg-white hover:border-(--c-subtle) hover:bg-(--c-surface)'
         )}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
@@ -246,9 +246,9 @@ export default function UploadPage() {
             <p className="text-sm text-emerald-700 font-medium">Upload successful! Redirecting to Run Prompts…</p>
           </div>
           {skippedCount > 0 && (
-            <div className="flex items-center gap-3 p-4 bg-[#e6f2f5] border border-[#b8d8e0] rounded-xl">
-              <Info className="h-5 w-5 text-[#177e89] flex-shrink-0" />
-              <p className="text-sm text-[#084c61]">
+            <div className="flex items-center gap-3 p-4 bg-(--c-tint) border border-(--c-accent-faint) rounded-xl">
+              <Info className="h-5 w-5 text-(--c-accent) flex-shrink-0" />
+              <p className="text-sm text-(--c-ink)">
                 <span className="font-semibold">{skippedCount} prompt{skippedCount !== 1 ? 's' : ''}</span> already exist in this project and were not added again.
               </p>
             </div>
@@ -286,7 +286,7 @@ export default function UploadPage() {
                 value={batchName}
                 onChange={(e) => setBatchName(e.target.value)}
                 placeholder="Batch name"
-                className="px-3 py-1.5 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61] focus:border-transparent w-44"
+                className="px-3 py-1.5 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink) focus:border-transparent w-44"
               />
               <Button onClick={handleUpload} disabled={uploading}>
                 {uploading ? 'Uploading…' : 'Confirm Upload'}

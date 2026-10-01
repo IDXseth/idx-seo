@@ -18,4 +18,4 @@ export function brandColor(colorIndex: number): string {
 }
 
 // Neutral for "everyone else" (sites that are no tracked brand) — never a palette slot.
-export const OTHER_COLOR = '#b8cdd3'
+export const OTHER_COLOR = 'var(--c-faint)'

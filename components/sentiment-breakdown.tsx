@@ -15,8 +15,8 @@ export function SentimentBreakdown({
 }) {
   const counts = countSentiments(results.filter((r) => r.isMentioned))
   return (
-    <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
-      <h2 className="text-sm font-semibold text-[#084c61] mb-4">{title}</h2>
+    <div className="bg-white rounded-xl border border-(--c-line) p-6">
+      <h2 className="text-sm font-semibold text-(--c-ink) mb-4">{title}</h2>
       <SentimentPieChart counts={counts} />
     </div>
   )

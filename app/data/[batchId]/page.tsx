@@ -37,39 +37,39 @@ export default async function DataPage({ params }: { params: Promise<{ batchId: 
   const labels = await getLabelsForProject(batch.projectId)
 
   return (
-    <div className="min-h-screen bg-[#f5f8fa]">
-      <div className="px-6 py-4 bg-white border-b border-[#dde6ea] flex items-center gap-3">
-        <Link href="/run" className="text-[#5a7a85] hover:text-[#084c61] transition-colors">
+    <div className="min-h-screen bg-(--c-surface)">
+      <div className="px-6 py-4 bg-white border-b border-(--c-line) flex items-center gap-3">
+        <Link href="/run" className="text-(--c-muted) hover:text-(--c-ink) transition-colors">
           <ChevronLeft className="h-5 w-5" />
         </Link>
         <div>
-          <h1 className="text-lg font-bold text-[#084c61]">{batch.name}</h1>
-          <p className="text-xs text-[#5a7a85]">{prompts.length} prompts · {PLATFORMS.length} platforms</p>
+          <h1 className="text-lg font-bold text-(--c-ink)">{batch.name}</h1>
+          <p className="text-xs text-(--c-muted)">{prompts.length} prompts · {PLATFORMS.length} platforms</p>
         </div>
       </div>
 
       <div className="overflow-x-auto">
         <table className="min-w-max w-full text-xs border-collapse">
           <thead>
-            <tr className="bg-[#084c61] text-white">
-              <th className="sticky left-0 z-10 bg-[#084c61] text-left px-3 py-2.5 font-semibold min-w-[280px]">Prompt</th>
+            <tr className="bg-(--c-ink) text-white">
+              <th className="sticky left-0 z-10 bg-(--c-ink) text-left px-3 py-2.5 font-semibold min-w-[280px]">Prompt</th>
               <th className="text-left px-3 py-2.5 font-semibold min-w-[140px]">{labels.entity}</th>
               <th className="text-left px-3 py-2.5 font-semibold min-w-[100px]">Category</th>
               <th className="text-left px-3 py-2.5 font-semibold min-w-[80px]">Type</th>
               {PLATFORMS.map((p) => (
-                <th key={p} colSpan={3} className="text-center px-3 py-2.5 font-semibold border-l border-[#177e89] min-w-[340px]">
+                <th key={p} colSpan={3} className="text-center px-3 py-2.5 font-semibold border-l border-(--c-accent) min-w-[340px]">
                   {PLATFORM_LABELS[p]}
                 </th>
               ))}
             </tr>
-            <tr className="bg-[#0a5c75] text-white text-[11px]">
-              <th className="sticky left-0 z-10 bg-[#0a5c75] px-3 py-1.5" />
+            <tr className="bg-(--c-ink-soft) text-white text-[11px]">
+              <th className="sticky left-0 z-10 bg-(--c-ink-soft) px-3 py-1.5" />
               <th className="px-3 py-1.5" />
               <th className="px-3 py-1.5" />
               <th className="px-3 py-1.5" />
               {PLATFORMS.map((p) => (
                 <>
-                  <th key={`${p}-ans`} className="text-left px-3 py-1.5 border-l border-[#177e89] font-medium min-w-[200px]">Answer</th>
+                  <th key={`${p}-ans`} className="text-left px-3 py-1.5 border-l border-(--c-accent) font-medium min-w-[200px]">Answer</th>
                   <th key={`${p}-men`} className="text-center px-3 py-1.5 font-medium min-w-[70px]">Mentioned</th>
                   <th key={`${p}-cit`} className="text-center px-3 py-1.5 font-medium min-w-[70px]">Cited</th>
                 </>
@@ -84,17 +84,17 @@ export default async function DataPage({ params }: { params: Promise<{ batchId: 
               return (
                 <tr
                   key={prompt.id}
-                  className={i % 2 === 0 ? 'bg-white' : 'bg-[#f5f8fa]'}
+                  className={i % 2 === 0 ? 'bg-white' : 'bg-(--c-surface)'}
                 >
-                  <td className={`sticky left-0 z-10 px-3 py-2 align-top font-medium text-[#084c61] border-b border-[#dde6ea] ${i % 2 === 0 ? 'bg-white' : 'bg-[#f5f8fa]'}`}>
+                  <td className={`sticky left-0 z-10 px-3 py-2 align-top font-medium text-(--c-ink) border-b border-(--c-line) ${i % 2 === 0 ? 'bg-white' : 'bg-(--c-surface)'}`}>
                     <Link href={`/results/${prompt.id}`} className="hover:underline">
                       {prompt.promptText}
                     </Link>
                   </td>
-                  <td className="px-3 py-2 align-top text-[#1a1a1a] border-b border-[#dde6ea]">{prompt.communityName}</td>
-                  <td className="px-3 py-2 align-top text-[#5a7a85] border-b border-[#dde6ea]">{prompt.category}</td>
-                  <td className="px-3 py-2 align-top border-b border-[#dde6ea]">
-                    <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${prompt.promptType === 'brand' ? 'bg-[#084c61] text-white' : 'bg-[#ffc857] text-[#084c61]'}`}>
+                  <td className="px-3 py-2 align-top text-(--c-text) border-b border-(--c-line)">{prompt.communityName}</td>
+                  <td className="px-3 py-2 align-top text-(--c-muted) border-b border-(--c-line)">{prompt.category}</td>
+                  <td className="px-3 py-2 align-top border-b border-(--c-line)">
+                    <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${prompt.promptType === 'brand' ? 'bg-(--c-ink) text-white' : 'bg-(--c-highlight) text-(--c-ink)'}`}>
                       {prompt.promptType}
                     </span>
                   </td>
@@ -104,29 +104,29 @@ export default async function DataPage({ params }: { params: Promise<{ batchId: 
                     const isNoAIO = r?.responseText?.startsWith('[No AI Overview]')
                     return (
                       <>
-                        <td key={`${prompt.id}-${platform}-ans`} className="px-3 py-2 align-top border-b border-l border-[#dde6ea] max-w-[200px]">
+                        <td key={`${prompt.id}-${platform}-ans`} className="px-3 py-2 align-top border-b border-l border-(--c-line) max-w-[200px]">
                           {r ? (
                             isNoAIO ? (
-                              <span className="text-[#8aadb8] italic">No AI Overview</span>
+                              <span className="text-(--c-subtle) italic">No AI Overview</span>
                             ) : isError ? (
                               <span className="text-rose-500 italic">{r.responseText.slice(0, 80)}</span>
                             ) : (
-                              <span className="text-[#1a1a1a] line-clamp-3">{r.responseText}</span>
+                              <span className="text-(--c-text) line-clamp-3">{r.responseText}</span>
                             )
                           ) : (
-                            <span className="text-[#8aadb8] italic">not run</span>
+                            <span className="text-(--c-subtle) italic">not run</span>
                           )}
                         </td>
-                        <td key={`${prompt.id}-${platform}-men`} className="px-3 py-2 align-top text-center border-b border-[#dde6ea]">
+                        <td key={`${prompt.id}-${platform}-men`} className="px-3 py-2 align-top text-center border-b border-(--c-line)">
                           {r && !isError && !isNoAIO ? (
-                            <span className={`font-bold ${r.isMentioned ? 'text-emerald-600' : 'text-[#c0cfd6]'}`}>
+                            <span className={`font-bold ${r.isMentioned ? 'text-emerald-600' : 'text-(--c-line-strong-3)'}`}>
                               {r.isMentioned ? '✓' : '✗'}
                             </span>
                           ) : null}
                         </td>
-                        <td key={`${prompt.id}-${platform}-cit`} className="px-3 py-2 align-top text-center border-b border-[#dde6ea]">
+                        <td key={`${prompt.id}-${platform}-cit`} className="px-3 py-2 align-top text-center border-b border-(--c-line)">
                           {r && !isError && !isNoAIO ? (
-                            <span className={`font-bold ${r.isCited ? 'text-emerald-600' : 'text-[#c0cfd6]'}`}>
+                            <span className={`font-bold ${r.isCited ? 'text-emerald-600' : 'text-(--c-line-strong-3)'}`}>
                               {r.isCited ? '✓' : '✗'}
                             </span>
                           ) : null}

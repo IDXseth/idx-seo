@@ -72,22 +72,22 @@ function LoginForm() {
         <div className="flex flex-col items-center mb-8">
           {APP_LOGO_URL ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={APP_LOGO_URL} alt={APP_OWNER_NAME} className="w-64 h-auto object-contain mb-3 rounded-xl p-4" style={{ backgroundColor: '#084c61' }} />
+            <img src={APP_LOGO_URL} alt={APP_OWNER_NAME} className="w-64 h-auto object-contain mb-3 rounded-xl p-4" style={{ backgroundColor: 'var(--c-ink)' }} />
           ) : (
-            <h1 className="text-2xl font-bold text-[#084c61] mb-2" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>{APP_OWNER_NAME}</h1>
+            <h1 className="text-2xl font-bold text-(--c-ink) mb-2" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>{APP_OWNER_NAME}</h1>
           )}
-          <p className="text-sm text-[#5a7a85] font-medium">{APP_PRODUCT_NAME}</p>
+          <p className="text-sm text-(--c-muted) font-medium">{APP_PRODUCT_NAME}</p>
         </div>
 
-        <div className="bg-white rounded-2xl border border-[#dde6ea] shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border border-(--c-line) shadow-sm overflow-hidden">
           {/* Tab switcher */}
-          {!GOOGLE_ONLY_SIGN_IN && <div className="flex border-b border-[#dde6ea]">
+          {!GOOGLE_ONLY_SIGN_IN && <div className="flex border-b border-(--c-line)">
             <button
               onClick={() => { setTab('signin'); setError(null) }}
               className={`flex-1 py-3.5 text-sm font-semibold transition-colors ${
                 tab === 'signin'
-                  ? 'text-[#084c61] border-b-2 border-[#084c61] bg-white'
-                  : 'text-[#5a7a85] hover:text-[#084c61] bg-[#f5f8fa]'
+                  ? 'text-(--c-ink) border-b-2 border-(--c-ink) bg-white'
+                  : 'text-(--c-muted) hover:text-(--c-ink) bg-(--c-surface)'
               }`}
             >
               Sign In
@@ -96,8 +96,8 @@ function LoginForm() {
               onClick={() => { setTab('register'); setError(null) }}
               className={`flex-1 py-3.5 text-sm font-semibold transition-colors ${
                 tab === 'register'
-                  ? 'text-[#084c61] border-b-2 border-[#084c61] bg-white'
-                  : 'text-[#5a7a85] hover:text-[#084c61] bg-[#f5f8fa]'
+                  ? 'text-(--c-ink) border-b-2 border-(--c-ink) bg-white'
+                  : 'text-(--c-muted) hover:text-(--c-ink) bg-(--c-surface)'
               }`}
             >
               Create Account
@@ -108,7 +108,7 @@ function LoginForm() {
             {/* Google OAuth */}
             <button
               onClick={handleGoogle}
-              className={`w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-[#dde6ea] rounded-lg text-sm font-medium text-[#1a1a1a] bg-white hover:bg-[#f5f8fa] transition-colors ${GOOGLE_ONLY_SIGN_IN ? '' : 'mb-4'}`}
+              className={`w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-(--c-line) rounded-lg text-sm font-medium text-(--c-text) bg-white hover:bg-(--c-surface) transition-colors ${GOOGLE_ONLY_SIGN_IN ? '' : 'mb-4'}`}
             >
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
                 <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
@@ -122,9 +122,9 @@ function LoginForm() {
             {!GOOGLE_ONLY_SIGN_IN && <>
             <div className="relative mb-4">
               <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-[#dde6ea]" />
+                <div className="w-full border-t border-(--c-line)" />
               </div>
-              <div className="relative flex justify-center text-xs text-[#8aadb8] bg-white px-3">
+              <div className="relative flex justify-center text-xs text-(--c-subtle) bg-white px-3">
                 or
               </div>
             </div>
@@ -132,7 +132,7 @@ function LoginForm() {
             <form onSubmit={handleCredentials} className="space-y-4">
               {tab === 'register' && (
                 <div>
-                  <label className="block text-xs font-semibold text-[#084c61] mb-1.5">
+                  <label className="block text-xs font-semibold text-(--c-ink) mb-1.5">
                     Full name
                   </label>
                   <input
@@ -140,13 +140,13 @@ function LoginForm() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Jane Smith"
-                    className="w-full px-3 py-2.5 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61] focus:border-transparent"
+                    className="w-full px-3 py-2.5 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink) focus:border-transparent"
                   />
                 </div>
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-[#084c61] mb-1.5">
+                <label className="block text-xs font-semibold text-(--c-ink) mb-1.5">
                   Email address
                 </label>
                 <input
@@ -155,12 +155,12 @@ function LoginForm() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
                   required
-                  className="w-full px-3 py-2.5 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61] focus:border-transparent"
+                  className="w-full px-3 py-2.5 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink) focus:border-transparent"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#084c61] mb-1.5">
+                <label className="block text-xs font-semibold text-(--c-ink) mb-1.5">
                   Password
                 </label>
                 <input
@@ -169,7 +169,7 @@ function LoginForm() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder={tab === 'register' ? 'At least 6 characters' : '••••••••'}
                   required
-                  className="w-full px-3 py-2.5 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61] focus:border-transparent"
+                  className="w-full px-3 py-2.5 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink) focus:border-transparent"
                 />
               </div>
 
@@ -182,7 +182,7 @@ function LoginForm() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-2.5 px-4 bg-[#084c61] hover:bg-[#054166] text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                className="w-full py-2.5 px-4 bg-(--c-ink) hover:bg-(--c-ink-hover) text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:pointer-events-none"
               >
                 {loading
                   ? (tab === 'signin' ? 'Signing in…' : 'Creating account…')
@@ -193,13 +193,13 @@ function LoginForm() {
           </div>
         </div>
 
-        {!GOOGLE_ONLY_SIGN_IN && <p className="text-center text-xs text-[#8aadb8] mt-6">
+        {!GOOGLE_ONLY_SIGN_IN && <p className="text-center text-xs text-(--c-subtle) mt-6">
           {tab === 'signin'
             ? "Don't have an account? "
             : 'Already have an account? '}
           <button
             onClick={() => { setTab(tab === 'signin' ? 'register' : 'signin'); setError(null) }}
-            className="text-[#177e89] font-semibold hover:underline"
+            className="text-(--c-accent) font-semibold hover:underline"
           >
             {tab === 'signin' ? 'Create one' : 'Sign in'}
           </button>

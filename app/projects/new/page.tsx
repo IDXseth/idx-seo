@@ -12,8 +12,8 @@ export default async function NewProjectPage() {
   return (
     <div className="max-w-3xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>New project</h1>
-        <p className="text-[#5a7a85] mt-1 text-sm">
+        <h1 className="text-2xl font-bold text-(--c-ink)" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>New project</h1>
+        <p className="text-(--c-muted) mt-1 text-sm">
           A project tracks one brand&apos;s visibility in AI answers — its names, its domain, and the competitors to compare it against.
         </p>
       </div>

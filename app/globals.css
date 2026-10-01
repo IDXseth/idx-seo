@@ -9,24 +9,43 @@
 @source "../components/**/*.{ts,tsx}";
 @source "../lib/**/*.{ts,tsx}";
 
+/* App palette. Components use these as text-(--c-ink), bg-(--c-surface)…
+   rather than hex values, so a deployment can re-theme the whole app by
+   setting NEXT_PUBLIC_APP_THEME, which becomes <html data-theme="…">.
+   These defaults are the Senior Lifestyle palette. Chart series colors are
+   separate (lib/brand-palette.ts, PLATFORM_COLORS) and brand-neutral. */
 :root {
-  --background: #f0f4f7;
-  --foreground: #1a1a1a;
-  --card: #ffffff;
-  --card-border: #dde6ea;
-  --primary: #084c61;
-  --primary-hover: #054166;
-  --primary-light: #e6f2f5;
-  --secondary: #177e89;
-  --accent: #ffc857;
-  --muted: #5a7a85;
-  --muted-bg: #f5f8fa;
-  --ring: rgba(8, 76, 97, 0.18);
+  --c-ink: #084c61;          /* headings, primary buttons, nav */
+  --c-ink-hover: #054166;    /* primary hover, nav gradient end */
+  --c-ink-deep: #063a4a;
+  --c-ink-soft: #0a5c75;
+  --c-accent: #177e89;       /* links, secondary actions, "your brand" marks */
+  --c-accent-faint: #b8d8e0;
+  --c-tint-strong: #d9edf1;
+  --c-tint: #e6f2f5;         /* selected / highlighted backgrounds */
+  --c-tint-soft: #f0f7f9;
+  --c-text: #1a1a1a;
+  --c-muted: #5a7a85;        /* secondary text */
+  --c-subtle: #8aadb8;       /* captions, placeholders, icons */
+  --c-faint: #b8cdd3;
+  --c-line-strong: #c0d5dc;
+  --c-line-strong-2: #c5d7de;
+  --c-line-strong-3: #c0cfd6;
+  --c-line-strong-4: #c5d3d8;
+  --c-line: #dde6ea;         /* card and input borders */
+  --c-line-soft-2: #e4edf0;
+  --c-line-soft: #eef3f5;    /* dividers, gridlines */
+  --c-page: #f0f4f7;         /* page background */
+  --c-surface-2: #f0f5f7;
+  --c-surface: #f5f8fa;      /* muted panels, table headers */
+  --c-surface-soft: #f9fbfc;
+  --c-highlight: #ffc857;    /* active nav underline, badges */
+  --c-highlight-soft: #ffd47a;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--c-page);
+  color: var(--c-text);
   font-family: 'Nunito', sans-serif;
   font-feature-settings: "rlig" 1, "calt" 1;
   -webkit-font-smoothing: antialiased;
@@ -34,23 +53,23 @@ body {
 
 h1, h2, h3, h4, h5, h6 {
   font-family: 'Noto Serif', serif;
-  color: #084c61;
+  color: var(--c-ink);
 }
 
 /* Smooth card elevation */
 .card-elevated {
   box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.04);
-  border: 1px solid var(--card-border);
+  border: 1px solid var(--c-line);
 }
 
 /* Focus ring */
 *:focus-visible {
-  outline: 2px solid var(--primary);
+  outline: 2px solid var(--c-ink);
   outline-offset: 2px;
 }
 
 /* Thin scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #b8cdd3; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #8aadb8; }
+::-webkit-scrollbar-thumb { background: var(--c-faint); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--c-subtle); }

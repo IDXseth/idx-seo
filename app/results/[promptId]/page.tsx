@@ -137,36 +137,36 @@ export default async function ResultsDetailPage({
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2">
-        <Link href="/dashboard" className="flex items-center gap-1 text-sm text-[#177e89] hover:text-[#084c61] font-medium transition-colors">
+        <Link href="/dashboard" className="flex items-center gap-1 text-sm text-(--c-accent) hover:text-(--c-ink) font-medium transition-colors">
           <ChevronLeft className="h-4 w-4" />
           Dashboard
         </Link>
-        <span className="text-[#b8cdd3]">/</span>
-        <span className="text-sm text-[#5a7a85]">Prompt Results</span>
+        <span className="text-(--c-faint)">/</span>
+        <span className="text-sm text-(--c-muted)">Prompt Results</span>
       </div>
 
       {/* Description */}
-      <div className="flex gap-3 p-4 bg-[#e6f2f5] border border-[#b8d8e0] rounded-xl">
-        <Info className="h-4 w-4 text-[#177e89] flex-shrink-0 mt-0.5" />
-        <div className="text-sm text-[#084c61] leading-relaxed">
+      <div className="flex gap-3 p-4 bg-(--c-tint) border border-(--c-accent-faint) rounded-xl">
+        <Info className="h-4 w-4 text-(--c-accent) flex-shrink-0 mt-0.5" />
+        <div className="text-sm text-(--c-ink) leading-relaxed">
           <span className="font-semibold">AI Visibility Results — </span>
           This report shows how each AI platform responded to the prompt below. For each platform we record whether {brand.label} was <span className="font-semibold">mentioned</span> by name, whether a <span className="font-semibold">{brand.domains[0] ?? 'brand'} link was cited</span> in the response, the overall <span className="font-semibold">sentiment</span> of the response, and the source URLs involved — split into <span className="font-semibold">Citations</span> the platform explicitly referenced in its answer and sources <span className="font-semibold">also surfaced in search</span> that it retrieved but didn&apos;t directly cite.
         </div>
       </div>
 
       {/* Prompt metadata card */}
-      <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
+      <div className="bg-white rounded-xl border border-(--c-line) p-6">
         <div className="flex items-start justify-between gap-4 mb-5">
-          <p className="text-base font-medium text-[#1a1a1a] leading-relaxed flex-1">{prompt.promptText}</p>
+          <p className="text-base font-medium text-(--c-text) leading-relaxed flex-1">{prompt.promptText}</p>
           <Badge variant={prompt.promptType === 'brand' ? 'default' : 'secondary'} className="flex-shrink-0">
             {prompt.promptType}
           </Badge>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-[#eef3f5]">
-          <MetaItem icon={<Building2 className="h-4 w-4 text-[#8aadb8]" />} label={labels.entity} value={prompt.communityName} />
-          <MetaItem icon={<MapPin className="h-4 w-4 text-[#8aadb8]" />} label="City / Market" value={prompt.city + (prompt.market ? ` · ${prompt.market}` : '')} />
-          <MetaItem icon={<Tag className="h-4 w-4 text-[#8aadb8]" />} label="Category" value={prompt.category} />
-          <MetaItem icon={<Heart className="h-4 w-4 text-[#8aadb8]" />} label={labels.levelOfCare} value={prompt.levelOfCare} />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-(--c-line-soft)">
+          <MetaItem icon={<Building2 className="h-4 w-4 text-(--c-subtle)" />} label={labels.entity} value={prompt.communityName} />
+          <MetaItem icon={<MapPin className="h-4 w-4 text-(--c-subtle)" />} label="City / Market" value={prompt.city + (prompt.market ? ` · ${prompt.market}` : '')} />
+          <MetaItem icon={<Tag className="h-4 w-4 text-(--c-subtle)" />} label="Category" value={prompt.category} />
+          <MetaItem icon={<Heart className="h-4 w-4 text-(--c-subtle)" />} label={labels.levelOfCare} value={prompt.levelOfCare} />
         </div>
       </div>
 
@@ -179,9 +179,9 @@ export default async function ResultsDetailPage({
             basePath={`/results/${promptId}`}
           />
           {activeSession && (
-            <p className="text-xs text-[#8aadb8]">
+            <p className="text-xs text-(--c-subtle)">
               Showing results from{' '}
-              <span className="font-medium text-[#5a7a85]">
+              <span className="font-medium text-(--c-muted)">
                 {new Date(activeSession.startedAt).toLocaleDateString('en-US', {
                   month: 'long', day: 'numeric', year: 'numeric',
                 })}{' '}
@@ -203,18 +203,18 @@ export default async function ResultsDetailPage({
               key={b.id}
               className={
                 b.isYou
-                  ? 'bg-[#e6f2f5] border border-[#b8d8e0] rounded-xl p-3.5'
-                  : 'bg-white border border-[#dde6ea] rounded-xl p-3.5'
+                  ? 'bg-(--c-tint) border border-(--c-accent-faint) rounded-xl p-3.5'
+                  : 'bg-white border border-(--c-line) rounded-xl p-3.5'
               }
             >
-              <p className={`text-xs font-semibold mb-2 truncate ${b.isYou ? 'text-[#084c61]' : 'text-[#1a1a1a]'}`}>
+              <p className={`text-xs font-semibold mb-2 truncate ${b.isYou ? 'text-(--c-ink)' : 'text-(--c-text)'}`}>
                 {b.brandName}{b.isYou && ' (You)'}
               </p>
 
               <div className="space-y-0.5 mb-1.5">
-                <p className="text-[9px] font-semibold text-[#8aadb8] uppercase tracking-wider">Mentions</p>
-                <p className="text-xl font-extrabold text-[#084c61] leading-none">
-                  {b.mentionedCount}<span className="text-xs font-semibold text-[#5a7a85]"> / {platformCount} platforms</span>
+                <p className="text-[9px] font-semibold text-(--c-subtle) uppercase tracking-wider">Mentions</p>
+                <p className="text-xl font-extrabold text-(--c-ink) leading-none">
+                  {b.mentionedCount}<span className="text-xs font-semibold text-(--c-muted)"> / {platformCount} platforms</span>
                 </p>
               </div>
               <div className="flex gap-1 mb-2.5">
@@ -224,16 +224,16 @@ export default async function ResultsDetailPage({
                     <div
                       key={r.id}
                       className="h-1.5 flex-1 rounded-sm"
-                      style={{ backgroundColor: filled ? (b.isYou ? '#177e89' : '#8aadb8') : '#eef3f5' }}
+                      style={{ backgroundColor: filled ? (b.isYou ? 'var(--c-accent)' : 'var(--c-subtle)') : 'var(--c-line-soft)' }}
                     />
                   )
                 })}
               </div>
 
               <div className="space-y-0.5 mb-1.5">
-                <p className="text-[9px] font-semibold text-[#8aadb8] uppercase tracking-wider">Citations</p>
+                <p className="text-[9px] font-semibold text-(--c-subtle) uppercase tracking-wider">Citations</p>
                 <p className="text-base font-bold text-[#b45309] leading-none">
-                  {b.citedCount}<span className="text-xs font-semibold text-[#5a7a85]"> / {platformCount} platforms</span>
+                  {b.citedCount}<span className="text-xs font-semibold text-(--c-muted)"> / {platformCount} platforms</span>
                 </p>
               </div>
               <div className="flex gap-1">
@@ -243,7 +243,7 @@ export default async function ResultsDetailPage({
                     <div
                       key={r.id}
                       className="h-1.5 flex-1 rounded-sm"
-                      style={{ backgroundColor: filled ? '#d97706' : '#eef3f5' }}
+                      style={{ backgroundColor: filled ? '#d97706' : 'var(--c-line-soft)' }}
                     />
                   )
                 })}
@@ -258,25 +258,25 @@ export default async function ResultsDetailPage({
 
       {/* Platform results */}
       {sortedResults.length === 0 ? (
-        <div className="bg-white rounded-xl border border-[#dde6ea] py-16 text-center">
-          <p className="text-[#8aadb8] mb-3">No results yet for this prompt.</p>
-          <Link href="/run" className="text-sm font-semibold text-[#177e89] hover:text-[#084c61] transition-colors">
+        <div className="bg-white rounded-xl border border-(--c-line) py-16 text-center">
+          <p className="text-(--c-subtle) mb-3">No results yet for this prompt.</p>
+          <Link href="/run" className="text-sm font-semibold text-(--c-accent) hover:text-(--c-ink) transition-colors">
             Run prompts →
           </Link>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {sortedResults.map((result) => {
-            const color = PLATFORM_COLORS[result.platform] || '#084c61'
+            const color = PLATFORM_COLORS[result.platform] || 'var(--c-ink)'
             const label = PLATFORM_LABELS[result.platform] || result.platform
             const isNoAIO = result.responseText?.startsWith('[No AI Overview]')
             return (
-              <div key={result.id} className="bg-white rounded-xl border border-[#dde6ea] flex flex-col overflow-hidden">
+              <div key={result.id} className="bg-white rounded-xl border border-(--c-line) flex flex-col overflow-hidden">
                 {/* Platform header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-[#eef3f5]">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-(--c-line-soft)">
                   <div className="flex items-center gap-2.5">
                     <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
-                    <span className="font-semibold text-[#084c61] text-sm">{label}</span>
+                    <span className="font-semibold text-(--c-ink) text-sm">{label}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     {!isNoAIO && (result.isMentioned ? (
@@ -284,12 +284,12 @@ export default async function ResultsDetailPage({
                         Mentioned
                       </span>
                     ) : (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#f0f4f7] text-[#8aadb8]">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-(--c-page) text-(--c-subtle)">
                         Not Mentioned
                       </span>
                     ))}
                     {!isNoAIO && result.isCited && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#e6f2f5] text-[#084c61] border border-[#b8d8e0]">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-(--c-tint) text-(--c-ink) border border-(--c-accent-faint)">
                         Cited
                       </span>
                     )}
@@ -303,7 +303,7 @@ export default async function ResultsDetailPage({
                         Negative
                       </span>
                     ) : result.sentiment ? (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#f0f4f7] text-[#8aadb8]">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-(--c-page) text-(--c-subtle)">
                         Neutral
                       </span>
                     ) : null)}
@@ -321,18 +321,18 @@ export default async function ResultsDetailPage({
                   if (detected.length === 0) return null
                   return (
                     <div className="px-5 pt-4">
-                      <p className="text-[10px] font-semibold text-[#8aadb8] uppercase tracking-wider mb-2">Brands Detected</p>
+                      <p className="text-[10px] font-semibold text-(--c-subtle) uppercase tracking-wider mb-2">Brands Detected</p>
                       <div className="flex flex-wrap gap-1.5">
                         {detected.map((d) => {
                           const tone = d.sentiment === 'positive'
                             ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                             : d.sentiment === 'negative'
                             ? 'bg-rose-50 border-rose-200 text-rose-800'
-                            : 'bg-[#f5f8fa] border-[#eef3f5] text-[#5a7a85]'
+                            : 'bg-(--c-surface) border-(--c-line-soft) text-(--c-muted)'
                           return (
                             <span
                               key={d.id}
-                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10.5px] font-semibold ${tone} ${d.isYou ? 'ring-1 ring-inset ring-[#177e89]' : ''}`}
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10.5px] font-semibold ${tone} ${d.isYou ? 'ring-1 ring-inset ring-(--c-accent)' : ''}`}
                             >
                               {d.brandName}{d.isYou && ' · You'}
                             </span>
@@ -345,11 +345,11 @@ export default async function ResultsDetailPage({
 
                 {/* Response text */}
                 <div className="px-5 py-4 flex-1">
-                  <p className="text-[10px] font-semibold text-[#8aadb8] uppercase tracking-wider mb-2">Response</p>
+                  <p className="text-[10px] font-semibold text-(--c-subtle) uppercase tracking-wider mb-2">Response</p>
                   {isNoAIO ? (
-                    <p className="text-xs text-[#8aadb8] italic">No AI Overview was served for this query.</p>
+                    <p className="text-xs text-(--c-subtle) italic">No AI Overview was served for this query.</p>
                   ) : (
-                    <p className="text-xs text-[#1a1a1a] leading-relaxed">{highlightTerms(result.responseText ?? '', ctx)}</p>
+                    <p className="text-xs text-(--c-text) leading-relaxed">{highlightTerms(result.responseText ?? '', ctx)}</p>
                   )}
                 </div>
 
@@ -358,10 +358,10 @@ export default async function ResultsDetailPage({
                   const explicitCitations = result.citations.filter((c) => c.isExplicitCitation)
                   const additionalSources = result.citations.filter((c) => !c.isExplicitCitation)
                   return (
-                    <div className="px-5 pb-4 border-t border-[#eef3f5] pt-3 space-y-3">
+                    <div className="px-5 pb-4 border-t border-(--c-line-soft) pt-3 space-y-3">
                       {explicitCitations.length > 0 && (
                         <div>
-                          <p className="text-[10px] font-semibold text-[#8aadb8] uppercase tracking-wider mb-2">
+                          <p className="text-[10px] font-semibold text-(--c-subtle) uppercase tracking-wider mb-2">
                             Citations ({explicitCitations.length})
                           </p>
                           <div className="space-y-1.5">
@@ -374,7 +374,7 @@ export default async function ResultsDetailPage({
                       {additionalSources.length > 0 && (
                         <div>
                           <p
-                            className="text-[10px] font-semibold text-[#b8cdd3] uppercase tracking-wider mb-2"
+                            className="text-[10px] font-semibold text-(--c-faint) uppercase tracking-wider mb-2"
                             title="Pages the platform's web search retrieved but did not directly cite in its answer"
                           >
                             Also Surfaced in Search ({additionalSources.length})
@@ -442,20 +442,20 @@ function CitationLink({
       className={`flex items-start gap-2 p-2 rounded-lg transition-colors group ${
         owner
           ? owner.isYou
-            ? 'bg-[#e6f2f5] ring-1 ring-inset ring-[#177e89] hover:bg-[#d9edf1]'
+            ? 'bg-(--c-tint) ring-1 ring-inset ring-(--c-accent) hover:bg-(--c-tint-strong)'
             : 'bg-sky-50 ring-1 ring-inset ring-sky-200 hover:bg-sky-100'
-          : 'bg-[#f5f8fa] hover:bg-[#e6f2f5]'
+          : 'bg-(--c-surface) hover:bg-(--c-tint)'
       }`}
     >
-      <ExternalLink className="h-3 w-3 text-[#8aadb8] mt-0.5 flex-shrink-0 group-hover:text-[#177e89] transition-colors" />
+      <ExternalLink className="h-3 w-3 text-(--c-subtle) mt-0.5 flex-shrink-0 group-hover:text-(--c-accent) transition-colors" />
       <div className="min-w-0 flex-1">
-        <p className="text-xs font-medium text-[#084c61] truncate">{citation.title}</p>
-        <p className="text-[10px] text-[#8aadb8]">{citation.domain}</p>
+        <p className="text-xs font-medium text-(--c-ink) truncate">{citation.title}</p>
+        <p className="text-[10px] text-(--c-subtle)">{citation.domain}</p>
       </div>
       {owner && (
         <span
           className={`flex-shrink-0 inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
-            owner.isYou ? 'bg-[#177e89] text-white' : 'bg-sky-600 text-white'
+            owner.isYou ? 'bg-(--c-accent) text-white' : 'bg-sky-600 text-white'
           }`}
         >
           {owner.isYou ? 'You' : owner.label}
@@ -470,8 +470,8 @@ function MetaItem({ icon, label, value }: { icon: React.ReactNode; label: string
     <div className="flex items-center gap-2.5">
       {icon}
       <div>
-        <p className="text-[10px] text-[#8aadb8] uppercase tracking-wide font-medium">{label}</p>
-        <p className="text-sm font-medium text-[#084c61]">{value || '—'}</p>
+        <p className="text-[10px] text-(--c-subtle) uppercase tracking-wide font-medium">{label}</p>
+        <p className="text-sm font-medium text-(--c-ink)">{value || '—'}</p>
       </div>
     </div>
   )

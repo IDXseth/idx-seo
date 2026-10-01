@@ -10,15 +10,15 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = 'default', size = 'default', ...props }, ref) => {
-    const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#084c61] disabled:pointer-events-none disabled:opacity-50'
+    const baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--c-ink) disabled:pointer-events-none disabled:opacity-50'
 
     const variantClasses = {
-      default: 'bg-[#084c61] text-white hover:bg-[#054166]',
-      outline: 'border border-[#dde6ea] bg-white hover:bg-[#f5f8fa] text-[#084c61]',
-      ghost: 'hover:bg-[#f0f4f7] text-[#084c61]',
-      secondary: 'bg-[#eef3f5] text-[#084c61] hover:bg-[#dde6ea]',
+      default: 'bg-(--c-ink) text-white hover:bg-(--c-ink-hover)',
+      outline: 'border border-(--c-line) bg-white hover:bg-(--c-surface) text-(--c-ink)',
+      ghost: 'hover:bg-(--c-page) text-(--c-ink)',
+      secondary: 'bg-(--c-line-soft) text-(--c-ink) hover:bg-(--c-line)',
       destructive: 'bg-red-600 text-white hover:bg-red-700',
-      link: 'text-[#177e89] underline-offset-4 hover:underline',
+      link: 'text-(--c-accent) underline-offset-4 hover:underline',
     }
 
     const sizeClasses = {

@@ -46,8 +46,8 @@ export function ActiveProjectBanner({ info }: { info: ActiveProjectInfo | null }
   }
 
   return (
-    <div className="flex items-center gap-2 text-sm text-[#084c61] bg-white border border-[#dde6ea] rounded-lg px-3 py-2 mb-6">
-      <FolderKanban className="h-4 w-4 text-[#177e89] flex-shrink-0" />
+    <div className="flex items-center gap-2 text-sm text-(--c-ink) bg-white border border-(--c-line) rounded-lg px-3 py-2 mb-6">
+      <FolderKanban className="h-4 w-4 text-(--c-accent) flex-shrink-0" />
       <span>Adding prompts to <span className="font-semibold">{info.name}</span> — switch projects in the top bar.</span>
     </div>
   )
