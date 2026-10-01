@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
+import { auth } from '@/lib/auth'
 import { PLATFORMS, slugify } from '@/lib/utils'
 import { SegmentDetail } from '@/components/segment-detail'
 import { SessionOption } from '@/components/run-session-picker'
@@ -7,7 +8,9 @@ import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
 import { getSessionList } from '@/lib/run-sessions'
 import { getPromptSetList } from '@/lib/prompt-sets'
-import { promptScope } from '@/lib/projects'
+import { promptScope, getActiveProject } from '@/lib/projects'
+import { competitorScope } from '@/lib/competitors'
+import { getCompetitorLeaderboard, getBrandSeries, getBrandTrendSeries, CompetitorLeaderboardEntry, BrandComparison, BrandTrendSeries } from '@/lib/competitor-stats'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,7 +25,8 @@ async function getCareLevelData(
   projectId?: string,
   market?: string,
   category?: string,
-  communityName?: string
+  communityName?: string,
+  userId?: string
 ) {
   const decodedName = decodeURIComponent(name)
   const resultsFilter = sessionId ? { where: { runSessionId: sessionId } } : {}
@@ -68,11 +72,22 @@ async function getCareLevelData(
     .map(([domain, count]) => ({ domain, count, percentage: totalResults > 0 ? count / totalResults : 0 }))
 
   const trendData = sessionId ? [] : await getSegmentTrendData({ levelOfCare: decodedName, ...scopeFilter })
+  const promptIds = prompts.map((p) => p.id)
+  const competitorLeaderboard = userId
+    ? await getCompetitorLeaderboard(promptIds, competitorScope((await getActiveProject())?.id, userId), sessionId)
+    : null
+  const brandComparison = await getBrandSeries({
+    promptId: { in: promptIds },
+    ...(sessionId ? { runSessionId: sessionId } : {}),
+  }).catch(() => null)
+  const brandTrend = sessionId
+    ? []
+    : await getBrandTrendSeries({ levelOfCare: decodedName, ...scopeFilter }).catch(() => [])
 
   return {
     name: decodedName, prompts,
     overview: { promptCount: prompts.length, mentionRate: totalResults > 0 ? mentioned / totalResults : 0, citationRate: totalResults > 0 ? cited / totalResults : 0 },
-    platformStats, topDomains, trendData,
+    platformStats, topDomains, trendData, competitorLeaderboard, brandComparison, brandTrend,
   }
 }
 
@@ -94,12 +109,15 @@ export default async function CareLevelDetailPage({
     await Promise.all([params, searchParams])
   const promptTypeParam: PromptTypeFilter = type === 'brand' || type === 'nonbrand' ? type : 'all'
   const promptType = promptTypeParam === 'all' ? undefined : promptTypeParam
+  const session = await auth().catch(() => null)
+  const userId = session?.user?.id
+
   let data: Awaited<ReturnType<typeof getCareLevelData>> = null
   let sessions: SessionOption[] = []
   let promptSets: Awaited<ReturnType<typeof getPromptSetList>> = []
   try {
     ;[data, sessions, promptSets] = await Promise.all([
-      getCareLevelData(name, sessionId, promptType, projectId, market, category, communityName),
+      getCareLevelData(name, sessionId, promptType, projectId, market, category, communityName, userId),
       getSessionList(projectId),
       getPromptSetList(),
     ])
@@ -156,6 +174,9 @@ export default async function CareLevelDetailPage({
       sessions={sessions}
       basePath={`/dashboard/care-level/${encodeURIComponent(name)}`}
       trendData={data.trendData}
+      competitorLeaderboard={data.competitorLeaderboard as CompetitorLeaderboardEntry[] | null}
+      brandComparison={data.brandComparison as BrandComparison | null}
+      brandTrend={data.brandTrend as BrandTrendSeries[]}
       promptTypeFilter={promptTypeParam}
       projectId={projectId}
       promptSets={promptSets}
