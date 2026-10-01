@@ -13,7 +13,9 @@ import { CareLevelPicker } from '@/components/care-level-picker'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { SentimentBreakdown } from '@/components/sentiment-breakdown'
 import { PLATFORM_LABELS, PLATFORM_COLORS, formatPercent, slugify, cn } from '@/lib/utils'
-import { ChevronLeft, Target, Quote, FileText, ExternalLink, Trophy } from 'lucide-react'
+import { ChevronLeft, Target, Quote, FileText, ExternalLink } from 'lucide-react'
+import { CompetitorComparison } from '@/components/competitor-comparison'
+import { PRESET_LABELS, type SegmentLabels } from '@/lib/segment-labels'
 import type { CompetitorLeaderboardEntry, BrandComparison, BrandTrendSeries } from '@/lib/competitor-stats'
 
 interface Citation {
@@ -100,6 +102,7 @@ interface SegmentDetailProps {
   // Carried into each level-of-care breakdown card's link so drilling into a level of care
   // from within Cincinnati lands on Cincinnati + that level, not the unfiltered level-of-care view.
   segmentDrillParam?: { key: string; value: string }
+  labels?: SegmentLabels  // the project's names for its dimensions
 }
 
 export function SegmentDetail({
@@ -126,6 +129,7 @@ export function SegmentDetail({
   careLevels,
   careLevelBreakdown,
   segmentDrillParam,
+  labels = PRESET_LABELS['senior-living'],
 }: SegmentDetailProps) {
   const platforms = platformStats.map((p) => p.platform)
 
@@ -181,6 +185,7 @@ export function SegmentDetail({
           <PromptTypeToggle value={promptTypeFilter} basePath={basePath ?? '/dashboard'} sessionId={sessionId} projectId={projectId} />
           {careLevels && (
             <CareLevelPicker
+              label={labels.levelOfCare}
               levels={careLevels}
               currentLevel={careLevel}
               basePath={basePath ?? '/dashboard'}
@@ -221,7 +226,7 @@ export function SegmentDetail({
       {/* Communities in this market */}
       {communityStats && communityStats.length > 0 && (
         <div>
-          <h2 className="text-sm font-semibold text-[#084c61] mb-4">Communities in {title}</h2>
+          <h2 className="text-sm font-semibold text-[#084c61] mb-4">{labels.entity} breakdown in {title}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {communityStats.map((c) => (
               <Scorecard
@@ -282,7 +287,7 @@ export function SegmentDetail({
       {/* Breakdown by Level of Care */}
       {careLevelBreakdown && careLevelBreakdown.length > 1 && (
         <div>
-          <h2 className="text-sm font-semibold text-[#084c61] mb-4">Breakdown by Level of Care</h2>
+          <h2 className="text-sm font-semibold text-[#084c61] mb-4">Breakdown by {labels.levelOfCare}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {careLevelBreakdown.map((c) => {
               const params = new URLSearchParams()
@@ -385,10 +390,10 @@ export function SegmentDetail({
                 <th className="text-left px-6 py-3 font-medium text-[#5a7a85] text-xs min-w-[220px]">Prompt</th>
                 <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Type</th>
                 {showCommunity && (
-                  <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs min-w-[160px]">Community</th>
+                  <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs min-w-[160px]">{labels.entity}</th>
                 )}
                 <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Category</th>
-                <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Level of Care</th>
+                <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">{labels.levelOfCare}</th>
                 <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Sentiment</th>
                 {platforms.map((platform) => (
                   <th
@@ -455,137 +460,6 @@ export function SegmentDetail({
           </table>
         </div>
       </div>
-    </div>
-  )
-}
-
-function rateColor(rate: number) {
-  if (rate >= 0.6) return { text: 'text-emerald-600', bar: 'bg-emerald-500' }
-  if (rate >= 0.3) return { text: 'text-amber-600', bar: 'bg-amber-400' }
-  return { text: 'text-rose-600', bar: 'bg-rose-400' }
-}
-
-function CompetitorComparison({ entries }: { entries: CompetitorLeaderboardEntry[] }) {
-  const platforms = Object.keys(entries[0]?.platformMentionRates ?? {})
-  const brandColors: Record<string, string> = {}
-  const palette = ['#d97706', '#7c6fe0', '#e0708a', '#0ea5e9', '#65a30d', '#c026d3']
-  let paletteIdx = 0
-  for (const e of entries) {
-    brandColors[e.id] = e.isYou ? '#177e89' : palette[paletteIdx++ % palette.length]
-  }
-
-  return (
-    <div className="bg-white rounded-xl border border-[#dde6ea] overflow-hidden">
-      <div className="px-6 py-4 border-b border-[#eef3f5] flex items-center gap-2">
-        <Trophy className="h-4 w-4 text-[#177e89]" />
-        <h2 className="text-sm font-semibold text-[#084c61]">Competitor Comparison</h2>
-      </div>
-
-      {/* Leaderboard */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[#eef3f5] bg-[#f5f8fa]">
-              <th className="text-left px-6 py-3 font-medium text-[#5a7a85] text-xs">Brand</th>
-              <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Mention Rate</th>
-              <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Citation Rate</th>
-              <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Sentiment</th>
-              <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Share of Voice</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#f0f4f7]">
-            {entries.map((e) => {
-              const mc = rateColor(e.mentionRate)
-              const cc = rateColor(e.citationRate)
-              return (
-                <tr key={e.id} className={cn(e.isYou && 'bg-[#e6f2f5]')}>
-                  <td className={cn('px-6 py-3.5', e.isYou && 'border-l-2 border-[#177e89]')}>
-                    <div className="flex items-center gap-2.5">
-                      <div className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: brandColors[e.id] }} />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className={cn('text-xs font-semibold truncate', e.isYou ? 'text-[#084c61]' : 'text-[#1a1a1a]')}>{e.brandName}</p>
-                          {e.isYou && (
-                            <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold bg-[#084c61] text-white">You</span>
-                          )}
-                        </div>
-                        <p className="text-[10px] text-[#b8cdd3]">{e.domain}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5 w-32">
-                    <p className={cn('text-xs font-bold mb-1', mc.text)}>{formatPercent(e.mentionRate)}</p>
-                    <div className="h-1.5 bg-[#eef3f5] rounded-full overflow-hidden">
-                      <div className={cn('h-full rounded-full', mc.bar)} style={{ width: `${Math.round(e.mentionRate * 100)}%` }} />
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5 w-32">
-                    <p className={cn('text-xs font-bold mb-1', cc.text)}>{formatPercent(e.citationRate)}</p>
-                    <div className="h-1.5 bg-[#eef3f5] rounded-full overflow-hidden">
-                      <div className={cn('h-full rounded-full', cc.bar)} style={{ width: `${Math.round(e.citationRate * 100)}%` }} />
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5 w-36">
-                    {e.mentioned > 0 ? (
-                      <div className="flex items-center gap-1.5">
-                        <div className="flex-1 flex h-1.5 rounded-full overflow-hidden">
-                          <div className="bg-emerald-500" style={{ width: `${Math.round(e.sentiment.positive * 100)}%` }} />
-                          <div className="bg-slate-300" style={{ width: `${Math.round(e.sentiment.neutral * 100)}%` }} />
-                          <div className="bg-rose-400" style={{ width: `${Math.round(e.sentiment.negative * 100)}%` }} />
-                        </div>
-                        <span className="text-[10px] text-[#8aadb8] whitespace-nowrap">{formatPercent(e.sentiment.positive)} pos</span>
-                      </div>
-                    ) : (
-                      <span className="text-[10px] text-[#b8cdd3]">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <p className="text-sm font-extrabold text-[#084c61]">{formatPercent(e.shareOfVoice)}</p>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Platform breakdown */}
-      {platforms.length > 0 && (
-        <div className="px-6 py-5 border-t border-[#eef3f5]">
-          <p className="text-xs font-semibold text-[#084c61] mb-1">Mention Rate by AI Platform</p>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-4">
-            {entries.map((e) => (
-              <div key={e.id} className="flex items-center gap-1.5">
-                <div className="h-2 w-2 rounded-full" style={{ backgroundColor: brandColors[e.id] }} />
-                <span className={cn('text-[11px]', e.isYou ? 'text-[#084c61] font-semibold' : 'text-[#5a7a85]')}>{e.brandName}</span>
-              </div>
-            ))}
-          </div>
-          <div className="space-y-3">
-            {platforms.map((platform) => (
-              <div key={platform} className="grid grid-cols-[130px_1fr] gap-4 items-center">
-                <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full" style={{ backgroundColor: PLATFORM_COLORS[platform] }} />
-                  <span className="text-xs font-medium text-[#1a1a1a]">{PLATFORM_LABELS[platform]}</span>
-                </div>
-                <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${entries.length}, 1fr)` }}>
-                  {entries.map((e) => (
-                    <div key={e.id}>
-                      <div className="h-1 bg-[#eef3f5] rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full"
-                          style={{ width: `${Math.round(e.platformMentionRates[platform] * 100)}%`, backgroundColor: brandColors[e.id] }}
-                        />
-                      </div>
-                      <p className="text-[10px] text-[#8aadb8] mt-0.5">{formatPercent(e.platformMentionRates[platform])}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   )
 }

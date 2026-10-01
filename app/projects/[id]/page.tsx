@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getViewer } from '@/lib/access'
 import { canEditProject, readableProjectWhere } from '@/lib/projects'
 import { ProjectForm } from '@/components/project-form'
+import { resolveSegmentLabels } from '@/lib/segment-labels'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,11 +21,13 @@ export default async function ProjectSettingsPage({ params }: { params: Promise<
       additionalDomains: true,
       sitemapUrl: true,
       sitemapPathPrefix: true,
+      segmentLabels: true,
       userId: true,
     },
   })
   if (!project) notFound()
-  const { userId, ...initial } = project
+  const { userId, segmentLabels, ...settings } = project
+  const initial = { ...settings, segmentLabels: resolveSegmentLabels(segmentLabels) }
 
   return (
     <div className="max-w-3xl mx-auto">

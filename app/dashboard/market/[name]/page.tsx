@@ -7,7 +7,7 @@ import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
 import { getSessionList } from '@/lib/run-sessions'
 import { getPromptSetList } from '@/lib/prompt-sets'
-import { promptScope } from '@/lib/projects'
+import { promptScope, getSegmentLabels } from '@/lib/projects'
 
 export const dynamic = 'force-dynamic'
 
@@ -143,6 +143,7 @@ export default async function MarketDetailPage({
     <SegmentDetail
       title={data.name}
       backHref={`/dashboard${dashboardQuery.toString() ? `?${dashboardQuery.toString()}` : ''}`}
+      labels={await getSegmentLabels()}
       backLabel="Dashboard"
       overview={data.overview}
       platformStats={data.platformStats}

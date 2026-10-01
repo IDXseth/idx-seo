@@ -49,6 +49,20 @@ export function normalizePromptType(raw: string): string {
   return lower === 'brand' ? 'brand' : 'nonbrand'
 }
 
+// Spreadsheet column names accepted for each field, generic names first.
+// Shared by the upload preview and the upload API so both read a file the same way.
+export const COLUMN_ALIASES = {
+  promptType: ['prompt_type', 'type', 'promptType'],
+  category: ['category'],
+  communityName: ['entity', 'entity_name', 'location', 'community_name', 'community', 'communityName'],
+  city: ['city'],
+  market: ['market'],
+  levelOfCare: ['service', 'level_of_care', 'care_level', 'levelOfCare'],
+  promptText: ['prompt', 'prompt_text', 'promptText'],
+} as const
+
+// The care-level clean-up (aliases like "AL" → Assisted Living) is senior-living
+// vocabulary; other industries keep their service values as written.
 export function normalizeRow(raw: {
   promptType: string
   category: string
@@ -57,7 +71,7 @@ export function normalizeRow(raw: {
   market: string
   levelOfCare: string
   promptText: string
-}): {
+}, options: { seniorLiving?: boolean } = {}): {
   promptType: string
   category: string
   communityName: string
@@ -67,7 +81,10 @@ export function normalizeRow(raw: {
   promptText: string
   isUnknownCare: boolean
 } {
-  const care = normalizeLevelOfCare(raw.levelOfCare)
+  const seniorLiving = options.seniorLiving ?? true
+  const care = seniorLiving
+    ? normalizeLevelOfCare(raw.levelOfCare)
+    : { value: raw.levelOfCare?.trim() ?? '', isKnown: true }
   return {
     promptType: normalizePromptType(raw.promptType || 'nonbrand'),
     category: toTitleCase(raw.category),

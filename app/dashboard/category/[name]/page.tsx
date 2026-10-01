@@ -9,7 +9,7 @@ import { getSegmentTrendData } from '@/lib/segment-trend'
 import { getCompetitorLeaderboard, getBrandSeries, getBrandTrendSeries, CompetitorLeaderboardEntry, BrandComparison, BrandTrendSeries } from '@/lib/competitor-stats'
 import { getSessionList } from '@/lib/run-sessions'
 import { getPromptSetList } from '@/lib/prompt-sets'
-import { promptScope, getActiveProject } from '@/lib/projects'
+import { promptScope, getActiveProject, getSegmentLabels } from '@/lib/projects'
 import { competitorScope } from '@/lib/competitors'
 
 export const dynamic = 'force-dynamic'
@@ -144,6 +144,7 @@ export default async function CategoryDetailPage({
     <SegmentDetail
       title={data.name}
       backHref={`/dashboard${dashboardQuery.toString() ? `?${dashboardQuery.toString()}` : ''}`}
+      labels={await getSegmentLabels()}
       backLabel="Dashboard"
       overview={data.overview}
       platformStats={data.platformStats}

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { PLATFORMS, PLATFORM_LABELS, formatPercent } from '@/lib/utils'
 import { BarChart3, Target, Quote, Layers } from 'lucide-react'
 import Link from 'next/link'
+import { getLabelsForProject } from '@/lib/projects'
 import { APP_INITIALS, APP_OWNER_NAME, APP_PRODUCT_NAME, APP_TITLE } from '@/lib/app-config'
 
 export const dynamic = 'force-dynamic'
@@ -37,6 +38,7 @@ export default async function SharedBatchPage({ params }: Props) {
   }
 
   // Compute stats
+  const labels = await getLabelsForProject(batch.projectId)
   const allResults = batch.prompts.flatMap((p) => p.results)
   const totalResults = allResults.length
   const mentionedCount = allResults.filter((r) => r.isMentioned).length
@@ -185,7 +187,7 @@ export default async function SharedBatchPage({ params }: Props) {
             {/* Community breakdown */}
             {communityMap.size > 0 && (
               <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
-                <h2 className="text-sm font-semibold text-[#084c61] mb-4">Performance by Community</h2>
+                <h2 className="text-sm font-semibold text-[#084c61] mb-4">Performance by {labels.entity}</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {Array.from(communityMap.entries()).map(([name, stats]) => (
                     <div key={name} className="p-4 rounded-xl border border-[#dde6ea]">

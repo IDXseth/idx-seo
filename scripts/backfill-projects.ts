@@ -26,7 +26,7 @@ const SENIOR_LIFESTYLE = {
   brandNames: ['Senior Lifestyle', 'Senior Lifestyle Corporation'],
   sitemapUrl: 'https://www.seniorlifestyle.com/community-sitemap.xml',
   sitemapPathPrefix: '/resources/senior-living/',
-  segmentLabels: { market: 'Market', city: 'City', levelOfCare: 'Level of Care' },
+  segmentLabels: { preset: 'senior-living', entity: 'Community', levelOfCare: 'Level of Care', market: 'Market', category: 'Category' },
 }
 
 async function resolveOwner() {

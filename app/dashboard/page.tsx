@@ -17,9 +17,15 @@ import { getSitemapAnalysis, SitemapAnalysis } from '@/lib/sitemap'
 import { getGscMetrics, getPageCrawlResults } from '@/lib/gsc'
 import { getSessionList } from '@/lib/run-sessions'
 import { getPromptSetList } from '@/lib/prompt-sets'
-import { getBrandSeries } from '@/lib/competitor-stats'
+import { getBrandSeries, getBrandTrendSeries, getCompetitorLeaderboard } from '@/lib/competitor-stats'
+import { getCitationSources, getVisibilityGaps } from '@/lib/competitive'
+import { competitorScope } from '@/lib/competitors'
+import { CompetitorComparison } from '@/components/competitor-comparison'
+import { ShareOfVoiceByPlatform, CitationSourcesCard, VisibilityGapsTable } from '@/components/competitive-insights'
+import { BrandTrendChart } from '@/components/brand-trend-chart'
 import { getViewer, canViewSiteHealth } from '@/lib/access'
-import { promptScope, getActiveProject, canCreateProjects } from '@/lib/projects'
+import { promptScope, getActiveProject, canCreateProjects, getSegmentLabels } from '@/lib/projects'
+import { PRESET_LABELS } from '@/lib/segment-labels'
 import { slugify, YOUR_BRAND_DOMAIN } from '@/lib/utils'
 import { APP_DASHBOARD_TAGLINE } from '@/lib/app-config'
 import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink, Download, Users } from 'lucide-react'
@@ -497,6 +503,42 @@ async function getBrandComparisonData(sessionId?: string, promptType?: string, p
   })
 }
 
+// ─── Competitive analysis ───────────────────────────────────────────────────
+// Your brand vs the project's tracked competitors over the same canonical
+// prompts as the rest of the dashboard. Null when no competitors are tracked.
+
+async function getCompetitiveData(sessionId?: string, promptType?: string, projectId?: string, careLevel?: string) {
+  const viewer = await getViewer()
+  if (!viewer) return null
+  const project = await getActiveProject()
+  const competitorWhere = competitorScope(project?.id, viewer.id)
+
+  const scope = await promptScope()
+  const canonicalWhere = {
+    ...scope,
+    ...(promptType ? { promptType } : {}),
+    ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
+  }
+  const canonicalIds = (
+    await prisma.prompt.findMany({ distinct: ['promptText'], orderBy: { createdAt: 'asc' }, where: canonicalWhere, select: { id: true } })
+  ).map((r) => r.id)
+  const resultWhere = { promptId: { in: canonicalIds }, ...(sessionId ? { runSessionId: sessionId } : {}) }
+
+  const [leaderboard, competitors] = await Promise.all([
+    getCompetitorLeaderboard(canonicalIds, competitorWhere, sessionId),
+    prisma.competitor.findMany({ where: { ...competitorWhere, active: true }, select: { id: true, brandName: true, domain: true } }),
+  ])
+  if (!leaderboard || competitors.length === 0) return null
+
+  const [citationSources, gaps, brandTrend] = await Promise.all([
+    getCitationSources(resultWhere, competitors),
+    getVisibilityGaps(resultWhere),
+    sessionId ? Promise.resolve([]) : getBrandTrendSeries({ id: { in: canonicalIds } }).catch(() => []),
+  ])
+  return { leaderboard, citationSources, gaps, brandTrend }
+}
+
 // ─── Sentiment breakdown ────────────────────────────────────────────────────
 
 async function getSentimentRows(sessionId?: string, promptType?: string, projectId?: string, careLevel?: string): Promise<{ sentiment: string; isMentioned: boolean }[]> {
@@ -574,6 +616,7 @@ export default async function DashboardPage({
   let sitemapAnalysis: SitemapAnalysis | null = null
   let sentimentRows: { sentiment: string; isMentioned: boolean }[] = []
   let careLevelOptions: string[] = []
+  let competitive: Awaited<ReturnType<typeof getCompetitiveData>> = null
   try {
     ;[data, trendData, sessions, promptSets, competitorOptions, brandComparison, sentimentRows, careLevelOptions] = await Promise.all([
       competitorId
@@ -591,6 +634,7 @@ export default async function DashboardPage({
         : getSentimentRows(sessionId, promptType, projectId, careLevel),
       getCareLevelOptions(promptType, projectId).catch(() => []),
     ])
+    competitive = await getCompetitiveData(sessionId, promptType, projectId, careLevel).catch(() => null)
   } catch {
     // DB not configured — show empty state
   }
@@ -601,6 +645,9 @@ export default async function DashboardPage({
   const viewer = await getViewer().catch(() => null)
   const activeProject = await getActiveProject().catch(() => null)
   const showSiteHealth = activeProject?.primaryDomain === YOUR_BRAND_DOMAIN
+  const labels = await getSegmentLabels().catch(() => PRESET_LABELS['senior-living'])
+  // The deployment's tagline is written for its main industry; other projects get neutral wording.
+  const tagline = labels.preset === 'senior-living' ? APP_DASHBOARD_TAGLINE : 'AI mention and citation monitoring for this brand'
   if (data && !competitorId && viewer && showSiteHealth && (await canViewSiteHealth(viewer).catch(() => false))) {
     try {
       const [gscMetrics, crawlResults] = await Promise.all([
@@ -618,7 +665,7 @@ export default async function DashboardPage({
       <div>
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>{activeProject?.name ?? 'Dashboard'}</h1>
-          <p className="text-[#5a7a85] mt-1 text-sm">{APP_DASHBOARD_TAGLINE}</p>
+          <p className="text-[#5a7a85] mt-1 text-sm">{tagline}</p>
         </div>
         {activeProject ? <EmptyDashboard /> : <NoProject canCreate={!!viewer && canCreateProjects(viewer)} />}
       </div>
@@ -650,7 +697,7 @@ export default async function DashboardPage({
               ? `Showing data from ${new Date(currentSession.startedAt).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`
               : currentPromptSet
               ? `Prompt set: ${currentPromptSet.name}`
-              : APP_DASHBOARD_TAGLINE}
+              : tagline}
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
@@ -715,12 +762,14 @@ export default async function DashboardPage({
         <Tabs defaultValue="overview">
           <TabsList className="mb-6">
             <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="competitors">Competitors</TabsTrigger>
             <TabsTrigger value="trends">Trends</TabsTrigger>
-            <TabsTrigger value="community">By Community</TabsTrigger>
-            <TabsTrigger value="category">By Category</TabsTrigger>
-            <TabsTrigger value="careLevel">By Level of Care</TabsTrigger>
-            <TabsTrigger value="market">By Market</TabsTrigger>
-            <TabsTrigger value="optimization" disabled={!!competitorId}>Optimization Priority</TabsTrigger>
+            {/* Segment tabs only appear when the project's prompts are tagged with that dimension. */}
+            {data.communityStats.length > 0 && <TabsTrigger value="community">By {labels.entity}</TabsTrigger>}
+            {data.categoryStats.length > 0 && <TabsTrigger value="category">By {labels.category}</TabsTrigger>}
+            {data.careLevelStats.length > 0 && <TabsTrigger value="careLevel">By {labels.levelOfCare}</TabsTrigger>}
+            {data.marketStats.length > 0 && <TabsTrigger value="market">By {labels.market}</TabsTrigger>}
+            {showSiteHealth && <TabsTrigger value="optimization" disabled={!!competitorId}>Optimization Priority</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="overview">
@@ -783,6 +832,30 @@ export default async function DashboardPage({
             </div>
           </TabsContent>
 
+          <TabsContent value="competitors">
+            {competitive ? (
+              <div className="space-y-6">
+                <CompetitorComparison entries={competitive.leaderboard} />
+                <ShareOfVoiceByPlatform entries={competitive.leaderboard} />
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+                  <CitationSourcesCard sources={competitive.citationSources} entries={competitive.leaderboard} />
+                  <VisibilityGapsTable gaps={competitive.gaps} entityLabel={labels.entity} />
+                </div>
+                {competitive.brandTrend.length > 1 && competitive.brandTrend[0].points.length > 1 && (
+                  <BrandTrendChart brands={competitive.brandTrend} />
+                )}
+              </div>
+            ) : (
+              <SectionCard title="Competitors">
+                <p className="text-sm text-[#5a7a85]">
+                  No competitors are tracked for this project yet.{' '}
+                  <Link href="/competitors" className="text-[#177e89] font-medium hover:underline">Add competitors</Link>{' '}
+                  to compare share of voice, citations and gaps — they&apos;re scored from the next run onward.
+                </p>
+              </SectionCard>
+            )}
+          </TabsContent>
+
           <TabsContent value="trends">
             <div className="space-y-6">
               <TrendCharts data={trendData} />
@@ -794,6 +867,7 @@ export default async function DashboardPage({
             <div className="space-y-4">
               <div className="flex justify-end">
                 <CareLevelPicker
+                  label={labels.levelOfCare}
                   levels={careLevelOptions}
                   currentLevel={careLevel}
                   basePath="/dashboard"
@@ -815,7 +889,7 @@ export default async function DashboardPage({
                     href={`/dashboard/community/${encodeURIComponent(slugify(c.communityName))}${drillQuery}`}
                   />
                 )}
-                empty="No community data available"
+                empty={`No ${labels.entity.toLowerCase()} data available`}
               />
             </div>
           </TabsContent>
@@ -824,6 +898,7 @@ export default async function DashboardPage({
             <div className="space-y-4">
               <div className="flex justify-end">
                 <CareLevelPicker
+                  label={labels.levelOfCare}
                   levels={careLevelOptions}
                   currentLevel={careLevel}
                   basePath="/dashboard"
@@ -844,7 +919,7 @@ export default async function DashboardPage({
                     href={`/dashboard/category/${encodeURIComponent(c.category)}${drillQuery}`}
                   />
                 )}
-                empty="No category data available"
+                empty={`No ${labels.category.toLowerCase()} data available`}
               />
             </div>
           </TabsContent>
@@ -862,7 +937,7 @@ export default async function DashboardPage({
                   href={`/dashboard/care-level/${encodeURIComponent(c.levelOfCare)}${drillQuery}`}
                 />
               )}
-              empty="No care level data available"
+              empty={`No ${labels.levelOfCare.toLowerCase()} data available`}
             />
           </TabsContent>
 
@@ -870,6 +945,7 @@ export default async function DashboardPage({
             <div className="space-y-4">
               <div className="flex justify-end">
                 <CareLevelPicker
+                  label={labels.levelOfCare}
                   levels={careLevelOptions}
                   currentLevel={careLevel}
                   basePath="/dashboard"
@@ -890,7 +966,7 @@ export default async function DashboardPage({
                     href={`/dashboard/market/${encodeURIComponent(m.market)}${drillQuery}`}
                   />
                 )}
-                empty="No market data available"
+                empty={`No ${labels.market.toLowerCase()} data available`}
               />
             </div>
           </TabsContent>
@@ -1017,7 +1093,7 @@ function EmptyDashboard() {
           <StepCard
             step="1"
             title="Upload your prompts"
-            description="Upload an .xlsx or .csv file with prompt text, community names, care levels, markets, and categories."
+            description="Upload an .xlsx or .csv file of the prompts to track, tagged with the location, service, market and category each one is about."
             href="/upload"
             cta="Upload spreadsheet"
           />

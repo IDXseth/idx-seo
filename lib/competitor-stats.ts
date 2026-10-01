@@ -120,6 +120,9 @@ export interface CompetitorLeaderboardEntry {
   sentiment: { positive: number; neutral: number; negative: number }
   shareOfVoice: number
   platformMentionRates: Record<string, number>
+  platformMentions: Record<string, number>  // responses mentioning this brand, per platform
+  avgPosition: number | null  // mean 1-based mention order when mentioned; null before positions were recorded
+  colorIndex: number  // fixed slot in BRAND_PALETTE: you first, then competitors by name — same order as getBrandSeries
 }
 
 interface RateRow {
@@ -127,9 +130,10 @@ interface RateRow {
   isMentioned: boolean
   isCited: boolean
   sentiment: string
+  position: number | null
 }
 
-function buildEntry(id: string, brandName: string, domain: string, isYou: boolean, rows: RateRow[]): CompetitorLeaderboardEntry {
+function buildEntry(id: string, brandName: string, domain: string, isYou: boolean, colorIndex: number, rows: RateRow[]): CompetitorLeaderboardEntry {
   const total = rows.length
   const mentionedRows = rows.filter((r) => r.isMentioned)
   const mentioned = mentionedRows.length
@@ -139,12 +143,13 @@ function buildEntry(id: string, brandName: string, domain: string, isYou: boolea
   const neutral = mentioned - positive - negative
 
   const platformMentionRates: Record<string, number> = {}
+  const platformMentions: Record<string, number> = {}
   for (const platform of PLATFORMS) {
     const platformRows = rows.filter((r) => r.platform === platform)
-    platformMentionRates[platform] = platformRows.length > 0
-      ? platformRows.filter((r) => r.isMentioned).length / platformRows.length
-      : 0
+    platformMentions[platform] = platformRows.filter((r) => r.isMentioned).length
+    platformMentionRates[platform] = platformRows.length > 0 ? platformMentions[platform] / platformRows.length : 0
   }
+  const positions = mentionedRows.map((r) => r.position).filter((p): p is number => p !== null)
 
   return {
     id,
@@ -163,6 +168,9 @@ function buildEntry(id: string, brandName: string, domain: string, isYou: boolea
     },
     shareOfVoice: 0, // filled in once every entry's mention count is known
     platformMentionRates,
+    platformMentions,
+    avgPosition: positions.length > 0 ? positions.reduce((a, b) => a + b, 0) / positions.length : null,
+    colorIndex,
   }
 }
 
@@ -188,22 +196,24 @@ export async function getCompetitorLeaderboard(
     const [brandResults, mentions] = await Promise.all([
       prisma.result.findMany({
         where: resultWhere,
-        select: { platform: true, isMentioned: true, isCited: true, sentiment: true },
+        select: { platform: true, isMentioned: true, isCited: true, sentiment: true, brandPosition: true },
       }),
       prisma.competitorMention.findMany({
         where: { competitorId: { in: competitors.map((c) => c.id) }, result: resultWhere },
-        select: { competitorId: true, isMentioned: true, isCited: true, sentiment: true, result: { select: { platform: true } } },
+        select: { competitorId: true, isMentioned: true, isCited: true, sentiment: true, position: true, result: { select: { platform: true } } },
       }),
     ])
 
     const brand = await getActiveBrand()
-    const brandEntry = buildEntry('you', brand.label, brand.domains[0] ?? '', true, brandResults)
+    const brandEntry = buildEntry('you', brand.label, brand.domains[0] ?? '', true, 0,
+      brandResults.map((r) => ({ ...r, position: r.brandPosition })))
 
-    const competitorEntries = competitors.map((c) => {
+    const byName = [...competitors].sort((a, b) => a.brandName.localeCompare(b.brandName))
+    const competitorEntries = byName.map((c, i) => {
       const rows: RateRow[] = mentions
         .filter((m) => m.competitorId === c.id)
-        .map((m) => ({ platform: m.result.platform, isMentioned: m.isMentioned, isCited: m.isCited, sentiment: m.sentiment }))
-      return buildEntry(c.id, c.brandName, c.domain, false, rows)
+        .map((m) => ({ platform: m.result.platform, isMentioned: m.isMentioned, isCited: m.isCited, sentiment: m.sentiment, position: m.position }))
+      return buildEntry(c.id, c.brandName, c.domain, false, i + 1, rows)
     })
 
     const all = [brandEntry, ...competitorEntries]

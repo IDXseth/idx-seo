@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -11,6 +11,8 @@ import {
   Calendar, Plus, Clock, RotateCcw, ChevronDown, ChevronUp, History, Download,
 } from 'lucide-react'
 import Link from 'next/link'
+import { useActiveProject } from '@/components/active-project-banner'
+import { PRESET_LABELS, type SegmentLabels } from '@/lib/segment-labels'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -67,6 +69,22 @@ interface RunStatus {
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const LEVEL_OF_CARE_OPTIONS = ['', 'Assisted Living', 'Independent Living', 'Memory Care', 'Skilled Nursing', 'Short Term Care']
+
+// The active project's dimension names, for the prompt forms nested below RunPage.
+const LabelsContext = createContext<SegmentLabels>(PRESET_LABELS['senior-living'])
+
+// Senior-living projects pick from the known levels of care; others type their own service.
+function ServiceField({ value, onChange, className }: { value: string; onChange: (v: string) => void; className: string }) {
+  const labels = useContext(LabelsContext)
+  if (labels.preset === 'senior-living') {
+    return (
+      <select value={value} onChange={(e) => onChange(e.target.value)} className={className} aria-label={labels.levelOfCare}>
+        {LEVEL_OF_CARE_OPTIONS.map((o) => <option key={o} value={o}>{o || '— None —'}</option>)}
+      </select>
+    )
+  }
+  return <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={labels.levelOfCare} className={className} aria-label={labels.levelOfCare} />
+}
 
 function formatScheduleLabel(s: Schedule): string {
   const hour = `${s.hour === 0 ? 12 : s.hour > 12 ? s.hour - 12 : s.hour}${s.hour >= 12 ? 'pm' : 'am'}`
@@ -285,6 +303,7 @@ function AddPromptModal({
   onClose: () => void
   onAdded: () => void
 }) {
+  const labels = useContext(LabelsContext)
   const [promptText, setPromptText] = useState('')
   const [communityName, setCommunityName] = useState('')
   const [promptType, setPromptType] = useState('brand')
@@ -349,12 +368,12 @@ function AddPromptModal({
           </div>
 
           <div>
-            <label className="text-xs font-medium text-[#5a7a85] block mb-1">Community name <span className="text-[#8aadb8] font-normal">(optional)</span></label>
+            <label className="text-xs font-medium text-[#5a7a85] block mb-1">{labels.entity} <span className="text-[#8aadb8] font-normal">(optional)</span></label>
             <input
               type="text"
               value={communityName}
               onChange={(e) => setCommunityName(e.target.value)}
-              placeholder="Leave blank for a general, non-community-specific prompt"
+              placeholder={`Leave blank for a general prompt not about one ${labels.entity.toLowerCase()}`}
               className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
             />
           </div>
@@ -372,14 +391,12 @@ function AddPromptModal({
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-[#5a7a85] block mb-1">Level of care</label>
-              <select
+              <label className="text-xs font-medium text-[#5a7a85] block mb-1">{labels.levelOfCare}</label>
+              <ServiceField
                 value={levelOfCare}
-                onChange={(e) => setLevelOfCare(e.target.value)}
+                onChange={setLevelOfCare}
                 className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
-              >
-                {LEVEL_OF_CARE_OPTIONS.map((o) => <option key={o} value={o}>{o || '— None —'}</option>)}
-              </select>
+              />
             </div>
           </div>
 
@@ -390,7 +407,7 @@ function AddPromptModal({
                 className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
             </div>
             <div>
-              <label className="text-xs font-medium text-[#5a7a85] block mb-1">Market</label>
+              <label className="text-xs font-medium text-[#5a7a85] block mb-1">{labels.market}</label>
               <input type="text" value={market} onChange={(e) => setMarket(e.target.value)} placeholder="Midwest"
                 className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
             </div>
@@ -595,6 +612,7 @@ function PromptEditForm({
   onCancel: () => void
   saving: boolean
 }) {
+  const labels = useContext(LabelsContext)
   const [promptText, setPromptText] = useState(prompt.promptText)
   const [communityName, setCommunityName] = useState(prompt.communityName)
   const [promptType, setPromptType] = useState(prompt.promptType)
@@ -614,7 +632,7 @@ function PromptEditForm({
       <input
         value={communityName}
         onChange={(e) => setCommunityName(e.target.value)}
-        placeholder="Community name (optional)"
+        placeholder={`${labels.entity} (optional)`}
         className="w-full px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]"
       />
       <div className="grid grid-cols-2 gap-2">
@@ -622,13 +640,11 @@ function PromptEditForm({
           <option value="brand">Brand</option>
           <option value="nonbrand">Non-brand</option>
         </select>
-        <select value={levelOfCare} onChange={(e) => setLevelOfCare(e.target.value)} className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]">
-          {LEVEL_OF_CARE_OPTIONS.map((o) => <option key={o} value={o}>{o || '— None —'}</option>)}
-        </select>
+        <ServiceField value={levelOfCare} onChange={setLevelOfCare} className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
       </div>
       <div className="grid grid-cols-3 gap-2">
         <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
-        <input value={market} onChange={(e) => setMarket(e.target.value)} placeholder="Market" className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+        <input value={market} onChange={(e) => setMarket(e.target.value)} placeholder={labels.market} className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
         <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Category" className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
       </div>
       <div className="flex gap-2 pt-1">
@@ -646,6 +662,7 @@ function PromptEditForm({
 }
 
 function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; canWrite: boolean; onCountChange: (delta: number) => void }) {
+  const labels = useContext(LabelsContext)
   const [prompts, setPrompts] = useState<PromptDetail[]>([])
   const [loading, setLoading] = useState(true)
   const [confirmId, setConfirmId] = useState<string | null>(null)
@@ -724,7 +741,7 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
           className="text-[10px] px-1.5 py-1 border border-[#dde6ea] rounded-md text-[#5a7a85] focus:outline-none focus:ring-2 focus:ring-[#084c61]"
         >
           <option value="none">Default</option>
-          <option value="community">Community</option>
+          <option value="community">{labels.entity}</option>
           <option value="category">Category</option>
         </select>
       </div>
@@ -1045,6 +1062,7 @@ function BatchCard({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function RunPage() {
+  const activeProject = useActiveProject()
   const [batches, setBatches] = useState<BatchInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState<string | null>(null)
@@ -1152,6 +1170,7 @@ export default function RunPage() {
   const totalUnrun = batches.filter((b) => b.canWrite).reduce((sum, b) => sum + b.unrunCount, 0)
 
   return (
+    <LabelsContext.Provider value={activeProject?.labels ?? PRESET_LABELS['senior-living']}>
     <div className="max-w-4xl mx-auto">
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -1283,5 +1302,6 @@ export default function RunPage() {
       {scheduleTarget && <ScheduleModal batch={scheduleTarget} onClose={() => setScheduleTarget(null)} />}
       {addPromptTarget && <AddPromptModal batch={addPromptTarget} onClose={() => setAddPromptTarget(null)} onAdded={fetchBatches} />}
     </div>
+    </LabelsContext.Provider>
   )
 }

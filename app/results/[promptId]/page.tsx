@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import { getViewer, readablePromptWhere } from '@/lib/access'
+import { getLabelsForProject } from '@/lib/projects'
 import { Badge } from '@/components/ui/badge'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PLATFORM_LABELS, PLATFORM_COLORS } from '@/lib/utils'
@@ -108,6 +109,7 @@ export default async function ResultsDetailPage({
   // The same brand and competitors the prompt's runs were scored against, so
   // highlights and badges here always agree with the stored results.
   const ctx = await getDetectionContext(prompt)
+  const labels = await getLabelsForProject(prompt.projectId ?? prompt.batch.projectId)
   const brand = ctx.brand
   const competitors = ctx.competitors
 
@@ -161,10 +163,10 @@ export default async function ResultsDetailPage({
           </Badge>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-[#eef3f5]">
-          <MetaItem icon={<Building2 className="h-4 w-4 text-[#8aadb8]" />} label="Community" value={prompt.communityName} />
+          <MetaItem icon={<Building2 className="h-4 w-4 text-[#8aadb8]" />} label={labels.entity} value={prompt.communityName} />
           <MetaItem icon={<MapPin className="h-4 w-4 text-[#8aadb8]" />} label="City / Market" value={prompt.city + (prompt.market ? ` · ${prompt.market}` : '')} />
           <MetaItem icon={<Tag className="h-4 w-4 text-[#8aadb8]" />} label="Category" value={prompt.category} />
-          <MetaItem icon={<Heart className="h-4 w-4 text-[#8aadb8]" />} label="Level of Care" value={prompt.levelOfCare} />
+          <MetaItem icon={<Heart className="h-4 w-4 text-[#8aadb8]" />} label={labels.levelOfCare} value={prompt.levelOfCare} />
         </div>
       </div>
 

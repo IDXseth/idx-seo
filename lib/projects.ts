@@ -5,6 +5,7 @@ import { prisma } from './prisma'
 import { getViewer, isSuperUser, readableBatchWhere, writableBatchWhere, type Viewer } from './access'
 import { getBrandTarget } from './detection-context'
 import type { BrandTarget } from './detection'
+import { PRESET_LABELS, resolveSegmentLabels, type SegmentLabels } from './segment-labels'
 
 // A Project is one tracked brand/domain. The app works inside one "active"
 // project at a time — chosen in the nav and remembered in this cookie — and
@@ -16,6 +17,7 @@ export interface ProjectSummary {
   name: string
   primaryDomain: string
   canEdit: boolean
+  labels: SegmentLabels
 }
 
 // Projects a viewer can see: ones they own, ones containing a prompt set they
@@ -54,9 +56,13 @@ export const getViewerProjects = cache(async (): Promise<ProjectSummary[]> => {
   const projects = await prisma.project.findMany({
     where: readableProjectWhere(viewer),
     orderBy: { name: 'asc' },
-    select: { id: true, name: true, primaryDomain: true, userId: true },
+    select: { id: true, name: true, primaryDomain: true, userId: true, segmentLabels: true },
   })
-  return projects.map(({ userId, ...p }) => ({ ...p, canEdit: canEditProject(viewer, { userId }) }))
+  return projects.map(({ userId, segmentLabels, ...p }) => ({
+    ...p,
+    canEdit: canEditProject(viewer, { userId }),
+    labels: resolveSegmentLabels(segmentLabels),
+  }))
 })
 
 // The cookie's project if the viewer can still see it, else their first one.
@@ -103,3 +109,17 @@ export async function setActiveProjectCookie(projectId: string): Promise<void> {
 export const getActiveBrand = cache(async (): Promise<BrandTarget> => {
   return getBrandTarget((await getActiveProject())?.id ?? null)
 })
+
+// What the active project calls its prompt dimensions (Community vs Location…).
+// Outside any project it's the original senior-living setup.
+export const getSegmentLabels = cache(async (): Promise<SegmentLabels> => {
+  return (await getActiveProject())?.labels ?? PRESET_LABELS['senior-living']
+})
+
+// Labels for a specific project — for pages showing one prompt set, which may
+// not be in the active project (results, data and public share pages).
+export async function getLabelsForProject(projectId: string | null): Promise<SegmentLabels> {
+  if (!projectId) return PRESET_LABELS['senior-living']
+  const project = await prisma.project.findUnique({ where: { id: projectId }, select: { segmentLabels: true } })
+  return resolveSegmentLabels(project?.segmentLabels)
+}

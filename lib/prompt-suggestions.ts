@@ -3,21 +3,12 @@ import type { Prisma } from '@prisma/client'
 import { normalizeLevelOfCare } from './normalize'
 import { getTopGscQueries } from './gsc'
 import { getActiveCompetitors } from './competitors'
+import { categoriesFor, SENIOR_LIVING_CATEGORIES, GENERAL_CATEGORIES } from './suggestion-categories'
+import type { IndustryPreset } from './segment-labels'
 
-export const SUGGESTION_CATEGORIES = [
-  'General Discovery',
-  'Care Specific',
-  'Cost & Financial Planning',
-  'Location Based',
-  'Best Of',
-  'Competitor / Options Comparison',
-  'Caregiver & Family Support',
-  'Daily Life & Amenities',
-  'Policy & Logistics',
-  'Reviews & Reputation',
-] as const
-
-export type SuggestionCategory = typeof SUGGESTION_CATEGORIES[number]
+export { SENIOR_LIVING_CATEGORIES as SUGGESTION_CATEGORIES } from './suggestion-categories'
+type SeniorLivingCategory = typeof SENIOR_LIVING_CATEGORIES[number]
+type GeneralCategory = typeof GENERAL_CATEGORIES[number]
 
 const MAX_COUNT = 60
 
@@ -29,6 +20,11 @@ const MAX_COUNT = 60
 const CLAUDE_TIMEOUT_MS = 45_000
 
 export interface SuggestionInput {
+  // Senior living keeps its tuned wording; general projects describe the brand
+  // generically and let the model read the brand's own site to learn what it offers.
+  preset: IndustryPreset
+  brand: { label: string; domain: string | null }
+  serviceLabel: string  // what the project calls levelOfCare (e.g. "Service")
   competitorScope: Prisma.CompetitorWhereInput  // whose competitors to research
   // The GSC query cache is one brand's private search data — only ground on it for viewers allowed to see it.
   useGscQueries: boolean
@@ -56,8 +52,9 @@ export interface SuggestionResult {
 
 export async function generatePromptSuggestions(input: SuggestionInput): Promise<SuggestionResult> {
   const count = Math.max(1, Math.min(input.count || 20, MAX_COUNT))
-  const categories = input.categories.filter((c) => (SUGGESTION_CATEGORIES as readonly string[]).includes(c))
-  const activeCategories = categories.length > 0 ? categories : [...SUGGESTION_CATEGORIES]
+  const allowed = categoriesFor(input.preset)
+  const categories = input.categories.filter((c) => allowed.includes(c))
+  const activeCategories = categories.length > 0 ? categories : [...allowed]
 
   const [topQueries, competitors] = await Promise.all([
     input.useGscQueries ? getTopGscQueries(40).catch(() => []) : Promise.resolve([] as string[]),
@@ -107,46 +104,32 @@ async function generateWithClaude(
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
   const locationLine = [input.city, input.market].filter(Boolean).join(' / ')
-  const careLine = input.levelOfCare || 'any level of care'
 
   const gscBlock = topQueries.length > 0
     ? `Real search queries currently driving traffic to our own site (Google Search Console, last 28 days, ranked by impressions):\n${topQueries.slice(0, 30).map((q) => `- ${q}`).join('\n')}`
     : 'No Search Console query data is available yet — skip this grounding source.'
 
-  const competitorBlock = competitors.length > 0
-    ? `Research these competitor senior living operator websites with web search (they are the ONLY sites the search tool is allowed to reach) to see what topics, FAQs, and questions they address in their own content:\n${competitors.map((c) => `- ${c.brandName} (${c.domain})`).join('\n')}`
-    : 'No competitor sites have been added — generate from general knowledge of senior-living search behavior instead.'
+  const prompt = input.preset === 'senior-living'
+    ? seniorLivingPrompt(input, categories, count, locationLine, gscBlock, competitors)
+    : generalPrompt(input, categories, count, locationLine, gscBlock, competitors)
 
-  const prompt = `You are building a research set of prompts for an AI-visibility tracking tool used by a senior living operator. The tool sends each prompt to ChatGPT, Claude, Gemini, Perplexity, and Google AI Overviews, and checks whether specific senior living communities get mentioned or cited in the answer.
-
-Generate exactly ${count} "nonbrand" prompts: natural-language questions a prospective resident or their adult-child caregiver would realistically type into an AI assistant while researching senior living options.
-
-Hard rules:
-- NEVER mention any specific company, brand, or community name (not ours, not a competitor's) inside a promptText — these are nonbrand prompts, used to see who an AI mentions unprompted.
-- Each promptText must be a complete, natural first-person question, not a keyword fragment.
-- Distribute the ${count} prompts as evenly as you reasonably can across these categories: ${categories.join(', ')}.
-- Where relevant, set levelOfCare to one of: Assisted Living, Independent Living, Memory Care, Skilled Nursing, Short Term Care — or leave it "" if the prompt is general.
-- The community we're tracking is in ${locationLine || 'an unspecified market'}, primarily offering ${careLine}. Where it reads naturally, localize a portion of the prompts to that city/market (e.g. "near {city}" or "in {market}") — don't force it into every prompt.
-
-${gscBlock}
-
-${competitorBlock}
-
-Ground your prompts in the ACTUAL topics/questions you find on those competitor sites and in the real search queries above, rather than inventing generic ones — but always phrase the final prompt in your own words. Never copy a sentence verbatim and never include any brand name.
-
-Respond with ONLY a JSON array (no markdown code fences, no commentary before or after), where each item has this exact shape:
-{"category": "<one of the categories above>", "levelOfCare": "<a level of care above, or empty string>", "promptText": "<the question>"}`
+  // The search tool may only reach competitor sites — plus, for general
+  // projects, the brand's own site, which is how the model learns the industry.
+  const searchDomains = [
+    ...(input.preset === 'general' && input.brand.domain ? [input.brand.domain] : []),
+    ...competitors.map((c) => c.domain),
+  ]
 
   const response = await client.messages.create(
     {
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
-      tools: competitors.length > 0
+      tools: searchDomains.length > 0
         ? [{
             type: 'web_search_20250305',
             name: 'web_search',
-            allowed_domains: competitors.map((c) => c.domain),
-            max_uses: Math.min(6, competitors.length * 2 + 2),
+            allowed_domains: searchDomains,
+            max_uses: Math.min(6, searchDomains.length * 2 + 2),
           }]
         : undefined,
       messages: [{ role: 'user', content: prompt }],
@@ -159,10 +142,10 @@ Respond with ONLY a JSON array (no markdown code fences, no commentary before or
     .map((block) => block.text)
     .join('\n')
 
-  return parseSuggestions(text, categories, count)
+  return parseSuggestions(text, categories, count, input.preset)
 }
 
-function parseSuggestions(text: string, categories: string[], count: number): PromptSuggestion[] {
+function parseSuggestions(text: string, categories: string[], count: number, preset: IndustryPreset): PromptSuggestion[] {
   const jsonMatch = text.match(/\[[\s\S]*\]/)
   if (!jsonMatch) return []
 
@@ -190,7 +173,7 @@ function parseSuggestions(text: string, categories: string[], count: number): Pr
     const category = categorySet.has(rawCategory) ? rawCategory : (categories[0] ?? 'General Discovery')
 
     const rawCare = typeof obj.levelOfCare === 'string' ? obj.levelOfCare.trim() : ''
-    const levelOfCare = rawCare ? normalizeLevelOfCare(rawCare).value : ''
+    const levelOfCare = rawCare ? (preset === 'senior-living' ? normalizeLevelOfCare(rawCare).value : rawCare) : ''
 
     results.push({ category, levelOfCare, promptText })
     if (results.length >= count) break
@@ -201,7 +184,7 @@ function parseSuggestions(text: string, categories: string[], count: number): Pr
 
 // ─── Deterministic fallback (no API key, or the AI call failed) ────────────
 
-const TEMPLATE_BANK: Record<SuggestionCategory, string[]> = {
+const SENIOR_LIVING_TEMPLATES: Record<SeniorLivingCategory, string[]> = {
   'General Discovery': [
     'What is senior living and how is it different from a nursing home?',
     "What's the difference between independent living, assisted living, and memory care?",
@@ -256,20 +239,130 @@ const TEMPLATE_BANK: Record<SuggestionCategory, string[]> = {
   ],
 }
 
+// {service} must read as a noun phrase ("this service" when none is given).
+const GENERAL_TEMPLATES: Record<GeneralCategory, string[]> = {
+  'General Discovery': [
+    'How do I choose the right provider for {service}?',
+    'What should I know before paying for {service}?',
+    'What questions should I ask before choosing a company for {service}?',
+  ],
+  'Service Specific': [
+    'What is usually included with {service}?',
+    'How do I know if I need {service}?',
+    'What separates a great provider of {service} from an average one?',
+  ],
+  'Cost & Pricing': [
+    'How much does {service} typically cost in {market}?',
+    'Is paying more for {service} worth it?',
+    'How can I save money on {service}?',
+  ],
+  'Location Based': [
+    'Who are the best providers of {service} near {city}?',
+    'Where can I find affordable {service} in {market}?',
+  ],
+  'Best Of': [
+    'What are the top-rated companies for {service} in {market}?',
+    'Which companies offering {service} have the best reviews?',
+  ],
+  'Competitor / Options Comparison': [
+    'How do I compare companies that offer {service}?',
+    'What are the alternatives to {service}?',
+  ],
+  'Reviews & Reputation': [
+    'How can I tell if online reviews for {service} are trustworthy?',
+    'What do customers complain about most with {service}?',
+  ],
+  'How-To & Advice': [
+    'How should I prepare before getting {service}?',
+    'What mistakes do people make when choosing {service}?',
+  ],
+}
+
 function templateFallback(input: SuggestionInput, categories: string[], count: number): PromptSuggestion[] {
+  const seniorLiving = input.preset === 'senior-living'
+  const bank: Record<string, string[]> = seniorLiving ? SENIOR_LIVING_TEMPLATES : GENERAL_TEMPLATES
   const careLevel = (input.levelOfCare || 'assisted living').toLowerCase()
+  const service = (input.levelOfCare || 'this service').toLowerCase()
   const fill = (s: string) =>
     s
       .replace(/\{careLevel\}/g, careLevel)
-      .replace(/\{city\}/g, input.city || 'your area')
-      .replace(/\{market\}/g, input.market || input.city || 'your area')
+      .replace(/\{service\}/g, service)
+      .replace(/\{city\}/g, input.city || 'me')
+      .replace(/\{market\}/g, input.market || input.city || 'my area')
 
   const pool: PromptSuggestion[] = []
   for (const category of categories) {
-    const templates = TEMPLATE_BANK[category as SuggestionCategory] ?? []
-    for (const template of templates) {
+    for (const template of bank[category] ?? []) {
       pool.push({ category, levelOfCare: input.levelOfCare || '', promptText: fill(template) })
     }
   }
   return pool.slice(0, count)
+}
+
+// ─── Prompts sent to the model ─────────────────────────────────────────────
+
+const RESPONSE_RULES = (categories: string[], count: number) => `Hard rules:
+- NEVER mention any specific company, brand, or location name (not ours, not a competitor's) inside a promptText — these are nonbrand prompts, used to see who an AI mentions unprompted.
+- Each promptText must be a complete, natural first-person question, not a keyword fragment.
+- Distribute the ${count} prompts as evenly as you reasonably can across these categories: ${categories.join(', ')}.`
+
+function seniorLivingPrompt(
+  input: SuggestionInput, categories: string[], count: number, locationLine: string, gscBlock: string,
+  competitors: Array<{ brandName: string; domain: string }>
+): string {
+  const careLine = input.levelOfCare || 'any level of care'
+  const competitorBlock = competitors.length > 0
+    ? `Research these competitor senior living operator websites with web search (they are the ONLY sites the search tool is allowed to reach) to see what topics, FAQs, and questions they address in their own content:\n${competitors.map((c) => `- ${c.brandName} (${c.domain})`).join('\n')}`
+    : 'No competitor sites have been added — generate from general knowledge of senior-living search behavior instead.'
+
+  return `You are building a research set of prompts for an AI-visibility tracking tool used by a senior living operator. The tool sends each prompt to ChatGPT, Claude, Gemini, Perplexity, and Google AI Overviews, and checks whether specific senior living communities get mentioned or cited in the answer.
+
+Generate exactly ${count} "nonbrand" prompts: natural-language questions a prospective resident or their adult-child caregiver would realistically type into an AI assistant while researching senior living options.
+
+${RESPONSE_RULES(categories, count)}
+- Where relevant, set levelOfCare to one of: Assisted Living, Independent Living, Memory Care, Skilled Nursing, Short Term Care — or leave it "" if the prompt is general.
+- The community we're tracking is in ${locationLine || 'an unspecified market'}, primarily offering ${careLine}. Where it reads naturally, localize a portion of the prompts to that city/market (e.g. "near {city}" or "in {market}") — don't force it into every prompt.
+
+${gscBlock}
+
+${competitorBlock}
+
+Ground your prompts in the ACTUAL topics/questions you find on those competitor sites and in the real search queries above, rather than inventing generic ones — but always phrase the final prompt in your own words. Never copy a sentence verbatim and never include any brand name.
+
+Respond with ONLY a JSON array (no markdown code fences, no commentary before or after), where each item has this exact shape:
+{"category": "<one of the categories above>", "levelOfCare": "<a level of care above, or empty string>", "promptText": "<the question>"}`
+}
+
+function generalPrompt(
+  input: SuggestionInput, categories: string[], count: number, locationLine: string, gscBlock: string,
+  competitors: Array<{ brandName: string; domain: string }>
+): string {
+  const brandLine = input.brand.domain ? `"${input.brand.label}" (${input.brand.domain})` : `"${input.brand.label}"`
+  const serviceName = input.serviceLabel.toLowerCase()
+  const researchBlock = [
+    input.brand.domain
+      ? `First, use web search on ${input.brand.domain} to learn what ${input.brand.label} offers and who its customers are — the prompts must be ones those customers would ask.`
+      : `Infer from the brand name what kind of business ${input.brand.label} is.`,
+    competitors.length > 0
+      ? `Then research these competitor websites to see what topics, FAQs, and questions they address:\n${competitors.map((c) => `- ${c.brandName} (${c.domain})`).join('\n')}`
+      : 'No competitor sites have been added.',
+    'Web search can only reach the sites listed here.',
+  ].join('\n')
+
+  return `You are building a research set of prompts for an AI-visibility tracking tool. The tool sends each prompt to ChatGPT, Claude, Gemini, Perplexity, and Google AI Overviews, and checks whether the brand ${brandLine} or its competitors get mentioned or cited in the answer.
+
+${researchBlock}
+
+Generate exactly ${count} "nonbrand" prompts: natural-language questions a prospective customer would realistically type into an AI assistant while researching the kind of products or services ${input.brand.label} offers.
+
+${RESPONSE_RULES(categories, count)}
+- Where a prompt is about one specific ${serviceName}, set levelOfCare to a short name for it${input.levelOfCare ? ` (focus on: ${input.levelOfCare})` : ''}; otherwise leave it "".
+${locationLine ? `- The business serves ${locationLine}. Where it reads naturally, localize a portion of the prompts to that city/market — don't force it into every prompt.` : '- No location was given — keep prompts location-neutral unless a location is essential.'}
+
+${gscBlock}
+
+Ground your prompts in what you actually find on those sites and in any real search queries above, rather than inventing generic ones — but always phrase the final prompt in your own words, never copy a sentence verbatim, and never include any brand name.
+
+Respond with ONLY a JSON array (no markdown code fences, no commentary before or after), where each item has this exact shape:
+{"category": "<one of the categories above>", "levelOfCare": "<a short ${serviceName} name, or empty string>", "promptText": "<the question>"}`
 }

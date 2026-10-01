@@ -61,7 +61,7 @@ export async function POST(req: Request) {
         market: String(market),
         levelOfCare: p.levelOfCare ?? '',
         promptText: p.promptText,
-      })
+      }, { seniorLiving: project.labels.preset === 'senior-living' })
     )
 
   const uniqueRows = rows

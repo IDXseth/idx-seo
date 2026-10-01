@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getViewer, canReadBatch } from '@/lib/access'
+import { getLabelsForProject } from '@/lib/projects'
 import { prisma } from '@/lib/prisma'
 import { PLATFORMS, PLATFORM_LABELS } from '@/lib/utils'
 import { ChevronLeft } from 'lucide-react'
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic'
 async function getData(batchId: string) {
   const batch = await prisma.batch.findUnique({
     where: { id: batchId },
-    select: { id: true, name: true },
+    select: { id: true, name: true, projectId: true },
   })
   if (!batch) return null
 
@@ -33,6 +34,7 @@ export default async function DataPage({ params }: { params: Promise<{ batchId: 
   if (!data) notFound()
 
   const { batch, prompts } = data
+  const labels = await getLabelsForProject(batch.projectId)
 
   return (
     <div className="min-h-screen bg-[#f5f8fa]">
@@ -51,7 +53,7 @@ export default async function DataPage({ params }: { params: Promise<{ batchId: 
           <thead>
             <tr className="bg-[#084c61] text-white">
               <th className="sticky left-0 z-10 bg-[#084c61] text-left px-3 py-2.5 font-semibold min-w-[280px]">Prompt</th>
-              <th className="text-left px-3 py-2.5 font-semibold min-w-[140px]">Community</th>
+              <th className="text-left px-3 py-2.5 font-semibold min-w-[140px]">{labels.entity}</th>
               <th className="text-left px-3 py-2.5 font-semibold min-w-[100px]">Category</th>
               <th className="text-left px-3 py-2.5 font-semibold min-w-[80px]">Type</th>
               {PLATFORMS.map((p) => (

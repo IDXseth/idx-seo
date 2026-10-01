@@ -13,6 +13,7 @@ const SETTINGS_SELECT = {
   brandNames: true,
   sitemapUrl: true,
   sitemapPathPrefix: true,
+  segmentLabels: true,
   userId: true,
 } as const
 

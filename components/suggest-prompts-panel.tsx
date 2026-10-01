@@ -8,19 +8,9 @@ import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Sparkles, Info, Globe2, CheckCircle2, AlertCircle, Loader2, ArrowRight } from 'lucide-react'
 import { KNOWN_LEVELS_OF_CARE } from '@/lib/normalize'
+import { PRESET_LABELS, type SegmentLabels } from '@/lib/segment-labels'
+import { categoriesFor } from '@/lib/suggestion-categories'
 
-const SUGGESTION_CATEGORIES = [
-  'General Discovery',
-  'Care Specific',
-  'Cost & Financial Planning',
-  'Location Based',
-  'Best Of',
-  'Competitor / Options Comparison',
-  'Caregiver & Family Support',
-  'Daily Life & Amenities',
-  'Policy & Logistics',
-  'Reviews & Reputation',
-]
 
 // Shape returned by GET /api/competitors — the same Competitor records used
 // for AI-mention tracking on the /competitors page. Reused here (rather than
@@ -107,7 +97,7 @@ function CompetitorSitesSummary({ competitors }: { competitors: Competitor[] }) 
 
 // ─── Main panel ──────────────────────────────────────────────────────────────
 
-export function SuggestPromptsPanel() {
+export function SuggestPromptsPanel({ labels = PRESET_LABELS['senior-living'] }: { labels?: SegmentLabels }) {
   const router = useRouter()
   const [competitors, setCompetitors] = useState<Competitor[]>([])
   const [loadingCompetitors, setLoadingCompetitors] = useState(true)
@@ -116,7 +106,10 @@ export function SuggestPromptsPanel() {
   const [city, setCity] = useState('')
   const [market, setMarket] = useState('')
   const [levelOfCare, setLevelOfCare] = useState('')
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([...SUGGESTION_CATEGORIES])
+  // Category toggles follow the project's industry preset. The parent keys this
+  // panel by preset, so the selection starts fresh when the preset changes.
+  const categoryOptions = categoriesFor(labels.preset)
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([...categoryOptions])
   const [count, setCount] = useState(20)
 
   const [generating, setGenerating] = useState(false)
@@ -225,17 +218,22 @@ export function SuggestPromptsPanel() {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-medium text-[#5a7a85] block mb-1">Community name <span className="text-[#8aadb8] font-normal">(optional)</span></label>
+            <label className="text-xs font-medium text-[#5a7a85] block mb-1">{labels.entity} <span className="text-[#8aadb8] font-normal">(optional)</span></label>
             <input type="text" value={communityName} onChange={(e) => setCommunityName(e.target.value)} placeholder="Leave blank for general, portfolio-wide prompts"
               className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#5a7a85] block mb-1">Level of care</label>
-            <select value={levelOfCare} onChange={(e) => setLevelOfCare(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]">
-              <option value="">— Any —</option>
-              {KNOWN_LEVELS_OF_CARE.map((o) => <option key={o} value={o}>{o}</option>)}
-            </select>
+            <label className="text-xs font-medium text-[#5a7a85] block mb-1">{labels.levelOfCare}</label>
+            {labels.preset === 'senior-living' ? (
+              <select value={levelOfCare} onChange={(e) => setLevelOfCare(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]">
+                <option value="">— Any —</option>
+                {KNOWN_LEVELS_OF_CARE.map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
+            ) : (
+              <input type="text" value={levelOfCare} onChange={(e) => setLevelOfCare(e.target.value)} placeholder="Any"
+                className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+            )}
           </div>
           <div>
             <label className="text-xs font-medium text-[#5a7a85] block mb-1">City</label>
@@ -243,7 +241,7 @@ export function SuggestPromptsPanel() {
               className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#5a7a85] block mb-1">Market</label>
+            <label className="text-xs font-medium text-[#5a7a85] block mb-1">{labels.market}</label>
             <input type="text" value={market} onChange={(e) => setMarket(e.target.value)} placeholder="Chicago Metro"
               className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
           </div>
@@ -252,7 +250,7 @@ export function SuggestPromptsPanel() {
         <div>
           <label className="text-xs font-medium text-[#5a7a85] block mb-1.5">Categories</label>
           <div className="flex flex-wrap gap-1.5">
-            {SUGGESTION_CATEGORIES.map((cat) => {
+            {categoryOptions.map((cat) => {
               const active = selectedCategories.includes(cat)
               return (
                 <button
@@ -350,7 +348,7 @@ export function SuggestPromptsPanel() {
                 <TableRow>
                   <TableHead className="w-8" />
                   <TableHead>Category</TableHead>
-                  <TableHead>Level of Care</TableHead>
+                  <TableHead>{labels.levelOfCare}</TableHead>
                   <TableHead>Prompt</TableHead>
                 </TableRow>
               </TableHeader>

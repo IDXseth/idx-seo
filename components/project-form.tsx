@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { AlertCircle, CheckCircle2, Info, Plus, Trash2 } from 'lucide-react'
+import { PRESET_LABELS, PRESET_NAMES, type IndustryPreset, type SegmentLabels } from '@/lib/segment-labels'
 
 export interface ProjectFormValues {
   name: string
@@ -11,6 +12,7 @@ export interface ProjectFormValues {
   additionalDomains: string[]
   sitemapUrl: string | null
   sitemapPathPrefix: string | null
+  segmentLabels: SegmentLabels
 }
 
 interface CompetitorDraft {
@@ -54,6 +56,14 @@ export function ProjectForm({
   const [additionalDomains, setAdditionalDomains] = useState(lines(initial?.additionalDomains ?? []))
   const [sitemapUrl, setSitemapUrl] = useState(initial?.sitemapUrl ?? '')
   const [sitemapPathPrefix, setSitemapPathPrefix] = useState(initial?.sitemapPathPrefix ?? '')
+  const [preset, setPreset] = useState<IndustryPreset>(initial?.segmentLabels.preset ?? 'general')
+  // Only labels that differ from the preset's defaults are kept as overrides,
+  // so switching presets updates any label the user hasn't customized.
+  const customLabel = (key: 'entity' | 'levelOfCare' | 'market') =>
+    initial && initial.segmentLabels[key] !== PRESET_LABELS[initial.segmentLabels.preset][key] ? initial.segmentLabels[key] : ''
+  const [entityLabel, setEntityLabel] = useState(customLabel('entity'))
+  const [serviceLabel, setServiceLabel] = useState(customLabel('levelOfCare'))
+  const [marketLabel, setMarketLabel] = useState(customLabel('market'))
   const [competitors, setCompetitors] = useState<CompetitorDraft[]>([{ brandName: '', domain: '', aliases: '' }])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -75,6 +85,7 @@ export function ProjectForm({
       additionalDomains: splitLines(additionalDomains),
       sitemapUrl,
       sitemapPathPrefix,
+      segmentLabels: { preset, entity: entityLabel, levelOfCare: serviceLabel, market: marketLabel },
       ...(isNew ? { competitors: competitors.filter((c) => c.brandName.trim() && c.domain.trim()) } : {}),
     }
     try {
@@ -132,6 +143,30 @@ export function ProjectForm({
         <Field label="Location page path prefix" htmlFor="sitemapPathPrefix" hint="Only sitemap URLs under this path are treated as location pages.">
           <input id="sitemapPathPrefix" className={inputClass} value={sitemapPathPrefix} onChange={(e) => setSitemapPathPrefix(e.target.value)} placeholder="/communities/" disabled={disabled} />
         </Field>
+      </section>
+
+      <section className="bg-white rounded-xl border border-[#dde6ea] p-6 space-y-5">
+        <h2 className="text-base font-semibold text-[#084c61]">Industry &amp; labels</h2>
+        <Field
+          label="Industry"
+          htmlFor="preset"
+          hint="Senior living adds care-level clean-up on upload (e.g. “AL” → Assisted Living) and senior-living prompt suggestions."
+        >
+          <select id="preset" className={inputClass} value={preset} onChange={(e) => setPreset(e.target.value as IndustryPreset)} disabled={disabled}>
+            {(Object.keys(PRESET_NAMES) as IndustryPreset[]).map((p) => <option key={p} value={p}>{PRESET_NAMES[p]}</option>)}
+          </select>
+        </Field>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Field label="Location label" htmlFor="entityLabel" hint="What each prompt's place or product is called.">
+            <input id="entityLabel" className={inputClass} value={entityLabel} onChange={(e) => setEntityLabel(e.target.value)} placeholder={PRESET_LABELS[preset].entity} disabled={disabled} />
+          </Field>
+          <Field label="Service label" htmlFor="serviceLabel" hint="The offering a prompt is about.">
+            <input id="serviceLabel" className={inputClass} value={serviceLabel} onChange={(e) => setServiceLabel(e.target.value)} placeholder={PRESET_LABELS[preset].levelOfCare} disabled={disabled} />
+          </Field>
+          <Field label="Market label" htmlFor="marketLabel" hint="A group of locations.">
+            <input id="marketLabel" className={inputClass} value={marketLabel} onChange={(e) => setMarketLabel(e.target.value)} placeholder={PRESET_LABELS[preset].market} disabled={disabled} />
+          </Field>
+        </div>
       </section>
 
       {isNew && (

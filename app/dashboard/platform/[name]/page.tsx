@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
-import { promptScope } from '@/lib/projects'
+import { promptScope, getSegmentLabels } from '@/lib/projects'
 import { PLATFORM_LABELS, PLATFORM_COLORS } from '@/lib/utils'
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { SentimentBreakdown } from '@/components/sentiment-breakdown'
@@ -26,6 +26,7 @@ export default async function PlatformDrillDownPage({
   }
 
   const platformLabel = PLATFORM_LABELS[name]
+  const labels = await getSegmentLabels()
   const platformColor = PLATFORM_COLORS[name] || '#084c61'
   const dashboardQuery = new URLSearchParams()
   if (sessionId) dashboardQuery.set('session', sessionId)
@@ -186,9 +187,9 @@ export default async function PlatformDrillDownPage({
               <thead>
                 <tr className="border-b border-[#eef3f5] bg-[#f5f8fa]">
                   <th className="text-left px-6 py-3 font-medium text-[#5a7a85] text-xs min-w-[200px]">Prompt</th>
-                  <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Community</th>
+                  <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">{labels.entity}</th>
                   <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Category</th>
-                  <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Level of Care</th>
+                  <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">{labels.levelOfCare}</th>
                   <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Mentioned</th>
                   <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Cited</th>
                   <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Sentiment</th>

@@ -1,4 +1,5 @@
 import { cleanTerms, normalizeDomain } from './detection'
+import { resolveSegmentLabels } from './segment-labels'
 
 // Parses the project form (create and edit). List fields accept an array or a
 // comma/newline-separated string.
@@ -10,6 +11,7 @@ export interface ProjectSettingsInput {
   additionalDomains: string[]
   sitemapUrl: string | null
   sitemapPathPrefix: string | null
+  segmentLabels: Record<string, string>  // a resolved SegmentLabels, as stored JSON
 }
 
 export interface CompetitorInputRow {
@@ -43,6 +45,8 @@ export function parseProjectSettings(body: Record<string, unknown>): { data?: Pr
       additionalDomains: cleanTerms(list(body.additionalDomains).map(normalizeDomain)).filter((d) => d !== primaryDomain),
       sitemapUrl: optional(body.sitemapUrl),
       sitemapPathPrefix: optional(body.sitemapPathPrefix),
+      // Blank labels fall back to the preset's defaults.
+      segmentLabels: { ...resolveSegmentLabels(body.segmentLabels) },
     },
   }
 }

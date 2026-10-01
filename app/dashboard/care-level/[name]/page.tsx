@@ -8,7 +8,7 @@ import { PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { getSegmentTrendData } from '@/lib/segment-trend'
 import { getSessionList } from '@/lib/run-sessions'
 import { getPromptSetList } from '@/lib/prompt-sets'
-import { promptScope, getActiveProject } from '@/lib/projects'
+import { promptScope, getActiveProject, getSegmentLabels } from '@/lib/projects'
 import { competitorScope } from '@/lib/competitors'
 import { getCompetitorLeaderboard, getBrandSeries, getBrandTrendSeries, CompetitorLeaderboardEntry, BrandComparison, BrandTrendSeries } from '@/lib/competitor-stats'
 
@@ -164,6 +164,7 @@ export default async function CareLevelDetailPage({
     <SegmentDetail
       title={title}
       backHref={backHref}
+      labels={await getSegmentLabels()}
       backLabel={backLabel}
       overview={data.overview}
       platformStats={data.platformStats}
