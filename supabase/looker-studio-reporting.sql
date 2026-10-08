@@ -133,25 +133,9 @@ SELECT
 FROM "Citation" c
 JOIN reporting.ai_results ar ON ar.result_id = c."resultId";
 
--- ---------------------------------------------------------------------------
--- reporting.gsc_pages
--- Current Google Search Console snapshot per page (28-day window, refreshed
--- daily and overwritten — there is no history here). For GSC trends over
--- time, use Looker Studio's native Search Console connector instead.
--- ---------------------------------------------------------------------------
-CREATE OR REPLACE VIEW reporting.gsc_pages AS
-SELECT
-  g."pageUrl"                            AS page_url,
-  g."isIndexed"                          AS is_indexed,
-  g.impressions                          AS impressions,
-  g.clicks                               AS clicks,
-  CASE WHEN g.impressions > 0
-       THEN g.clicks::double precision / g.impressions
-  END                                    AS ctr,
-  g.position                             AS position,
-  g."fetchedAt"                          AS fetched_at,
-  g."updatedAt"                          AS updated_at
-FROM "GscMetric" g;
+-- GSC data is not part of this reporting layer; drop the view if an earlier
+-- version of this script created it.
+DROP VIEW IF EXISTS reporting.gsc_pages;
 
 -- ---------------------------------------------------------------------------
 -- Read-only role for Looker Studio
