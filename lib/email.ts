@@ -1,6 +1,8 @@
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+// Email is optional: without RESEND_API_KEY the Resend constructor throws, which
+// would crash every route that imports this module, so sends are skipped instead.
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 
 const FROM = 'AI Visibility Dashboard <notifications@resend.dev>'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://your-app.vercel.app'
@@ -110,6 +112,7 @@ export async function sendRunCompleteEmail(summary: RunSummary) {
 </html>
 `
 
+  if (!resend) return
   await resend.emails.send({ from: FROM, to: summary.to, subject, html })
 }
 
@@ -196,6 +199,7 @@ export async function sendShareInviteEmail(invite: ShareInvite) {
 </body>
 </html>`
 
+  if (!resend) return
   await resend.emails.send({
     from: FROM,
     to: invite.to,
