@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { queryPlatform } from '@/lib/ai-clients'
 import { PLATFORMS } from '@/lib/utils'
+import { UsageMeter, usageColumns } from '@/lib/usage'
 import { getActiveCompetitors, matchCompetitors, saveCompetitorMentions } from '@/lib/competitors'
 
 // Per-prompt timeout: all platforms run in parallel so ~30s is sufficient.
@@ -31,6 +32,9 @@ export async function POST(req: Request) {
   ])
 
   for (const { platform, result } of platformResults) {
+    // Matched before saving so competitor sentiment calls count toward this result's cost.
+    const competitorUsage = new UsageMeter()
+    const matches = await matchCompetitors(result.responseText, result.citations, competitors, competitorUsage)
     const saved = await prisma.result.create({
       data: {
         promptId,
@@ -38,6 +42,7 @@ export async function POST(req: Request) {
         responseText: result.responseText,
         isMentioned: result.isMentioned,
         isCited: result.isCited,
+        ...usageColumns(result.usage, competitorUsage.totals),
       },
     })
     if (result.citations.length > 0) {
@@ -51,10 +56,7 @@ export async function POST(req: Request) {
         })),
       })
     }
-    if (competitors.length > 0) {
-      const matches = await matchCompetitors(result.responseText, result.citations, competitors)
-      await saveCompetitorMentions(saved.id, matches)
-    }
+    await saveCompetitorMentions(saved.id, matches)
   }
 
   return Response.json({

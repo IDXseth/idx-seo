@@ -18,6 +18,8 @@ export interface PlatformCitation {
   isExplicitCitation: boolean
 }
 
+import { UsageMeter, UsageTotals } from './usage'
+
 export interface PlatformResult {
   responseText: string
   isMentioned: boolean
@@ -25,11 +27,15 @@ export interface PlatformResult {
   sentiment: 'positive' | 'neutral' | 'negative'
   citations: PlatformCitation[]
   error?: string
+  usage?: UsageTotals  // tokens, searches and estimated cost of producing this result
 }
+
+const SENTIMENT_MODEL = 'claude-haiku-4-5-20251001'
 
 export async function analyzeSentiment(
   responseText: string,
-  communityName: string
+  communityName: string,
+  meter?: UsageMeter
 ): Promise<'positive' | 'neutral' | 'negative'> {
   if (!responseText || responseText.startsWith('[Error]') || responseText.startsWith('[Timeout]') || responseText.startsWith('[No AI Overview]')) {
     return 'neutral'
@@ -38,13 +44,14 @@ export async function analyzeSentiment(
     const { default: Anthropic } = await import('@anthropic-ai/sdk')
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
     const response = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: SENTIMENT_MODEL,
       max_tokens: 5,
       messages: [{
         role: 'user',
         content: `How does this AI response portray "${communityName}"? Reply with exactly one word: positive, neutral, or negative.\n\n${responseText.slice(0, 1500)}`,
       }],
     })
+    meter?.addTokens(SENTIMENT_MODEL, response.usage.input_tokens, response.usage.output_tokens)
     const word = response.content[0]?.type === 'text' ? response.content[0].text.toLowerCase() : ''
     if (word.includes('positive')) return 'positive'
     if (word.includes('negative')) return 'negative'
@@ -109,7 +116,8 @@ function checkCited(
 
 async function queryChatGPT(
   promptText: string,
-  communityName: string
+  communityName: string,
+  meter: UsageMeter
 ): Promise<PlatformResult> {
   const { default: OpenAI } = await import('openai')
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -124,6 +132,10 @@ async function queryChatGPT(
     include: ['web_search_call.action.sources'],
     input: promptText || ' ',
   })
+
+  meter.addTokens('gpt-4o', response.usage?.input_tokens, response.usage?.output_tokens)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  meter.addSearches('openai_web_search', (response.output ?? []).filter((item: any) => item.type === 'web_search_call').length)
 
   const text: string = response.output_text ?? ''
 
@@ -162,14 +174,15 @@ async function queryChatGPT(
 
   const isMentioned = checkMention(text, communityName)
   const isCited = checkCited(citations, communityName)
-  const sentiment = await analyzeSentiment(text, communityName)
+  const sentiment = await analyzeSentiment(text, communityName, meter)
 
   return { responseText: text, isMentioned, isCited, sentiment, citations }
 }
 
 async function queryClaude(
   promptText: string,
-  communityName: string
+  communityName: string,
+  meter: UsageMeter
 ): Promise<PlatformResult> {
   const { default: Anthropic } = await import('@anthropic-ai/sdk')
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -181,6 +194,12 @@ async function queryClaude(
     tools: [{ type: 'web_search_20250305' as const, name: 'web_search' }],
     messages: [{ role: 'user', content: promptText }],
   })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const meterClaude = (r: any) => {
+    meter.addTokens('claude-sonnet-4-6', r.usage?.input_tokens, r.usage?.output_tokens)
+    meter.addSearches('claude_web_search', r.usage?.server_tool_use?.web_search_requests ?? 0)
+  }
+  meterClaude(response)
 
   // If Claude returned stop_reason=tool_use, the web_search tool requires us to
   // execute the search and send results back in a follow-up turn.
@@ -191,6 +210,7 @@ async function queryClaude(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let searchResults: any[] = []
     try {
+      meter.addSearches('searchapi')
       const searchRes = await fetch(
         `https://www.searchapi.io/api/v1/search?engine=google&q=${encodeURIComponent(query)}&api_key=${process.env.SEARCHAPI_KEY}`,
         { signal: AbortSignal.timeout(15_000) }
@@ -222,6 +242,7 @@ async function queryClaude(
         },
       ],
     })
+    meterClaude(response)
   }
 
   let text = ''
@@ -266,14 +287,15 @@ async function queryClaude(
 
   const isMentioned = checkMention(text, communityName)
   const isCited = checkCited(citations, communityName)
-  const sentiment = await analyzeSentiment(text, communityName)
+  const sentiment = await analyzeSentiment(text, communityName, meter)
 
   return { responseText: text, isMentioned, isCited, sentiment, citations }
 }
 
 async function queryGemini(
   promptText: string,
-  communityName: string
+  communityName: string,
+  meter: UsageMeter
 ): Promise<PlatformResult> {
   const { GoogleGenerativeAI } = await import('@google/generative-ai')
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
@@ -283,6 +305,16 @@ async function queryGemini(
   })
 
   const result = await model.generateContent(promptText)
+  // Output is everything that isn't input, so 2.5 Flash's thinking tokens
+  // (billed as output, not separately typed in this SDK) are included.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const usageMeta: any = result.response.usageMetadata ?? {}
+  const geminiInput = (usageMeta.promptTokenCount ?? 0) + (usageMeta.toolUsePromptTokenCount ?? 0)
+  meter.addTokens('gemini-2.5-flash', geminiInput, Math.max(0, (usageMeta.totalTokenCount ?? 0) - geminiInput))
+  // Grounding is billed per prompt that actually ran Google Search.
+  if (result.response.candidates?.[0]?.groundingMetadata?.webSearchQueries?.length) {
+    meter.addSearches('gemini_grounding')
+  }
   const text = result.response.text()
 
   // Extract citations from Google Search grounding metadata
@@ -305,7 +337,7 @@ async function queryGemini(
 
   const isMentioned = checkMention(text, communityName)
   const isCited = checkCited(citations, communityName)
-  const sentiment = await analyzeSentiment(text, communityName)
+  const sentiment = await analyzeSentiment(text, communityName, meter)
 
   return { responseText: text, isMentioned, isCited, sentiment, citations }
 }
@@ -363,7 +395,7 @@ export function cleanLegacyAIOResponseText(text: string): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function parseSearchAPIResponse(data: any, communityName: string, engine?: string): Promise<PlatformResult> {
+async function parseSearchAPIResponse(data: any, communityName: string, engine?: string, meter?: UsageMeter): Promise<PlatformResult> {
   let text = ''
   let citations: PlatformCitation[] = []
 
@@ -459,14 +491,15 @@ async function parseSearchAPIResponse(data: any, communityName: string, engine?:
 
   const isMentioned = checkMention(text, communityName)
   const isCited = checkCited(citations, communityName)
-  const sentiment = await analyzeSentiment(text, communityName)
+  const sentiment = await analyzeSentiment(text, communityName, meter)
 
   return { responseText: text, isMentioned, isCited, sentiment, citations }
 }
 
 async function queryPerplexity(
   promptText: string,
-  communityName: string
+  communityName: string,
+  meter: UsageMeter
 ): Promise<PlatformResult> {
   const response = await fetch('https://api.perplexity.ai/chat/completions', {
     method: 'POST',
@@ -487,6 +520,15 @@ async function queryPerplexity(
   }
 
   const data = await response.json()
+  const pplxIn: number = data.usage?.prompt_tokens ?? 0
+  const pplxOut: number = data.usage?.completion_tokens ?? 0
+  // Perplexity reports the call's full cost (tokens + request fee) when it can.
+  if (typeof data.usage?.cost?.total_cost === 'number') {
+    meter.addReported(pplxIn, pplxOut, 1, data.usage.cost.total_cost)
+  } else {
+    meter.addTokens('sonar', pplxIn, pplxOut)
+    meter.addSearches('perplexity_request')
+  }
   const text = data.choices?.[0]?.message?.content ?? ''
 
   // `citations` is the plain URL list corresponding to the model's [N] inline
@@ -515,17 +557,19 @@ async function queryPerplexity(
 
   const isMentioned = checkMention(text, communityName)
   const isCited = checkCited(citations, communityName)
-  const sentiment = await analyzeSentiment(text, communityName)
+  const sentiment = await analyzeSentiment(text, communityName, meter)
 
   return { responseText: text, isMentioned, isCited, sentiment, citations }
 }
 
 async function fetchFallbackCitations(
-  promptText: string
+  promptText: string,
+  meter: UsageMeter
 ): Promise<PlatformCitation[]> {
   const apiKey = process.env.SEARCHAPI_KEY
   if (!apiKey) return []
   try {
+    meter.addSearches('searchapi')
     const url = new URL('https://www.searchapi.io/api/v1/search')
     url.searchParams.set('api_key', apiKey)
     url.searchParams.set('engine', 'google')
@@ -584,6 +628,7 @@ async function querySearchAPI(
 async function queryGoogleAIO(
   promptText: string,
   communityName: string,
+  meter: UsageMeter,
   city?: string
 ): Promise<PlatformResult> {
   const apiKey = process.env.SEARCHAPI_KEY
@@ -599,6 +644,7 @@ async function queryGoogleAIO(
   step1Url.searchParams.set('hl', 'en')
   if (city) step1Url.searchParams.set('location', city)
 
+  meter.addSearches('searchapi')
   const step1Res = await fetch(step1Url.toString(), {
     headers: { Accept: 'application/json' },
     signal: AbortSignal.timeout(30_000),
@@ -622,13 +668,14 @@ async function queryGoogleAIO(
     step2Url.searchParams.set('hl', 'en')
 
     try {
+      meter.addSearches('searchapi')
       const step2Res = await fetch(step2Url.toString(), {
         headers: { Accept: 'application/json' },
         signal: AbortSignal.timeout(30_000),
       })
       if (step2Res.ok) {
         const step2Data = await step2Res.json()
-        const result = await parseSearchAPIResponse(step2Data, communityName, 'google_ai_overview')
+        const result = await parseSearchAPIResponse(step2Data, communityName, 'google_ai_overview', meter)
         if (result.responseText !== '[No AI Overview]') {
           // The page_token-expanded response sometimes comes back with text but
           // an empty reference_links array, even though the compact ai_overview
@@ -647,7 +694,7 @@ async function queryGoogleAIO(
 
   // If engine=google returned ai_overview but no page_token, parse it directly
   if (step1Data.ai_overview) {
-    return await parseSearchAPIResponse(step1Data, communityName, 'google')
+    return await parseSearchAPIResponse(step1Data, communityName, 'google', meter)
   }
 
   return { responseText: '[No AI Overview]', isMentioned: false, isCited: false, sentiment: 'neutral', citations: [] }
@@ -659,27 +706,30 @@ export async function queryPlatform(
   communityName: string,
   city?: string
 ): Promise<PlatformResult> {
+  // Collects usage from every call made for this result, including calls that
+  // finished before an error, so failed queries still show what they cost.
+  const meter = new UsageMeter()
   try {
     let result: PlatformResult
     switch (platform) {
       case 'chatgpt':
-        result = await queryChatGPT(promptText, communityName); break
+        result = await queryChatGPT(promptText, communityName, meter); break
       case 'claude':
-        result = await queryClaude(promptText, communityName); break
+        result = await queryClaude(promptText, communityName, meter); break
       case 'gemini':
-        result = await queryGemini(promptText, communityName); break
+        result = await queryGemini(promptText, communityName, meter); break
       case 'perplexity':
-        result = await queryPerplexity(promptText, communityName); break
+        result = await queryPerplexity(promptText, communityName, meter); break
       case 'google_aio':
-        return await queryGoogleAIO(promptText, communityName, city)
+        return { ...(await queryGoogleAIO(promptText, communityName, meter, city)), usage: meter.totals }
       default:
         throw new Error(`Unknown platform: ${platform}`)
     }
     // For platforms that query AI directly, fall back to organic search citations when none returned
     if (result.citations.length === 0 && !result.error) {
-      result.citations = await fetchFallbackCitations(promptText)
+      result.citations = await fetchFallbackCitations(promptText, meter)
     }
-    return result
+    return { ...result, usage: meter.totals }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return {
@@ -689,6 +739,7 @@ export async function queryPlatform(
       sentiment: 'neutral' as const,
       citations: [],
       error: message,
+      usage: meter.totals,
     }
   }
 }

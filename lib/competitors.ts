@@ -1,5 +1,6 @@
 import { prisma } from './prisma'
 import { analyzeSentiment } from './ai-clients'
+import type { UsageMeter } from './usage'
 
 export interface CompetitorInput {
   id: string
@@ -49,7 +50,8 @@ export async function getActiveCompetitors(userId: string): Promise<CompetitorIn
 export async function matchCompetitors(
   responseText: string,
   citations: Array<{ domain: string; isExplicitCitation: boolean }>,
-  competitors: CompetitorInput[]
+  competitors: CompetitorInput[],
+  meter?: UsageMeter
 ): Promise<CompetitorMatchResult[]> {
   if (competitors.length === 0) return []
   const lower = responseText.toLowerCase()
@@ -71,7 +73,7 @@ export async function matchCompetitors(
       isMentioned,
       isCited,
       // Skip the LLM sentiment call for competitors that weren't mentioned at all.
-      sentiment: isMentioned ? await analyzeSentiment(responseText, competitor.brandName) : ('neutral' as const),
+      sentiment: isMentioned ? await analyzeSentiment(responseText, competitor.brandName, meter) : ('neutral' as const),
     }))
   )
 }

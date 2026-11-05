@@ -11,8 +11,17 @@ import {
   Calendar, Plus, Clock, RotateCcw, ChevronDown, ChevronUp, History, Download,
 } from 'lucide-react'
 import Link from 'next/link'
+import { PLATFORM_LABELS } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+interface CostTotals {
+  costUsd: number
+  inputTokens: number
+  outputTokens: number
+  searchCount: number
+  untrackedResults: number
+}
 
 interface RunSessionInfo {
   id: string
@@ -20,6 +29,7 @@ interface RunSessionInfo {
   triggeredBy: string
   status: string
   resultCount: number
+  cost: (CostTotals & { byPlatform: Array<CostTotals & { platform: string }> }) | null
 }
 
 interface BatchInfo {
@@ -36,7 +46,23 @@ interface BatchInfo {
   unrunCount: number
   lastRunAt?: string | null
   recentSessions?: RunSessionInfo[]
+  cost?: CostTotals
 }
+
+// Costs are list-price estimates from lib/usage.ts, not invoiced amounts.
+function formatUsd(usd: number): string {
+  if (usd > 0 && usd < 0.01) return '<$0.01'
+  return `$${usd.toFixed(2)}`
+}
+
+function formatTokens(tokens: number): string {
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`
+  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}k`
+  return String(tokens)
+}
+
+const hasTrackedCost = (c: CostTotals | null | undefined): c is CostTotals =>
+  !!c && (c.costUsd > 0 || c.inputTokens > 0 || c.searchCount > 0)
 
 interface ShareEntry {
   id: string
@@ -828,6 +854,7 @@ function RunHistoryPanel({
 }) {
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const handleDelete = async (id: string) => {
     setDeleting(id)
@@ -848,8 +875,11 @@ function RunHistoryPanel({
         const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
           ' at ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
         const isConfirming = confirmId === s.id
+        const cost = hasTrackedCost(s.cost) ? s.cost : null
+        const isExpanded = expandedId === s.id && !!cost
         return (
-          <div key={s.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-[#f5f8fa] group">
+          <div key={s.id} className="rounded-lg bg-[#f5f8fa]">
+          <div className="flex items-center justify-between gap-3 px-3 py-2 group">
             <div className="flex items-center gap-2 min-w-0">
               <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${s.status === 'done' ? 'bg-emerald-500' : s.status === 'running' ? 'bg-amber-400' : 'bg-[#b8cdd3]'}`} />
               <span className="text-xs text-[#084c61] truncate">{label}</span>
@@ -857,6 +887,16 @@ function RunHistoryPanel({
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               <span className="text-[10px] text-[#8aadb8]">{s.resultCount} results</span>
+              {cost && (
+                <button
+                  onClick={() => setExpandedId(isExpanded ? null : s.id)}
+                  className="flex items-center gap-0.5 text-[10px] font-semibold text-[#177e89] hover:text-[#084c61] transition-colors"
+                  title="Estimated cost of this run, by platform"
+                >
+                  {formatUsd(cost.costUsd)}<span className="hidden sm:inline">&nbsp;· {formatTokens(cost.inputTokens + cost.outputTokens)} tokens</span>
+                  {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </button>
+              )}
               {isConfirming ? (
                 <div className="flex items-center gap-1">
                   <span className="text-[10px] text-rose-600 font-medium">Delete?</span>
@@ -884,6 +924,36 @@ function RunHistoryPanel({
                 </button>
               )}
             </div>
+          </div>
+          {isExpanded && cost && (
+            <div className="px-3 pb-2">
+              <table className="w-full text-[10px] text-[#5a7a85]">
+                <thead>
+                  <tr className="text-[#8aadb8]">
+                    <th className="text-left font-medium py-0.5">Platform</th>
+                    <th className="text-right font-medium py-0.5">Input</th>
+                    <th className="text-right font-medium py-0.5">Output</th>
+                    <th className="text-right font-medium py-0.5">Searches</th>
+                    <th className="text-right font-medium py-0.5">Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...cost.byPlatform].sort((a, b) => b.costUsd - a.costUsd).map((p) => (
+                    <tr key={p.platform} className="border-t border-[#e6eef1]">
+                      <td className="py-0.5 text-[#084c61]">{PLATFORM_LABELS[p.platform] ?? p.platform}</td>
+                      <td className="py-0.5 text-right tabular-nums">{formatTokens(p.inputTokens)}</td>
+                      <td className="py-0.5 text-right tabular-nums">{formatTokens(p.outputTokens)}</td>
+                      <td className="py-0.5 text-right tabular-nums">{p.searchCount}</td>
+                      <td className="py-0.5 text-right tabular-nums font-semibold text-[#084c61]">{formatUsd(p.costUsd)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {cost.untrackedResults > 0 && (
+                <p className="mt-1 text-[10px] text-[#8aadb8]">{cost.untrackedResults} result{cost.untrackedResults !== 1 ? 's' : ''} without cost data (timed out or saved before cost tracking).</p>
+              )}
+            </div>
+          )}
           </div>
         )
       })}
@@ -969,6 +1039,14 @@ function BatchCard({
               const label = `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
               return <p className="text-xs text-[#8aadb8] mt-1">Last run: {label}</p>
             })()}
+            {hasTrackedCost(batch.cost) && (
+              <p className="text-xs text-[#5a7a85] mt-1" title="Estimated at list prices; excludes runs from before cost tracking">
+                Spend to date: <span className="font-semibold text-[#084c61]">{formatUsd(batch.cost.costUsd)}</span>
+                {' · '}{formatTokens(batch.cost.inputTokens + batch.cost.outputTokens)} tokens
+                {' · '}{batch.cost.searchCount} searches
+                {batch.cost.untrackedResults > 0 && <span className="text-[#8aadb8]"> (earlier runs not tracked)</span>}
+              </p>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
