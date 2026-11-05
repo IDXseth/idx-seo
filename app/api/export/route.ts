@@ -4,6 +4,9 @@ import { PLATFORM_LABELS } from '@/lib/utils'
 import { getViewer, type Viewer } from '@/lib/access'
 import { activeBatchWhere } from '@/lib/projects'
 import * as xlsx from 'xlsx'
+import { getDetectionContext } from '@/lib/detection-context'
+import type { DetectionContext } from '@/lib/detection'
+import { fitToLimit, mentionExcerpt } from '@/lib/excerpts'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,7 +24,13 @@ function sanitizeSheetName(name: string, used: Set<string>): string {
   return candidate
 }
 
+// Vercel functions can return at most 4.5 MB; leave room for headers.
+const MAX_EXPORT_BYTES = 4_000_000
+
 // Exports one run session's results (mentions/citations/sentiment per prompt).
+// Answers are exported in full (up to Excel's cell limit), next to an excerpt of
+// just the sentences naming the brand, its location or a competitor. If full
+// answers would make the file too big to download, it falls back to excerpts.
 async function exportSessionResults(viewer: Viewer, sessionId: string) {
   const runSession = await prisma.runSession.findUnique({
     where: { id: sessionId },
@@ -31,11 +40,21 @@ async function exportSessionResults(viewer: Viewer, sessionId: string) {
 
   const results = await prisma.result.findMany({
     where: { runSessionId: sessionId, prompt: { batch: await activeBatchWhere(viewer) } },
-    include: { prompt: true, citations: true },
+    include: { prompt: { include: { batch: { select: { userId: true, projectId: true } } } }, citations: true },
     orderBy: [{ prompt: { communityName: 'asc' } }, { prompt: { city: 'asc' } }, { platform: 'asc' }],
   })
 
-  const rows = results.map((r) => ({
+  // Brand and competitors are the same for every prompt in a project, so load
+  // them once per project; only the prompt's own location differs.
+  const contexts = new Map<string, Promise<DetectionContext>>()
+  const contextFor = async (prompt: (typeof results)[number]['prompt']): Promise<DetectionContext> => {
+    const key = `${prompt.projectId ?? prompt.batch.projectId}|${prompt.batch.userId}`
+    if (!contexts.has(key)) contexts.set(key, getDetectionContext(prompt))
+    const ctx = await contexts.get(key)!
+    return { ...ctx, entityName: prompt.entityName || prompt.communityName || undefined }
+  }
+
+  const rows = await Promise.all(results.map(async (r) => ({
     Community: r.prompt.communityName,
     City: r.prompt.city,
     Market: r.prompt.market,
@@ -49,30 +68,47 @@ async function exportSessionResults(viewer: Viewer, sessionId: string) {
     Sentiment: r.sentiment,
     'Citation URLs': r.citations.filter((c) => c.isExplicitCitation).map((c) => c.url).join('; '),
     'Also Surfaced in Search': r.citations.filter((c) => !c.isExplicitCitation).map((c) => c.url).join('; '),
-    Response: r.responseText.slice(0, 1000),
-  }))
+    'Brand & Competitor Excerpts': mentionExcerpt(r.responseText, await contextFor(r.prompt)),
+    Response: fitToLimit(r.responseText),
+  })))
 
-  const wb = xlsx.utils.book_new()
-  const ws = xlsx.utils.json_to_sheet(rows)
+  let buf = buildResultsWorkbook(rows)
+  if (buf.length > MAX_EXPORT_BYTES) {
+    buf = buildResultsWorkbook(
+      rows.map((r) => Object.fromEntries(Object.entries(r).filter(([key]) => key !== 'Response'))),
+      'Full answers were left out: with them this file would be too large to download. ' +
+        'The Brand & Competitor Excerpts column has the sentences naming your brand or a competitor; ' +
+        'full answers are on each prompt\'s results page.'
+    )
+  }
+  if (buf.length > MAX_EXPORT_BYTES) {
+    return NextResponse.json({ error: 'This run is too large to export as one file.' }, { status: 413 })
+  }
 
-  // Auto-width columns
-  const colWidths = Object.keys(rows[0] ?? {}).map((key) => ({
-    wch: Math.min(60, Math.max(key.length, ...rows.map((r) => String(r[key as keyof typeof r] ?? '').length))),
-  }))
-  ws['!cols'] = colWidths
-
-  xlsx.utils.book_append_sheet(wb, ws, 'Results')
-
-  const buf: Buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' })
   const date = runSession.startedAt.toISOString().slice(0, 10)
   const filename = `ai-visibility-${date}.xlsx`
 
-  return new NextResponse(buf, {
+  return new NextResponse(new Uint8Array(buf), {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="${filename}"`,
     },
   })
+}
+
+function buildResultsWorkbook(rows: Array<Record<string, string>>, note?: string): Buffer {
+  const wb = xlsx.utils.book_new()
+  const ws = xlsx.utils.json_to_sheet(rows)
+
+  // Auto-width columns
+  ws['!cols'] = Object.keys(rows[0] ?? {}).map((key) => ({
+    wch: Math.min(60, Math.max(key.length, ...rows.map((r) => String(r[key] ?? '').length))),
+  }))
+
+  xlsx.utils.book_append_sheet(wb, ws, 'Results')
+  if (note) xlsx.utils.book_append_sheet(wb, xlsx.utils.aoa_to_sheet([[note]]), 'Note')
+
+  return xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' })
 }
 
 // Exports every prompt set in the active project, one sheet per prompt set.
