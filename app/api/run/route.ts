@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { queryPlatform, PlatformResult } from '@/lib/ai-clients'
 import { PLATFORMS } from '@/lib/utils'
+import { UsageMeter, usageColumns } from '@/lib/usage'
 import { sendRunCompleteEmail } from '@/lib/email'
 import { getActiveCompetitors, matchCompetitors, saveCompetitorMentions, CompetitorInput } from '@/lib/competitors'
 
@@ -97,6 +98,9 @@ export async function POST(req: Request) {
         ])
 
         for (const { platform, result } of platformResults) {
+          // Matched before saving so competitor sentiment calls count toward this result's cost.
+          const competitorUsage = new UsageMeter()
+          const matches = await matchCompetitors(result.responseText, result.citations, competitors, competitorUsage)
           const saved = await prisma.result.create({
             data: {
               promptId: prompt.id,
@@ -104,6 +108,7 @@ export async function POST(req: Request) {
               responseText: result.responseText,
               isMentioned: result.isMentioned,
               isCited: result.isCited,
+              ...usageColumns(result.usage, competitorUsage.totals),
             },
           })
 
@@ -119,10 +124,7 @@ export async function POST(req: Request) {
             })
           }
 
-          if (competitors.length > 0) {
-            const matches = await matchCompetitors(result.responseText, result.citations, competitors)
-            await saveCompetitorMentions(saved.id, matches)
-          }
+          await saveCompetitorMentions(saved.id, matches)
 
           if (result.error) errors++
           if (result.isMentioned) mentionedCount++

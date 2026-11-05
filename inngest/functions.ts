@@ -1,6 +1,7 @@
 import { inngest } from '@/lib/inngest'
 import { prisma } from '@/lib/prisma'
 import { queryPlatform } from '@/lib/ai-clients'
+import { UsageMeter, usageColumns } from '@/lib/usage'
 import { PLATFORMS } from '@/lib/utils'
 import { sendRunCompleteEmail } from '@/lib/email'
 import { refreshGscCache, refreshGscQueryCache, crawlCommunityPages } from '@/lib/gsc'
@@ -150,6 +151,9 @@ export const runSinglePrompt = inngest.createFunction(
       ])
 
       for (const { platform, result } of platformResults) {
+        // Matched before saving so competitor sentiment calls count toward this result's cost.
+        const competitorUsage = new UsageMeter()
+        const matches = await matchCompetitors(result.responseText, result.citations, competitors, competitorUsage)
         const saved = await prisma.result.create({
           data: {
             promptId,
@@ -159,6 +163,7 @@ export const runSinglePrompt = inngest.createFunction(
             isMentioned: result.isMentioned,
             isCited: result.isCited,
             sentiment: result.sentiment,
+            ...usageColumns(result.usage, competitorUsage.totals),
           },
         })
         if (result.citations.length > 0) {
@@ -172,10 +177,7 @@ export const runSinglePrompt = inngest.createFunction(
             })),
           })
         }
-        if (competitors.length > 0) {
-          const matches = await matchCompetitors(result.responseText, result.citations, competitors)
-          await saveCompetitorMentions(saved.id, matches)
-        }
+        await saveCompetitorMentions(saved.id, matches)
       }
 
       await prisma.$executeRaw`UPDATE "Prompt" SET "jobStatus" = 'done' WHERE id = ${promptId}`

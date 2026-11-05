@@ -163,6 +163,12 @@ model Result {
   sentiment    String      @default("neutral")  // "positive" | "neutral" | "negative"
   citations    Citation[]
   competitorMentions CompetitorMention[]
+  // Usage and estimated USD cost of producing this result (lib/usage.ts).
+  // Null on rows saved before cost tracking, or when the platform timed out.
+  inputTokens  Int?
+  outputTokens Int?
+  searchCount  Int?
+  costUsd      Float?
   runAt        DateTime    @default(now())
 }
 
