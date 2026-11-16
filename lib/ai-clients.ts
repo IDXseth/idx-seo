@@ -155,7 +155,7 @@ async function dataforseoPost(
 
     if (!response.ok) {
       const body = await response.text().catch(() => '')
-      throw new Error(`DataForSEO ${response.status}: ${body.slice(0, 200)}`)
+      throw new Error(`DataForSEO ${response.status}: ${describeDataForSEOError(body)}`)
     }
 
     const data = await response.json()
@@ -178,6 +178,19 @@ async function dataforseoPost(
     }
     return t.result?.[0] ?? null
   }
+}
+
+// Turns a rejected request's body into DataForSEO's own explanation, e.g.
+// "task 40200: Payment Required." (the task-level error says why; the top level
+// often just says "Ok."). Falls back to the start of the raw body.
+function describeDataForSEOError(body: string): string {
+  try {
+    const data = JSON.parse(body)
+    const t = data?.tasks?.[0]
+    if (t?.status_code && t.status_code !== 20000) return `task ${t.status_code}: ${t.status_message}`
+    if (data?.status_code) return `${data.status_code}: ${data.status_message}`
+  } catch { /* not JSON */ }
+  return body.slice(0, 200)
 }
 
 function dataforseoAuth(login: string, password: string): string {
