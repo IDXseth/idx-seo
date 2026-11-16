@@ -12,11 +12,14 @@ const DATAFORSEO_BASE = 'https://api.dataforseo.com/v3'
 // Model requested per platform. Base names resolve to the latest version on
 // DataForSEO's side; see /v3/ai_optimization/<platform>/llm_responses/models.
 const LLM_MODELS: Record<string, string> = {
-  // gpt-4o is rejected ("Invalid Field: 'model_name'") on our account; list
-  // what's accepted with /api/admin/test-dataforseo?models=1.
-  chatgpt: process.env.DATAFORSEO_MODEL_CHATGPT || 'gpt-5-mini',
+  // List what the account accepts with /api/admin/test-dataforseo?models=1.
+  // gpt-4o is no longer accepted. gpt-4.1 is the strongest non-reasoning
+  // option: reasoning models (gpt-5*) often answer without searching, which
+  // leaves no citations, and they can't take force_web_search.
+  chatgpt: process.env.DATAFORSEO_MODEL_CHATGPT || 'gpt-4.1',
   claude: process.env.DATAFORSEO_MODEL_CLAUDE || 'claude-sonnet-4-6',
-  gemini: process.env.DATAFORSEO_MODEL_GEMINI || 'gemini-2.5-flash',
+  // gemini-2.5-flash is persistently rate-limited upstream (task 50301).
+  gemini: process.env.DATAFORSEO_MODEL_GEMINI || 'gemini-3.5-flash',
   perplexity: process.env.DATAFORSEO_MODEL_PERPLEXITY || 'sonar',
 }
 
@@ -212,6 +215,9 @@ async function queryLLM(platform: string, promptText: string, meter: UsageMeter)
   } else {
     task.web_search = true
     if (platform !== 'gemini') task.web_search_country_iso_code = 'US'
+    // Make non-reasoning OpenAI models always search, so answers come with
+    // sources like ChatGPT's own web answers. Reasoning models reject this flag.
+    if (platform === 'chatgpt' && /^gpt-4/.test(LLM_MODELS.chatgpt)) task.force_web_search = true
   }
 
   const result = await dataforseoPost(`ai_optimization/${LLM_PATHS[platform]}/llm_responses/live`, task, meter)
@@ -253,7 +259,9 @@ function toCitations(list: any[] | undefined, isExplicitCitation: boolean): Plat
     .map((s) => ({
       url: s.url as string,
       title: (s.title ?? s.source ?? '') as string,
-      domain: (s.domain as string) || extractDomain(s.url),
+      // DataForSEO's own domain field keeps "www."; normalize to match the
+      // LLM platforms' citations (extractDomain strips it).
+      domain: ((s.domain as string) || extractDomain(s.url)).replace(/^www\./, ''),
       isExplicitCitation,
     }))
 }
@@ -332,9 +340,14 @@ async function fetchFallbackCitations(promptText: string, meter: UsageMeter): Pr
   try {
     const result = await googleOrganic(promptText, meter, false)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const organic = ((result?.items ?? []) as any[]).filter((i) => i?.type === 'organic')
+    const items = (result?.items ?? []) as any[]
+    const organic = items.filter((i) => i?.type === 'organic')
+    if (organic.length === 0) {
+      console.warn(`Fallback citations: no organic results (item types: ${[...new Set(items.map((i) => i?.type))].join(', ') || 'none'})`)
+    }
     return toCitations(organic.slice(0, 5), false)
-  } catch {
+  } catch (err) {
+    console.warn(`Fallback citations failed: ${err instanceof Error ? err.message : String(err)}`)
     return []
   }
 }
