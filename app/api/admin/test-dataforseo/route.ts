@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { isSuperUser } from '@/lib/access'
-import { queryPlatformRaw, listDataForSEOModels } from '@/lib/ai-clients'
+import { queryPlatformRaw, listDataForSEOModels, debugDataForSEO } from '@/lib/ai-clients'
 import { PLATFORMS } from '@/lib/utils'
 
 export const maxDuration = 60
@@ -38,6 +38,18 @@ export async function GET(req: Request) {
       { error: 'Pass the prompt to test as ?q=..., e.g. ?platform=all&q=your+question (or ?models=1 to list models)' },
       { status: 400 }
     )
+  }
+
+  // ?raw=<platform>&q=... — DataForSEO's unparsed response for one platform
+  // (chatgpt, claude, gemini, perplexity, google_aio, or fallback for the
+  // organic search behind fallback citations). Costs one query.
+  const raw = searchParams.get('raw')
+  if (raw) {
+    try {
+      return NextResponse.json(await debugDataForSEO(raw, q))
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 502 })
+    }
   }
 
   const targets: string[] = platform === 'all' ? [...PLATFORMS] : [platform]

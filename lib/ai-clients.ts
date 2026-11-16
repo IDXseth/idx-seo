@@ -198,7 +198,7 @@ export async function listDataForSEOModels(): Promise<Record<string, unknown>> {
 
 // ─── LLM platforms (ChatGPT, Claude, Gemini, Perplexity) ─────────────────────
 
-async function queryLLM(platform: string, promptText: string, meter: UsageMeter): Promise<RawPlatformResult> {
+function buildLLMTask(platform: string, promptText: string): Record<string, unknown> {
   const prompt = (promptText || '').trim()
   if (!prompt) throw new Error('Empty prompt')
   if (prompt.length > MAX_PROMPT_CHARS) {
@@ -219,7 +219,11 @@ async function queryLLM(platform: string, promptText: string, meter: UsageMeter)
     // sources like ChatGPT's own web answers. Reasoning models reject this flag.
     if (platform === 'chatgpt' && /^gpt-4/.test(LLM_MODELS.chatgpt)) task.force_web_search = true
   }
+  return task
+}
 
+async function queryLLM(platform: string, promptText: string, meter: UsageMeter): Promise<RawPlatformResult> {
+  const task = buildLLMTask(platform, promptText)
   const result = await dataforseoPost(`ai_optimization/${LLM_PATHS[platform]}/llm_responses/live`, task, meter)
   meter.addReported(result?.input_tokens ?? 0, result?.output_tokens ?? 0, 0, 0)
 
@@ -285,6 +289,11 @@ function cleanAIOMarkdown(markdown: string): string {
   return markdown
     .replace(/\s*\[\[?\d+\]?\]\([^)]*\)/g, '')
     .replace(/^\[\[\d+\][^\]]*\]\([^)]*\)\s*$/gm, '')
+    // Links through Google's own redirects ("[Reddit](https://google.com/goto?url=...)")
+    // carry no usable URL: keep the label, drop the link.
+    .replace(/\[([^\]]*)\]\(https?:\/\/(?:www\.)?google\.com\/[^)]*\)/g, '$1')
+    // DataForSEO marks Google's highlighted phrases as `inline code`; keep the words.
+    .replace(/`([^`\n]+)`/g, '$1')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
@@ -350,6 +359,29 @@ async function fetchFallbackCitations(promptText: string, meter: UsageMeter): Pr
     console.warn(`Fallback citations failed: ${err instanceof Error ? err.message : String(err)}`)
     return []
   }
+}
+
+// Diagnostics for /api/admin/test-dataforseo?raw=<platform>: DataForSEO's
+// unparsed result, to check where answers and sources actually sit.
+// platform=fallback shows the organic search used for fallback citations.
+export async function debugDataForSEO(platform: string, promptText: string): Promise<unknown> {
+  const meter = new UsageMeter()
+  if (platform === 'google_aio' || platform === 'fallback') {
+    const result = await googleOrganic(promptText, meter, platform === 'google_aio')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const items = (result?.items ?? []) as any[]
+    return {
+      itemTypes: items.map((i) => i?.type),
+      ...(platform === 'google_aio'
+        ? { aiOverview: items.find((i) => i?.type === 'ai_overview') ?? null }
+        : { organic: items.filter((i) => i?.type === 'organic').slice(0, 3) }),
+      usage: meter.totals,
+    }
+  }
+  if (!LLM_PATHS[platform]) throw new Error(`Unknown platform: ${platform}`)
+  const task = buildLLMTask(platform, promptText)
+  const result = await dataforseoPost(`ai_optimization/${LLM_PATHS[platform]}/llm_responses/live`, task, meter)
+  return { task, result, usage: meter.totals }
 }
 
 // ─── Scoring and entry point ─────────────────────────────────────────────────
