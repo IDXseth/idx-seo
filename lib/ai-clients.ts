@@ -1,4 +1,32 @@
+// All AI platform queries go through DataForSEO (https://docs.dataforseo.com/v3/).
+//   chatgpt / claude / gemini / perplexity → AI Optimization API, LLM Responses (live)
+//   google_aio                             → SERP API, Google Organic live/advanced with AI Overview
+// Auth: HTTP Basic with DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD.
+// Brand/competitor scoring is unchanged (./detection).
+
 import { detect, detectWithSentiment, type DetectionContext, type CompetitorMatch, type Sentiment } from './detection'
+
+const DATAFORSEO_BASE = 'https://api.dataforseo.com/v3'
+
+// Model requested per platform. Base names resolve to the latest version on
+// DataForSEO's side; see /v3/ai_optimization/<platform>/llm_responses/models.
+const LLM_MODELS: Record<string, string> = {
+  chatgpt: process.env.DATAFORSEO_MODEL_CHATGPT || 'gpt-4o',
+  claude: process.env.DATAFORSEO_MODEL_CLAUDE || 'claude-sonnet-4-6',
+  gemini: process.env.DATAFORSEO_MODEL_GEMINI || 'gemini-2.5-flash',
+  perplexity: process.env.DATAFORSEO_MODEL_PERPLEXITY || 'sonar',
+}
+
+// DataForSEO path segment for each platform
+const LLM_PATHS: Record<string, string> = {
+  chatgpt: 'chat_gpt',
+  claude: 'claude',
+  gemini: 'gemini',
+  perplexity: 'perplexity',
+}
+
+const US_LOCATION_CODE = 2840
+const MAX_PROMPT_CHARS = 500 // DataForSEO limit for user_prompt
 
 async function resolveRedirect(url: string): Promise<string> {
   if (!url.includes('vertexaisearch.cloud.google.com')) return url
@@ -44,254 +72,24 @@ function extractDomain(url: string): string {
   }
 }
 
-// SearchAPI's Google AI Overview sources are frequently wrapped in an opaque
-// google.com/goto?url=<token> (or /aclk?...) redirect rather than the real
-// destination URL, which would make extractDomain(url) return "google.com" for
-// every one of them — silently breaking domain-based citation matching (e.g.
-// "is seniorlifestyle.com cited?" would always say no). The favicon URL
-// SearchAPI returns alongside each source is Google's own favicon-fetch
-// service, which carries the real destination as its own `url` query param —
-// real data already returned, just meant for a different purpose — so prefer
-// that to recover the true domain when the primary link is one of these
-// redirects. Falls back to the link itself when there's no favicon to recover
-// from, so behavior is unchanged for sources that already give a direct URL.
-function resolveCitationDomain(url: string, favicon?: string): string {
-  if ((url.includes('google.com/goto') || url.includes('google.com/aclk')) && favicon) {
-    try {
-      const inner = new URL(favicon).searchParams.get('url')
-      if (inner) return extractDomain(inner)
-    } catch { /* fall through to the redirect's own (wrong) domain */ }
+// Adds a citation unless its URL is already present. An explicit citation
+// upgrades an existing retrieved-only entry for the same URL, never the reverse.
+function addCitation(map: Map<string, PlatformCitation>, c: PlatformCitation) {
+  if (!c.url) return
+  const existing = map.get(c.url)
+  if (!existing) {
+    map.set(c.url, c)
+  } else if (c.isExplicitCitation && !existing.isExplicitCitation) {
+    map.set(c.url, { ...existing, isExplicitCitation: true, title: existing.title || c.title })
   }
-  return extractDomain(url)
-}
-
-async function queryChatGPT(
-  promptText: string
-): Promise<RawPlatformResult> {
-  const { default: OpenAI } = await import('openai')
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const response = await (client as any).responses.create({
-    model: 'gpt-4o',
-    tools: [{ type: 'web_search_preview' }],
-    // Without this, the web_search_call output item never carries its own
-    // source list — only inline url_citation annotations come through, which
-    // is just the subset of retrieved pages the model happened to quote from.
-    include: ['web_search_call.action.sources'],
-    input: promptText || ' ',
-  })
-
-  const text: string = response.output_text ?? ''
-
-  // Inline citations: the specific sources the model quoted/referenced in its answer text.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const annotations: any[] = (response.output ?? []).flatMap((item: any) =>
-    item.type === 'message'
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ? (item.content ?? []).flatMap((c: any) =>
-          c.type === 'output_text' ? (c.annotations ?? []) : []
-        )
-      : []
-  )
-  // Retrieved sources: every page the web_search tool call actually matched,
-  // whether or not the model went on to quote it inline. Real data the search
-  // already returned — just not requested/read before now.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const searchedSources: any[] = (response.output ?? []).flatMap((item: any) =>
-    item.type === 'web_search_call' ? (item.action?.sources ?? []) : []
-  )
-
-  const citationMap = new Map<string, PlatformCitation>()
-  for (const a of annotations) {
-    const url: string = a.url ?? ''
-    if (a.type === 'url_citation' && url) {
-      citationMap.set(url, { url, title: a.title ?? '', domain: extractDomain(url), isExplicitCitation: true })
-    }
-  }
-  for (const s of searchedSources) {
-    const url: string = s.url ?? ''
-    if (url && !citationMap.has(url)) {
-      citationMap.set(url, { url, title: '', domain: extractDomain(url), isExplicitCitation: false })
-    }
-  }
-  const citations = [...citationMap.values()]
-
-  return { responseText: text, citations }
-}
-
-async function queryClaude(
-  promptText: string
-): Promise<RawPlatformResult> {
-  const { default: Anthropic } = await import('@anthropic-ai/sdk')
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let response: any = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    tools: [{ type: 'web_search_20250305' as const, name: 'web_search' }],
-    messages: [{ role: 'user', content: promptText }],
-  })
-
-  // If Claude returned stop_reason=tool_use, the web_search tool requires us to
-  // execute the search and send results back in a follow-up turn.
-  if (response.stop_reason === 'tool_use') {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const toolUseBlock = response.content.find((b: any) => b.type === 'tool_use' && b.name === 'web_search')
-    const query: string = toolUseBlock?.input?.query ?? promptText.slice(0, 120)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let searchResults: any[] = []
-    try {
-      const searchRes = await fetch(
-        `https://www.searchapi.io/api/v1/search?engine=google&q=${encodeURIComponent(query)}&api_key=${process.env.SEARCHAPI_KEY}`,
-        { signal: AbortSignal.timeout(15_000) }
-      )
-      if (searchRes.ok) {
-        const d = await searchRes.json()
-        searchResults = (d.organic_results ?? []).slice(0, 5).map((r: Record<string, string>) => ({
-          url: r.link ?? '',
-          title: r.title ?? '',
-          snippet: r.snippet ?? '',
-        }))
-      }
-    } catch { /* ignore */ }
-
-    response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
-      tools: [{ type: 'web_search_20250305' as const, name: 'web_search' }],
-      messages: [
-        { role: 'user', content: promptText },
-        { role: 'assistant', content: response.content },
-        {
-          role: 'user',
-          content: [{
-            type: 'tool_result' as const,
-            tool_use_id: toolUseBlock?.id ?? '',
-            content: JSON.stringify(searchResults),
-          }],
-        },
-      ],
-    })
-  }
-
-  let text = ''
-  const citationMap = new Map<string, PlatformCitation>()
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for (const block of response.content as any[]) {
-    if (block.type === 'text') {
-      text += block.text
-      // Inline citations on text blocks (beta SDK web_search_result_location format) —
-      // these are sources Claude explicitly quoted/referenced in its answer.
-      if (Array.isArray(block.citations)) {
-        for (const c of block.citations) {
-          const url: string = c.url ?? ''
-          if (url) {
-            citationMap.set(url, { url, title: c.title ?? '', domain: extractDomain(url), isExplicitCitation: true })
-          }
-        }
-      }
-    }
-    // Top-level web_search_result blocks — sources the tool retrieved, not
-    // necessarily quoted inline. Don't downgrade a URL already marked explicit.
-    if (block.type === 'web_search_result') {
-      const url: string = block.url ?? ''
-      if (url && !citationMap.has(url)) {
-        citationMap.set(url, { url, title: block.title ?? '', domain: extractDomain(url), isExplicitCitation: false })
-      }
-    }
-    // web_search_tool_result — the actual block type returned by web_search_20250305
-    if (block.type === 'web_search_tool_result' || block.type === 'tool_result' || block.type === 'server_tool_result') {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const content: any[] = Array.isArray(block.content) ? block.content : []
-      for (const item of content) {
-        const url: string = item.url ?? ''
-        if (url && !citationMap.has(url)) {
-          citationMap.set(url, { url, title: item.title ?? '', domain: extractDomain(url), isExplicitCitation: false })
-        }
-      }
-    }
-  }
-  const citations = [...citationMap.values()]
-
-  return { responseText: text, citations }
-}
-
-async function queryGemini(
-  promptText: string
-): Promise<RawPlatformResult> {
-  const { GoogleGenerativeAI } = await import('@google/generative-ai')
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    tools: [{ googleSearch: {} } as never],
-  })
-
-  const result = await model.generateContent(promptText)
-  const text = result.response.text()
-
-  // Extract citations from Google Search grounding metadata
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const groundingMeta: any =
-    result.response.candidates?.[0]?.groundingMetadata ?? {}
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const chunks: any[] = groundingMeta.groundingChunks ?? []
-  const citations = await Promise.all(
-    chunks
-      .filter((c) => c.web?.uri)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map(async (c: any) => {
-        const url = await resolveRedirect(c.web.uri as string)
-        // groundingChunks are the sources Google Search grounding says actually
-        // support the generated answer, so they count as explicit citations.
-        return { url, title: (c.web.title as string) ?? '', domain: extractDomain(url), isExplicitCitation: true }
-      })
-  )
-
-  return { responseText: text, citations }
-}
-
-// AI Overview text_blocks (and their nested `items`, where present) each carry a
-// reference_indexes array pointing into reference_links[].index — the set of
-// sources actually referenced somewhere in the overview's visible text. A
-// reference_links entry whose index never appears in any block was returned by
-// Google's AI Overview source list but never actually cited in the text.
-function collectReferencedIndexes(blocks: unknown[]): Set<number> {
-  const indexes = new Set<number>()
-  const visit = (nodes: unknown[]) => {
-    for (const node of nodes as Array<Record<string, unknown>>) {
-      if (Array.isArray(node.reference_indexes)) {
-        for (const i of node.reference_indexes as number[]) indexes.add(i)
-      }
-      if (Array.isArray(node.items)) visit(node.items)
-    }
-  }
-  visit(blocks)
-  return indexes
-}
-
-function extractCitationsFromSources(sources: unknown[]): PlatformCitation[] {
-  return (sources as Array<Record<string, string>>)
-    .map((s) => {
-      const url = s.link ?? s.url ?? ''
-      return {
-        url,
-        title: s.title ?? s.name ?? '',
-        domain: resolveCitationDomain(url, s.favicon),
-        isExplicitCitation: true,
-      }
-    })
-    .filter((c) => c.url)
 }
 
 // Repairs google_aio Result.responseText rows saved before the markdown-link
-// cleanup fix above. The old regex (/\[\d+\]/g) stripped only the bracket-number
+// cleanup fix. The old regex (/\[\d+\]/g) stripped only the bracket-number
 // part of citation markers like "[1](https://...)", leaving the "(https://...)"
 // half stuck in the visible text — and since it matched "[N]" anywhere, it also
 // ate the inner "[0]" out of the trailing "[[0] - Title](url)" bibliography
-// SearchAPI appends, leaving corrupted lines like "[ - Title](url)". Every
+// SearchAPI appended, leaving corrupted lines like "[ - Title](url)". Every
 // parenthetical URL in an AI-Overview response is one of these leftovers (this
 // text is machine-generated by Google, never free-form authored prose with
 // intentional inline links), so it's safe to strip unconditionally here.
@@ -305,283 +103,179 @@ export function cleanLegacyAIOResponseText(text: string): string {
     .trim()
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function parseSearchAPIResponse(data: any, engine?: string): Promise<RawPlatformResult> {
-  let text = ''
-  let citations: PlatformCitation[] = []
+// ─── DataForSEO transport ────────────────────────────────────────────────────
 
-  // engine=google_ai_overview with page_token returns root-level markdown/text_blocks/reference_links
-  if (!text && typeof data.markdown === 'string' && data.markdown.length > 0) {
-    // Citation markers in this markdown are full links like " [1](https://...)",
-    // not bare "[1]" — stripping only the bracket part (the old regex) left the
-    // "(https://...)" half sitting in the visible text as a stray raw URL.
-    // SearchAPI also appends a full "[[0] - Title](url)" bibliography after the
-    // content, duplicating what the separate Citations list already shows.
-    text = data.markdown
-      .replace(/\s*\[\d+\]\([^)]*\)/g, '')
-      .replace(/^\[\[\d+\][^\]]*\]\([^)]*\)\s*$/gm, '')
-      .trim()
-  }
-  if (!text && Array.isArray(data.text_blocks) && data.text_blocks.length > 0) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    text = (data.text_blocks as Array<any>)
-      .map((b) => (b.snippet ?? b.text ?? b.content ?? '').replace(/\s*\[\d+\]\([^)]*\)/g, ''))
-      .filter(Boolean)
-      .join('\n\n')
-      .trim()
-  }
-  if (text && !citations.length) {
-    // reference_links[].link is the canonical citation URL per SearchAPI's google_ai_overview response
-    const refs: unknown[] = data.reference_links ?? []
-    // If text_blocks carry reference_indexes, use them to tell sources actually
-    // cited in the overview text apart from ones only listed in the source panel.
-    // If no block declares any indexes (older/simpler response shapes), fall back
-    // to treating every reference link as explicit, same as before this split.
-    const referencedIndexes = Array.isArray(data.text_blocks)
-      ? collectReferencedIndexes(data.text_blocks)
-      : new Set<number>()
-    citations = (refs as Array<Record<string, unknown>>)
-      .map((r, i) => {
-        const url = (r.link as string) ?? (r.url as string) ?? ''
-        const refIndex = typeof r.index === 'number' ? r.index : i
-        return {
-          url,
-          title: (r.title as string) ?? (r.name as string) ?? '',
-          domain: resolveCitationDomain(url, r.favicon as string | undefined),
-          isExplicitCitation: referencedIndexes.size === 0 || referencedIndexes.has(refIndex),
-        }
-      })
-      .filter((c) => c.url)
-  }
+// POSTs one task and returns tasks[0].result[0]. Throws on HTTP, API-level or
+// task-level errors — DataForSEO returns HTTP 200 even when the task failed.
+async function dataforseoPost(
+  path: string,
+  task: Record<string, unknown>,
+  timeoutMs = 45_000
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<any> {
+  const login = process.env.DATAFORSEO_LOGIN
+  const password = process.env.DATAFORSEO_PASSWORD
+  if (!login || !password) throw new Error('DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD not set')
 
-  // engine=google / engine=google_ai_overview: nested ai_overview object
-  if (!text && data.ai_overview) {
-    const aio = data.ai_overview
-    text = aio.answer ?? aio.text ?? aio.snippet ?? ''
-    citations = extractCitationsFromSources(aio.sources ?? aio.references ?? aio.links ?? [])
-  }
-
-  if (!text && data.answer) {
-    text = data.answer
-    const refs: unknown[] = data.citations ?? data.references ?? data.sources ?? []
-    citations = (refs as Array<Record<string, string>>)
-      .map((r) => {
-        const url = r.url ?? r.link ?? ''
-        return {
-          url,
-          title: r.title ?? r.name ?? '',
-          domain: resolveCitationDomain(url, r.favicon),
-          isExplicitCitation: true,
-        }
-      })
-      .filter((c) => c.url)
-  }
-
-  if (!text && data.answer_box) {
-    const box = data.answer_box
-    text = box.answer ?? box.snippet ?? box.result ?? ''
-    const sources: unknown[] = box.sources ?? box.links ?? []
-    citations = (sources as Array<Record<string, string>>)
-      .map((s) => {
-        const url = s.link ?? s.url ?? ''
-        return {
-          url,
-          title: s.title ?? '',
-          domain: resolveCitationDomain(url, s.favicon),
-          isExplicitCitation: true,
-        }
-      })
-      .filter((c) => c.url)
-  }
-
-  // No AI Overview (or answer/answer_box) was served — mark explicitly rather
-  // than falling back to organic snippets which would be misleading as AIO data.
-  if (!text) {
-    return { responseText: '[No AI Overview]', citations: [] }
-  }
-
-  return { responseText: text, citations }
-}
-
-async function queryPerplexity(
-  promptText: string
-): Promise<RawPlatformResult> {
-  const response = await fetch('https://api.perplexity.ai/chat/completions', {
+  const response = await fetch(`${DATAFORSEO_BASE}/${path}`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+      Authorization: `Basic ${Buffer.from(`${login}:${password}`).toString('base64')}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model: 'sonar',
-      messages: [{ role: 'user', content: promptText }],
-    }),
-    signal: AbortSignal.timeout(30_000),
+    body: JSON.stringify([task]),
+    signal: AbortSignal.timeout(timeoutMs),
   })
 
   if (!response.ok) {
     const body = await response.text().catch(() => '')
-    throw new Error(`Perplexity ${response.status}: ${body.slice(0, 200)}`)
+    throw new Error(`DataForSEO ${response.status}: ${body.slice(0, 200)}`)
   }
 
   const data = await response.json()
-  const text = data.choices?.[0]?.message?.content ?? ''
-
-  // `citations` is the plain URL list corresponding to the model's [N] inline
-  // references — the explicitly-cited set. `search_results` is Perplexity's
-  // fuller, verified source list (title/url/date): every page the search step
-  // actually pulled, whether or not the model went on to number-reference it.
-  const rawCitedUrls = ((data.citations ?? []) as unknown[])
-    .filter((url): url is string => typeof url === 'string' && url.startsWith('http'))
-  const searchResults = (data.search_results ?? []) as Array<Record<string, string>>
-  const searchResultByUrl = new Map(searchResults.map((r) => [r.url ?? '', r]))
-
-  const citations: PlatformCitation[] = []
-  const seenUrls = new Set<string>()
-  for (const url of rawCitedUrls) {
-    if (seenUrls.has(url)) continue
-    seenUrls.add(url)
-    const r = searchResultByUrl.get(url)
-    citations.push({ url, title: r?.title ?? extractDomain(url), domain: extractDomain(url), isExplicitCitation: true })
+  if (data.status_code !== 20000) {
+    throw new Error(`DataForSEO ${data.status_code}: ${data.status_message}`)
   }
-  for (const r of searchResults) {
-    const url = r.url ?? ''
-    if (!url || seenUrls.has(url)) continue
-    seenUrls.add(url)
-    citations.push({ url, title: r.title ?? extractDomain(url), domain: extractDomain(url), isExplicitCitation: false })
+  const t = data.tasks?.[0]
+  if (!t || t.status_code !== 20000) {
+    throw new Error(`DataForSEO task ${t?.status_code ?? '?'}: ${t?.status_message ?? 'no task returned'}`)
   }
-
-  return { responseText: text, citations }
+  return t.result?.[0] ?? null
 }
 
-async function fetchFallbackCitations(
-  promptText: string
-): Promise<PlatformCitation[]> {
-  const apiKey = process.env.SEARCHAPI_KEY
-  if (!apiKey) return []
+// ─── LLM platforms (ChatGPT, Claude, Gemini, Perplexity) ─────────────────────
+
+async function queryLLM(platform: string, promptText: string): Promise<RawPlatformResult> {
+  const prompt = (promptText || '').trim()
+  if (!prompt) throw new Error('Empty prompt')
+  if (prompt.length > MAX_PROMPT_CHARS) {
+    throw new Error(`Prompt is ${prompt.length} characters; DataForSEO allows at most ${MAX_PROMPT_CHARS}`)
+  }
+
+  const task: Record<string, unknown> = {
+    user_prompt: prompt,
+    model_name: LLM_MODELS[platform],
+  }
+  if (platform === 'perplexity') {
+    // Sonar models always search; this endpoint has no web_search flag
+    task.web_search_country_iso_code = 'US'
+  } else {
+    task.web_search = true
+    if (platform !== 'gemini') task.web_search_country_iso_code = 'US'
+  }
+
+  const result = await dataforseoPost(`ai_optimization/${LLM_PATHS[platform]}/llm_responses/live`, task)
+
+  let text = ''
+  const citationMap = new Map<string, PlatformCitation>()
+
+  // Inline annotations on the answer text: the sources the model explicitly cited.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const item of (result?.items ?? []) as any[]) {
+    if (item?.type !== 'message') continue
+    for (const section of item.sections ?? []) {
+      if (section?.type === 'text' && typeof section.text === 'string') text += section.text
+      for (const a of section?.annotations ?? []) {
+        // Gemini gives a Vertex redirect in `url` and the real source in `direct_url`
+        const url: string = await resolveRedirect(a?.direct_url || a?.url || '')
+        addCitation(citationMap, { url, title: a?.title ?? '', domain: extractDomain(url), isExplicitCitation: true })
+      }
+    }
+  }
+
+  // search_results: every page the model's web search step pulled, whether or
+  // not it went on to cite it in the answer.
+  for (const r of result?.search_results ?? []) {
+    const url: string = await resolveRedirect(r?.url ?? '')
+    addCitation(citationMap, { url, title: r?.title ?? '', domain: extractDomain(url), isExplicitCitation: false })
+  }
+
+  return { responseText: text, citations: [...citationMap.values()] }
+}
+
+// ─── Google AI Overviews ─────────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toCitations(list: any[] | undefined, isExplicitCitation: boolean): PlatformCitation[] {
+  return (list ?? [])
+    .filter((s) => s?.url)
+    .map((s) => ({
+      url: s.url as string,
+      title: (s.title ?? s.source ?? '') as string,
+      domain: (s.domain as string) || extractDomain(s.url),
+      isExplicitCitation,
+    }))
+}
+
+// Strip inline citation markers like " [1](https://...)" so the stored text is
+// the overview's prose, matching what the SearchAPI version stored.
+function cleanAIOMarkdown(markdown: string): string {
+  return markdown
+    .replace(/\s*\[\d+\]\([^)]*\)/g, '')
+    .replace(/^\[\[\d+\][^\]]*\]\([^)]*\)\s*$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+async function googleOrganic(promptText: string, withAIOverview: boolean) {
+  // Cities are stored as bare names ("Phoenix"), which DataForSEO's location_name
+  // won't accept (it needs "Phoenix,Arizona,United States"), so target the US.
+  return dataforseoPost('serp/google/organic/live/advanced', {
+    keyword: promptText,
+    location_code: US_LOCATION_CODE,
+    language_code: 'en',
+    device: 'desktop',
+    depth: 10,
+    load_async_ai_overview: withAIOverview,
+  })
+}
+
+async function queryGoogleAIO(promptText: string): Promise<RawPlatformResult> {
+  const result = await googleOrganic(promptText, true)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const aio = ((result?.items ?? []) as any[]).find((i) => i?.type === 'ai_overview')
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const elements: any[] = aio?.items ?? []
+  const text = aio
+    ? cleanAIOMarkdown(
+        aio.markdown ||
+        elements.map((e) => e?.markdown || e?.text || '').filter(Boolean).join('\n\n')
+      )
+    : ''
+
+  // No AI Overview was served — mark explicitly rather than falling back to
+  // organic snippets, which would be misleading as AIO data.
+  if (!text) return { responseText: '[No AI Overview]', citations: [] }
+
+  // Sources linked from a section of the overview's text count as explicit.
+  // The overview's top-level references list is its source panel: explicit only
+  // when no section declares its own links (older/simpler response shapes).
+  const sectionCitations = elements.flatMap((e) => [
+    ...toCitations(e?.links, true),
+    ...toCitations(e?.references, true),
+  ])
+  const citationMap = new Map<string, PlatformCitation>()
+  for (const c of sectionCitations) addCitation(citationMap, c)
+  for (const c of toCitations(aio.references, sectionCitations.length === 0)) addCitation(citationMap, c)
+
+  return { responseText: text, citations: [...citationMap.values()] }
+}
+
+// Organic results we fetch ourselves as a last-resort supplement when a
+// platform returned no sources — never explicit, so they can't move isCited.
+async function fetchFallbackCitations(promptText: string): Promise<PlatformCitation[]> {
   try {
-    const url = new URL('https://www.searchapi.io/api/v1/search')
-    url.searchParams.set('api_key', apiKey)
-    url.searchParams.set('engine', 'google')
-    url.searchParams.set('q', promptText)
-    url.searchParams.set('gl', 'us')
-    url.searchParams.set('num', '5')
-    const response = await fetch(url.toString(), {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(15_000),
-    })
-    if (!response.ok) return []
-    const data = await response.json()
-    // These are organic search results we fetched ourselves as a last-resort
-    // supplement, not sources the platform actually cited or retrieved — never
-    // explicit, so they can't move isCited (only explicit citations count).
+    const result = await googleOrganic(promptText, false)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (data.organic_results ?? []).slice(0, 5).map((r: any) => ({
-      url: r.link ?? '',
-      title: r.title ?? '',
-      domain: extractDomain(r.link ?? ''),
-      isExplicitCitation: false,
-    })).filter((c: { url: string }) => c.url)
+    const organic = ((result?.items ?? []) as any[]).filter((i) => i?.type === 'organic')
+    return toCitations(organic.slice(0, 5), false)
   } catch {
     return []
   }
 }
 
-async function querySearchAPI(
-  engine: string,
-  promptText: string
-): Promise<RawPlatformResult> {
-  const apiKey = process.env.SEARCHAPI_KEY
-  const url = new URL('https://www.searchapi.io/api/v1/search')
-  url.searchParams.set('api_key', apiKey!)
-  url.searchParams.set('engine', engine)
-  url.searchParams.set('q', promptText)
-  url.searchParams.set('gl', 'us')
-  url.searchParams.set('hl', 'en')
-
-  const response = await fetch(url.toString(), {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(30_000),
-  })
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => '')
-    throw new Error(`SearchAPI (${engine}) ${response.status}: ${body.slice(0, 200)}`)
-  }
-
-  const data = await response.json()
-  return await parseSearchAPIResponse(data, engine)
-}
-
-async function queryGoogleAIO(
-  promptText: string,
-  city?: string
-): Promise<RawPlatformResult> {
-  const apiKey = process.env.SEARCHAPI_KEY
-
-  // Step 1: standard Google search — returns ai_overview + page_token when Google serves one.
-  // Passing location causes Google to return geo-targeted results, which significantly
-  // increases the chance of ai_overview appearing for local-service queries.
-  const step1Url = new URL('https://www.searchapi.io/api/v1/search')
-  step1Url.searchParams.set('api_key', apiKey!)
-  step1Url.searchParams.set('engine', 'google')
-  step1Url.searchParams.set('q', promptText)
-  step1Url.searchParams.set('gl', 'us')
-  step1Url.searchParams.set('hl', 'en')
-  if (city) step1Url.searchParams.set('location', city)
-
-  const step1Res = await fetch(step1Url.toString(), {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(30_000),
-  })
-  if (!step1Res.ok) {
-    const body = await step1Res.text().catch(() => '')
-    throw new Error(`SearchAPI (google) ${step1Res.status}: ${body.slice(0, 200)}`)
-  }
-  const step1Data = await step1Res.json()
-
-  // If engine=google returned an ai_overview with a page_token, use the dedicated
-  // google_ai_overview engine for the full expanded content
-  const pageToken: string | undefined = step1Data.ai_overview?.page_token
-  if (pageToken) {
-    const step2Url = new URL('https://www.searchapi.io/api/v1/search')
-    step2Url.searchParams.set('api_key', apiKey!)
-    step2Url.searchParams.set('engine', 'google_ai_overview')
-    step2Url.searchParams.set('q', promptText)
-    step2Url.searchParams.set('page_token', pageToken)
-    step2Url.searchParams.set('gl', 'us')
-    step2Url.searchParams.set('hl', 'en')
-
-    try {
-      const step2Res = await fetch(step2Url.toString(), {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(30_000),
-      })
-      if (step2Res.ok) {
-        const step2Data = await step2Res.json()
-        const result = await parseSearchAPIResponse(step2Data, 'google_ai_overview')
-        if (result.responseText !== '[No AI Overview]') {
-          // The page_token-expanded response sometimes comes back with text but
-          // an empty reference_links array, even though the compact ai_overview
-          // from step 1 had its own sources for the same overview — don't
-          // discard those just because we swapped to the expanded engine.
-          if (result.citations.length === 0 && step1Data.ai_overview) {
-            const aio = step1Data.ai_overview
-            result.citations = extractCitationsFromSources(aio.sources ?? aio.references ?? aio.links ?? [])
-          }
-          return result
-        }
-      }
-    } catch { /* fall through */ }
-  }
-
-  // If engine=google returned ai_overview but no page_token, parse it directly
-  if (step1Data.ai_overview) {
-    return await parseSearchAPIResponse(step1Data, 'google')
-  }
-
-  return { responseText: '[No AI Overview]', citations: [] }
-}
+// ─── Scoring and entry point ─────────────────────────────────────────────────
 
 // Placeholder texts saved when a platform produced no real answer — never scored.
 const UNSCORED_PREFIXES = ['[Error]', '[Timeout]', '[No AI Overview]']
@@ -604,23 +298,12 @@ export async function scoreResult(raw: RawPlatformResult, ctx: DetectionContext)
   }
 }
 
-async function queryPlatformRaw(platform: string, promptText: string, city?: string): Promise<RawPlatformResult> {
+// `city` is accepted for callers' compatibility but not used for targeting (see googleOrganic).
+export async function queryPlatformRaw(platform: string, promptText: string, _city?: string): Promise<RawPlatformResult> {
   try {
-    let result: RawPlatformResult
-    switch (platform) {
-      case 'chatgpt':
-        result = await queryChatGPT(promptText); break
-      case 'claude':
-        result = await queryClaude(promptText); break
-      case 'gemini':
-        result = await queryGemini(promptText); break
-      case 'perplexity':
-        result = await queryPerplexity(promptText); break
-      case 'google_aio':
-        return await queryGoogleAIO(promptText, city)
-      default:
-        throw new Error(`Unknown platform: ${platform}`)
-    }
+    if (platform === 'google_aio') return await queryGoogleAIO(promptText)
+    if (!LLM_PATHS[platform]) throw new Error(`Unknown platform: ${platform}`)
+    const result = await queryLLM(platform, promptText)
     // For platforms that query AI directly, fall back to organic search citations when none returned.
     // They're never explicit citations, so they can't move isCited.
     if (result.citations.length === 0 && !result.error) {
