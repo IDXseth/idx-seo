@@ -1,3 +1,5 @@
+import type { UsageMeter } from './usage'
+
 // Brand-agnostic mention/citation detection. Everything here works from a
 // DetectionContext — the tracked brand plus its competitors — so the same code
 // scores any project. The one network call is scoreSentiments(); the rest is
@@ -177,6 +179,8 @@ export function detect(text: string, citations: DetectionCitation[], ctx: Detect
 
 // ─── Sentiment ───────────────────────────────────────────────────────────────
 
+const SENTIMENT_MODEL = 'claude-haiku-4-5-20251001'
+
 const SENTIMENT_SCHEMA = {
   type: 'object',
   properties: {
@@ -199,8 +203,9 @@ const SENTIMENT_SCHEMA = {
 
 // How the response portrays each subject, in one model call. Subjects the
 // model skips, and any failure, come back neutral — sentiment must never fail
-// a run.
-export async function scoreSentiments(responseText: string, subjects: string[]): Promise<Sentiment[]> {
+// a run. Its tokens are added to `meter` when given, so the result's cost
+// includes it.
+export async function scoreSentiments(responseText: string, subjects: string[], meter?: UsageMeter): Promise<Sentiment[]> {
   const neutral = subjects.map(() => 'neutral' as const)
   if (subjects.length === 0 || !responseText || !process.env.ANTHROPIC_API_KEY) return neutral
   try {
@@ -208,7 +213,7 @@ export async function scoreSentiments(responseText: string, subjects: string[]):
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
     const list = subjects.map((s, i) => `${i + 1}. ${s}`).join('\n')
     const response = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: SENTIMENT_MODEL,
       max_tokens: 256,
       output_config: { format: { type: 'json_schema', schema: SENTIMENT_SCHEMA } },
       messages: [{
@@ -216,6 +221,7 @@ export async function scoreSentiments(responseText: string, subjects: string[]):
         content: `How does this AI response portray each numbered subject? Rate each one positive, neutral, or negative.\n\nSubjects:\n${list}\n\nResponse:\n${responseText.slice(0, 1500)}`,
       }],
     })
+    meter?.addTokens(SENTIMENT_MODEL, response.usage.input_tokens, response.usage.output_tokens)
     const block = response.content.find((b) => b.type === 'text')
     if (!block || block.type !== 'text') return neutral
     const parsed = JSON.parse(block.text) as { sentiments?: Array<{ subject: number; sentiment: Sentiment }> }
@@ -238,7 +244,8 @@ export async function scoreSentiments(responseText: string, subjects: string[]):
 export async function detectWithSentiment(
   text: string,
   citations: DetectionCitation[],
-  ctx: DetectionContext
+  ctx: DetectionContext,
+  meter?: UsageMeter
 ): Promise<Detection> {
   const detection = detect(text, citations, ctx)
 
@@ -251,7 +258,7 @@ export async function detectWithSentiment(
     if (m.isMentioned) subjects.push({ label: ctx.competitors[i].label, apply: (s) => { m.sentiment = s } })
   })
 
-  const sentiments = await scoreSentiments(text, subjects.map((s) => s.label))
+  const sentiments = await scoreSentiments(text, subjects.map((s) => s.label), meter)
   subjects.forEach((s, i) => s.apply(sentiments[i]))
   return detection
 }

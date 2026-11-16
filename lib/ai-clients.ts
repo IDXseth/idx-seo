@@ -5,6 +5,7 @@
 // Brand/competitor scoring is unchanged (./detection).
 
 import { detect, detectWithSentiment, type DetectionContext, type CompetitorMatch, type Sentiment } from './detection'
+import { UsageMeter, addUsage, type UsageTotals } from './usage'
 
 const DATAFORSEO_BASE = 'https://api.dataforseo.com/v3'
 
@@ -53,6 +54,7 @@ export interface RawPlatformResult {
   responseText: string
   citations: PlatformCitation[]
   error?: string
+  usage?: UsageTotals  // tokens, searches and estimated cost of producing this result
 }
 
 // A platform response scored for the project's brand and competitors.
@@ -105,11 +107,14 @@ export function cleanLegacyAIOResponseText(text: string): string {
 
 // ─── DataForSEO transport ────────────────────────────────────────────────────
 
-// POSTs one task and returns tasks[0].result[0]. Throws on HTTP, API-level or
-// task-level errors — DataForSEO returns HTTP 200 even when the task failed.
+// POSTs one task and returns tasks[0].result[0]. Records the task's billed cost
+// on the meter (tokens are added by the caller, which knows the result shape).
+// Throws on HTTP, API-level or task-level errors — DataForSEO returns HTTP 200
+// even when the task itself failed.
 async function dataforseoPost(
   path: string,
   task: Record<string, unknown>,
+  meter: UsageMeter,
   timeoutMs = 45_000
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any> {
@@ -137,6 +142,9 @@ async function dataforseoPost(
     throw new Error(`DataForSEO ${data.status_code}: ${data.status_message}`)
   }
   const t = data.tasks?.[0]
+  // DataForSEO charges per task (search, model tokens and its fee included) and
+  // reports the exact amount, so record it as-is rather than estimating.
+  if (typeof t?.cost === 'number') meter.addReported(0, 0, 1, t.cost)
   if (!t || t.status_code !== 20000) {
     throw new Error(`DataForSEO task ${t?.status_code ?? '?'}: ${t?.status_message ?? 'no task returned'}`)
   }
@@ -145,7 +153,7 @@ async function dataforseoPost(
 
 // ─── LLM platforms (ChatGPT, Claude, Gemini, Perplexity) ─────────────────────
 
-async function queryLLM(platform: string, promptText: string): Promise<RawPlatformResult> {
+async function queryLLM(platform: string, promptText: string, meter: UsageMeter): Promise<RawPlatformResult> {
   const prompt = (promptText || '').trim()
   if (!prompt) throw new Error('Empty prompt')
   if (prompt.length > MAX_PROMPT_CHARS) {
@@ -164,7 +172,8 @@ async function queryLLM(platform: string, promptText: string): Promise<RawPlatfo
     if (platform !== 'gemini') task.web_search_country_iso_code = 'US'
   }
 
-  const result = await dataforseoPost(`ai_optimization/${LLM_PATHS[platform]}/llm_responses/live`, task)
+  const result = await dataforseoPost(`ai_optimization/${LLM_PATHS[platform]}/llm_responses/live`, task, meter)
+  meter.addReported(result?.input_tokens ?? 0, result?.output_tokens ?? 0, 0, 0)
 
   let text = ''
   const citationMap = new Map<string, PlatformCitation>()
@@ -217,7 +226,7 @@ function cleanAIOMarkdown(markdown: string): string {
     .trim()
 }
 
-async function googleOrganic(promptText: string, withAIOverview: boolean) {
+async function googleOrganic(promptText: string, meter: UsageMeter, withAIOverview: boolean) {
   // Cities are stored as bare names ("Phoenix"), which DataForSEO's location_name
   // won't accept (it needs "Phoenix,Arizona,United States"), so target the US.
   return dataforseoPost('serp/google/organic/live/advanced', {
@@ -227,11 +236,11 @@ async function googleOrganic(promptText: string, withAIOverview: boolean) {
     device: 'desktop',
     depth: 10,
     load_async_ai_overview: withAIOverview,
-  })
+  }, meter)
 }
 
-async function queryGoogleAIO(promptText: string): Promise<RawPlatformResult> {
-  const result = await googleOrganic(promptText, true)
+async function queryGoogleAIO(promptText: string, meter: UsageMeter): Promise<RawPlatformResult> {
+  const result = await googleOrganic(promptText, meter, true)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const aio = ((result?.items ?? []) as any[]).find((i) => i?.type === 'ai_overview')
 
@@ -264,9 +273,9 @@ async function queryGoogleAIO(promptText: string): Promise<RawPlatformResult> {
 
 // Organic results we fetch ourselves as a last-resort supplement when a
 // platform returned no sources — never explicit, so they can't move isCited.
-async function fetchFallbackCitations(promptText: string): Promise<PlatformCitation[]> {
+async function fetchFallbackCitations(promptText: string, meter: UsageMeter): Promise<PlatformCitation[]> {
   try {
-    const result = await googleOrganic(promptText, false)
+    const result = await googleOrganic(promptText, meter, false)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const organic = ((result?.items ?? []) as any[]).filter((i) => i?.type === 'organic')
     return toCitations(organic.slice(0, 5), false)
@@ -285,11 +294,14 @@ const UNSCORED_PREFIXES = ['[Error]', '[Timeout]', '[No AI Overview]']
 // competitor, so competitor rates share Result's denominator.
 export async function scoreResult(raw: RawPlatformResult, ctx: DetectionContext): Promise<PlatformResult> {
   const unscored = !!raw.error || UNSCORED_PREFIXES.some((p) => raw.responseText.startsWith(p))
+  const sentimentUsage = new UsageMeter()
   const detection = unscored
     ? detect('', [], ctx)
-    : await detectWithSentiment(raw.responseText, raw.citations, ctx)
+    : await detectWithSentiment(raw.responseText, raw.citations, ctx, sentimentUsage)
   return {
     ...raw,
+    // Without platform usage (e.g. the query timed out) the cost stays unknown.
+    usage: raw.usage && addUsage(raw.usage, sentimentUsage.totals),
     isMentioned: detection.brand.isMentioned,
     isCited: detection.brand.isCited,
     sentiment: detection.brand.sentiment,
@@ -300,19 +312,22 @@ export async function scoreResult(raw: RawPlatformResult, ctx: DetectionContext)
 
 // `city` is accepted for callers' compatibility but not used for targeting (see googleOrganic).
 export async function queryPlatformRaw(platform: string, promptText: string, _city?: string): Promise<RawPlatformResult> {
+  // Collects usage from every call made for this result, including calls that
+  // finished before an error, so failed queries still show what they cost.
+  const meter = new UsageMeter()
   try {
-    if (platform === 'google_aio') return await queryGoogleAIO(promptText)
+    if (platform === 'google_aio') return { ...(await queryGoogleAIO(promptText, meter)), usage: meter.totals }
     if (!LLM_PATHS[platform]) throw new Error(`Unknown platform: ${platform}`)
-    const result = await queryLLM(platform, promptText)
+    const result = await queryLLM(platform, promptText, meter)
     // For platforms that query AI directly, fall back to organic search citations when none returned.
     // They're never explicit citations, so they can't move isCited.
     if (result.citations.length === 0 && !result.error) {
-      result.citations = await fetchFallbackCitations(promptText)
+      result.citations = await fetchFallbackCitations(promptText, meter)
     }
-    return result
+    return { ...result, usage: meter.totals }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    return { responseText: `[Error] ${message}`, citations: [], error: message }
+    return { responseText: `[Error] ${message}`, citations: [], error: message, usage: meter.totals }
   }
 }
 

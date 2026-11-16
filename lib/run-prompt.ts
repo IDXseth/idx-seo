@@ -2,6 +2,7 @@ import { prisma } from './prisma'
 import { queryPlatform, type PlatformResult } from './ai-clients'
 import { getDetectionContext, type PromptForDetection } from './detection-context'
 import { PLATFORMS } from './utils'
+import { usageColumns } from './usage'
 
 export interface PromptToRun extends PromptForDetection {
   id: string
@@ -54,6 +55,8 @@ export async function runPromptOnPlatforms(
         isCited: result.isCited,
         sentiment: result.sentiment,
         brandPosition: result.brandPosition,
+        // Platform query plus the sentiment call; null when the platform timed out.
+        ...usageColumns(result.usage),
       },
     })
     if (result.citations.length > 0) {

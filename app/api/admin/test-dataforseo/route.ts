@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { isSuperUser } from '@/lib/access'
 import { queryPlatformRaw } from '@/lib/ai-clients'
 import { PLATFORMS } from '@/lib/utils'
 
@@ -7,12 +8,16 @@ export const maxDuration = 60
 
 // GET /api/admin/test-dataforseo?platform=all&q=...
 // Runs one prompt through DataForSEO for one platform (or every platform, with
-// platform=all) and returns the raw answers and sources with timings. No brand
-// scoring and nothing is saved.
+// platform=all) and returns the raw answers, sources, timings and DataForSEO
+// cost. No brand scoring and nothing is saved.
 export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  // Every call is a paid DataForSEO query — super users only, like the other admin routes.
+  if (!isSuperUser(session.user.email)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const { searchParams } = new URL(req.url)
