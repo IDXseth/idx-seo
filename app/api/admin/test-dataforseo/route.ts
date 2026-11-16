@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { isSuperUser } from '@/lib/access'
-import { queryPlatformRaw } from '@/lib/ai-clients'
+import { queryPlatformRaw, listDataForSEOModels } from '@/lib/ai-clients'
 import { PLATFORMS } from '@/lib/utils'
 
 export const maxDuration = 60
@@ -22,10 +22,22 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url)
   const platform = searchParams.get('platform') ?? 'chatgpt'
-  const q = searchParams.get('q') ?? 'best assisted living communities in Chicago'
+  const q = searchParams.get('q')?.trim()
 
   if (!process.env.DATAFORSEO_LOGIN || !process.env.DATAFORSEO_PASSWORD) {
     return NextResponse.json({ error: 'DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD not set' }, { status: 500 })
+  }
+
+  // ?models=1 — list the model names this DataForSEO account accepts per platform
+  if (searchParams.get('models')) {
+    return NextResponse.json(await listDataForSEOModels())
+  }
+
+  if (!q) {
+    return NextResponse.json(
+      { error: 'Pass the prompt to test as ?q=..., e.g. ?platform=all&q=your+question (or ?models=1 to list models)' },
+      { status: 400 }
+    )
   }
 
   const targets: string[] = platform === 'all' ? [...PLATFORMS] : [platform]

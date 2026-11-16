@@ -12,7 +12,9 @@ const DATAFORSEO_BASE = 'https://api.dataforseo.com/v3'
 // Model requested per platform. Base names resolve to the latest version on
 // DataForSEO's side; see /v3/ai_optimization/<platform>/llm_responses/models.
 const LLM_MODELS: Record<string, string> = {
-  chatgpt: process.env.DATAFORSEO_MODEL_CHATGPT || 'gpt-4o',
+  // gpt-4o is rejected ("Invalid Field: 'model_name'") on our account; list
+  // what's accepted with /api/admin/test-dataforseo?models=1.
+  chatgpt: process.env.DATAFORSEO_MODEL_CHATGPT || 'gpt-5-mini',
   claude: process.env.DATAFORSEO_MODEL_CLAUDE || 'claude-sonnet-4-6',
   gemini: process.env.DATAFORSEO_MODEL_GEMINI || 'gemini-2.5-flash',
   perplexity: process.env.DATAFORSEO_MODEL_PERPLEXITY || 'sonar',
@@ -122,33 +124,73 @@ async function dataforseoPost(
   const password = process.env.DATAFORSEO_PASSWORD
   if (!login || !password) throw new Error('DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD not set')
 
-  const response = await fetch(`${DATAFORSEO_BASE}/${path}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${Buffer.from(`${login}:${password}`).toString('base64')}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify([task]),
-    signal: AbortSignal.timeout(timeoutMs),
-  })
+  for (let attempt = 1; ; attempt++) {
+    const response = await fetch(`${DATAFORSEO_BASE}/${path}`, {
+      method: 'POST',
+      headers: {
+        Authorization: dataforseoAuth(login, password),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify([task]),
+      signal: AbortSignal.timeout(timeoutMs),
+    })
 
-  if (!response.ok) {
-    const body = await response.text().catch(() => '')
-    throw new Error(`DataForSEO ${response.status}: ${body.slice(0, 200)}`)
-  }
+    if (!response.ok) {
+      const body = await response.text().catch(() => '')
+      throw new Error(`DataForSEO ${response.status}: ${body.slice(0, 200)}`)
+    }
 
-  const data = await response.json()
-  if (data.status_code !== 20000) {
-    throw new Error(`DataForSEO ${data.status_code}: ${data.status_message}`)
+    const data = await response.json()
+    if (data.status_code !== 20000) {
+      throw new Error(`DataForSEO ${data.status_code}: ${data.status_message}`)
+    }
+    const t = data.tasks?.[0]
+    // DataForSEO charges per task (search, model tokens and its fee included) and
+    // reports the exact amount, so record it as-is rather than estimating.
+    if (typeof t?.cost === 'number') meter.addReported(0, 0, 1, t.cost)
+    // 50301: the upstream provider (e.g. Gemini) rate-limited DataForSEO itself.
+    // Transient and not charged, so wait briefly and try once more.
+    if (t?.status_code === 50301 && attempt < 2) {
+      await new Promise((r) => setTimeout(r, 3000))
+      continue
+    }
+    if (!t || t.status_code !== 20000) {
+      throw new Error(`DataForSEO task ${t?.status_code ?? '?'}: ${t?.status_message ?? 'no task returned'}`)
+    }
+    return t.result?.[0] ?? null
   }
-  const t = data.tasks?.[0]
-  // DataForSEO charges per task (search, model tokens and its fee included) and
-  // reports the exact amount, so record it as-is rather than estimating.
-  if (typeof t?.cost === 'number') meter.addReported(0, 0, 1, t.cost)
-  if (!t || t.status_code !== 20000) {
-    throw new Error(`DataForSEO task ${t?.status_code ?? '?'}: ${t?.status_message ?? 'no task returned'}`)
-  }
-  return t.result?.[0] ?? null
+}
+
+function dataforseoAuth(login: string, password: string): string {
+  return `Basic ${Buffer.from(`${login}:${password}`).toString('base64')}`
+}
+
+// Lists the model names DataForSEO accepts for each LLM platform on this
+// account, for picking DATAFORSEO_MODEL_* values. Free (a GET, not a task).
+export async function listDataForSEOModels(): Promise<Record<string, unknown>> {
+  const login = process.env.DATAFORSEO_LOGIN
+  const password = process.env.DATAFORSEO_PASSWORD
+  if (!login || !password) throw new Error('DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD not set')
+  const entries = await Promise.all(
+    Object.entries(LLM_PATHS).map(async ([platform, path]) => {
+      try {
+        const res = await fetch(`${DATAFORSEO_BASE}/ai_optimization/${path}/llm_responses/models`, {
+          headers: { Authorization: dataforseoAuth(login, password) },
+          signal: AbortSignal.timeout(20_000),
+        })
+        const data = await res.json()
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const models = ((data.tasks?.[0]?.result ?? []) as any[]).map((m) => ({
+          model_name: m?.model_name,
+          web_search_supported: m?.web_search_supported,
+        }))
+        return [platform, { current: LLM_MODELS[platform], models }] as const
+      } catch (err) {
+        return [platform, { current: LLM_MODELS[platform], error: err instanceof Error ? err.message : String(err) }] as const
+      }
+    })
+  )
+  return Object.fromEntries(entries)
 }
 
 // ─── LLM platforms (ChatGPT, Claude, Gemini, Perplexity) ─────────────────────
@@ -207,7 +249,7 @@ async function queryLLM(platform: string, promptText: string, meter: UsageMeter)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toCitations(list: any[] | undefined, isExplicitCitation: boolean): PlatformCitation[] {
   return (list ?? [])
-    .filter((s) => s?.url)
+    .filter((s) => s?.url && !isGoogleInternalLink(s.url))
     .map((s) => ({
       url: s.url as string,
       title: (s.title ?? s.source ?? '') as string,
@@ -216,11 +258,24 @@ function toCitations(list: any[] | undefined, isExplicitCitation: boolean): Plat
     }))
 }
 
-// Strip inline citation markers like " [1](https://...)" so the stored text is
-// the overview's prose, matching what the SearchAPI version stored.
+// AI Overview sections can link to Google's own pages (e.g. google.com/searchviewer
+// place cards, /search?q=...). Those aren't sources, and counting them would
+// make "google.com" look like a cited domain.
+function isGoogleInternalLink(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '')
+    return host === 'google.com' || host.endsWith('.google.com')
+  } catch {
+    return false
+  }
+}
+
+// Strip inline citation markers like " [1](https://...)" or "[[1]](https://...)"
+// so the stored text is the overview's prose, matching what the SearchAPI
+// version stored.
 function cleanAIOMarkdown(markdown: string): string {
   return markdown
-    .replace(/\s*\[\d+\]\([^)]*\)/g, '')
+    .replace(/\s*\[\[?\d+\]?\]\([^)]*\)/g, '')
     .replace(/^\[\[\d+\][^\]]*\]\([^)]*\)\s*$/gm, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
