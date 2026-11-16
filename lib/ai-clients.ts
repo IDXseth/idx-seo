@@ -79,6 +79,21 @@ function extractDomain(url: string): string {
   }
 }
 
+// Removes utm_* tracking parameters (ChatGPT appends ?utm_source=openai to every
+// source) so the same page cited by several platforms is stored as one URL.
+function stripTrackingParams(url: string): string {
+  if (!url.includes('utm_')) return url
+  try {
+    const u = new URL(url)
+    for (const key of [...u.searchParams.keys()]) {
+      if (key.startsWith('utm_')) u.searchParams.delete(key)
+    }
+    return u.toString()
+  } catch {
+    return url
+  }
+}
+
 // Adds a citation unless its URL is already present. An explicit citation
 // upgrades an existing retrieved-only entry for the same URL, never the reverse.
 function addCitation(map: Map<string, PlatformCitation>, c: PlatformCitation) {
@@ -151,9 +166,10 @@ async function dataforseoPost(
     // DataForSEO charges per task (search, model tokens and its fee included) and
     // reports the exact amount, so record it as-is rather than estimating.
     if (typeof t?.cost === 'number') meter.addReported(0, 0, 1, t.cost)
-    // 50301: the upstream provider (e.g. Gemini) rate-limited DataForSEO itself.
-    // Transient and not charged, so wait briefly and try once more.
-    if (t?.status_code === 50301 && attempt < 2) {
+    // Transient, uncharged failures on DataForSEO's side — wait briefly and try once more:
+    //   50301: the upstream provider (e.g. Gemini) rate-limited DataForSEO itself.
+    //   40101: "Internal SE Server Error", a failed Google scrape (seen on google_aio).
+    if ((t?.status_code === 50301 || t?.status_code === 40101) && attempt < 2) {
       await new Promise((r) => setTimeout(r, 3000))
       continue
     }
@@ -244,7 +260,7 @@ async function queryLLM(platform: string, promptText: string, meter: UsageMeter)
       if (section?.type === 'text' && typeof section.text === 'string') text += section.text
       for (const a of section?.annotations ?? []) {
         // Gemini gives a Vertex redirect in `url` and the real source in `direct_url`
-        const url: string = await resolveRedirect(a?.direct_url || a?.url || '')
+        const url: string = stripTrackingParams(await resolveRedirect(a?.direct_url || a?.url || ''))
         addCitation(citationMap, { url, title: a?.title ?? '', domain: extractDomain(url), isExplicitCitation: true })
       }
     }
@@ -253,7 +269,7 @@ async function queryLLM(platform: string, promptText: string, meter: UsageMeter)
   // search_results: every page the model's web search step pulled, whether or
   // not it went on to cite it in the answer.
   for (const r of result?.search_results ?? []) {
-    const url: string = await resolveRedirect(r?.url ?? '')
+    const url: string = stripTrackingParams(await resolveRedirect(r?.url ?? ''))
     addCitation(citationMap, { url, title: r?.title ?? '', domain: extractDomain(url), isExplicitCitation: false })
   }
 
