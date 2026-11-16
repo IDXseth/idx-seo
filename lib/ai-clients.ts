@@ -218,6 +218,12 @@ function buildLLMTask(platform: string, promptText: string): Record<string, unkn
     // Make non-reasoning OpenAI models always search, so answers come with
     // sources like ChatGPT's own web answers. Reasoning models reject this flag.
     if (platform === 'chatgpt' && /^gpt-4/.test(LLM_MODELS.chatgpt)) task.force_web_search = true
+    // Gemini's endpoint has no force_web_search, and Gemini 3.x answers how-to
+    // questions from memory (result web_search: false, no sources). Ask it to
+    // ground in Google Search, as the Gemini app does for these questions.
+    if (platform === 'gemini') {
+      task.system_message = 'Always use Google Search to ground your answer in current web sources, and cite them.'
+    }
   }
   return task
 }
@@ -282,6 +288,46 @@ function isGoogleInternalLink(url: string): boolean {
   }
 }
 
+function isGoogleGotoLink(url: string): boolean {
+  return /^https?:\/\/(www\.)?google\.com\/(goto|url)\?/.test(url)
+}
+
+// Follows a google.com/goto redirect (google.com → www.google.com → the real
+// page, without loading the page itself). Returns null if it doesn't lead off
+// Google within a few hops.
+async function resolveGoogleGoto(url: string): Promise<string | null> {
+  let current = url
+  for (let hop = 0; hop < 4; hop++) {
+    try {
+      const res = await fetch(current, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(5000) })
+      const location = res.headers.get('location')
+      if (!location || res.status < 300 || res.status >= 400) return null
+      current = new URL(location, current).toString()
+      if (!isGoogleInternalLink(current)) return current
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
+// DataForSEO returns many Google sources (AI Overview references, organic
+// results) as google.com/goto?url=<token> redirects with domain "google.com".
+// Rewrites each such source in place to the real page it leads to; any that
+// can't be resolved are later dropped by toCitations as Google-internal links.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function resolveGotoSources(sources: any[]): Promise<void> {
+  const gotoUrls = [...new Set(sources.map((s) => s?.url).filter((u): u is string => typeof u === 'string' && isGoogleGotoLink(u)))]
+  const resolved = new Map(await Promise.all(gotoUrls.map(async (u) => [u, await resolveGoogleGoto(u)] as const)))
+  for (const s of sources) {
+    const real = s?.url ? resolved.get(s.url) : undefined
+    if (real) {
+      s.url = real
+      s.domain = '' // DataForSEO's "google.com"; recomputed from the real URL
+    }
+  }
+}
+
 // Strip inline citation markers like " [1](https://...)" or "[[1]](https://...)"
 // so the stored text is the overview's prose, matching what the SearchAPI
 // version stored.
@@ -329,6 +375,11 @@ async function queryGoogleAIO(promptText: string, meter: UsageMeter): Promise<Ra
   // organic snippets, which would be misleading as AIO data.
   if (!text) return { responseText: '[No AI Overview]', citations: [] }
 
+  await resolveGotoSources([
+    ...elements.flatMap((e) => [...(e?.links ?? []), ...(e?.references ?? [])]),
+    ...(aio.references ?? []),
+  ])
+
   // Sources linked from a section of the overview's text count as explicit.
   // The overview's top-level references list is its source panel: explicit only
   // when no section declares its own links (older/simpler response shapes).
@@ -350,7 +401,8 @@ async function fetchFallbackCitations(promptText: string, meter: UsageMeter): Pr
     const result = await googleOrganic(promptText, meter, false)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const items = (result?.items ?? []) as any[]
-    const organic = items.filter((i) => i?.type === 'organic')
+    const organic = items.filter((i) => i?.type === 'organic').slice(0, 5)
+    await resolveGotoSources(organic)
     if (organic.length === 0) {
       console.warn(`Fallback citations: no organic results (item types: ${[...new Set(items.map((i) => i?.type))].join(', ') || 'none'})`)
     }
