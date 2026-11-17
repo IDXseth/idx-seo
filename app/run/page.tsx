@@ -15,6 +15,7 @@ import { useActiveProject } from '@/components/active-project-banner'
 import { PRESET_LABELS, type SegmentLabels } from '@/lib/segment-labels'
 import { GOOGLE_ONLY_SIGN_IN } from '@/lib/app-config'
 import { PLATFORM_LABELS } from '@/lib/utils'
+import { SCHEDULE_TIMEZONE, scheduleTimezoneLabel, formatInScheduleZone } from '@/lib/schedule-time'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -114,7 +115,8 @@ function ServiceField({ value, onChange, className }: { value: string; onChange:
 }
 
 function formatScheduleLabel(s: Schedule): string {
-  const hour = `${s.hour === 0 ? 12 : s.hour > 12 ? s.hour - 12 : s.hour}${s.hour >= 12 ? 'pm' : 'am'}`
+  // Hours are local to the deployment's schedule zone (see lib/schedule-time.ts).
+  const hour = `${s.hour === 0 ? 12 : s.hour > 12 ? s.hour - 12 : s.hour}${s.hour >= 12 ? 'pm' : 'am'} ${scheduleTimezoneLabel(SCHEDULE_TIMEZONE)}`
   switch (s.frequency) {
     case 'daily': return `Daily at ${hour}`
     case 'weekly': return `Weekly on ${DAYS_OF_WEEK[s.dayOfWeek ?? 1]} at ${hour}`
@@ -216,7 +218,7 @@ function ScheduleModal({
               <div>
                 <p className="text-sm font-medium text-(--c-ink)">{formatScheduleLabel(s)}</p>
                 <p className="text-xs text-(--c-subtle) mt-0.5">
-                  Next: {new Date(s.nextRunAt).toLocaleDateString()} — {s.enabled ? 'Active' : 'Paused'}
+                  Next: {formatInScheduleZone(s.nextRunAt)} — {s.enabled ? 'Active' : 'Paused'}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -285,7 +287,7 @@ function ScheduleModal({
               )}
 
               <div>
-                <label className="text-xs font-medium text-(--c-muted) block mb-1">Hour of day (UTC)</label>
+                <label className="text-xs font-medium text-(--c-muted) block mb-1">Hour of day ({scheduleTimezoneLabel(SCHEDULE_TIMEZONE)})</label>
                 <select
                   value={hour}
                   onChange={(e) => setHour(Number(e.target.value))}

@@ -2,41 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canWrite } from '@/lib/access'
-
-function computeNextRunAt(body: {
-  frequency: string
-  customDays?: number
-  dayOfWeek?: number
-  dayOfMonth?: number
-  hour: number
-}): Date {
-  const now = new Date()
-  const next = new Date(now)
-
-  switch (body.frequency) {
-    case 'daily':
-      next.setDate(next.getDate() + 1)
-      break
-    case 'weekly': {
-      const target = body.dayOfWeek ?? 1
-      let diff = target - now.getDay()
-      if (diff <= 0) diff += 7
-      next.setDate(next.getDate() + diff)
-      break
-    }
-    case 'monthly': {
-      const dom = body.dayOfMonth ?? 1
-      next.setMonth(next.getMonth() + 1)
-      next.setDate(dom)
-      break
-    }
-    default:
-      next.setDate(next.getDate() + (body.customDays ?? 7))
-  }
-
-  next.setHours(body.hour, 0, 0, 0)
-  return next
-}
+import { computeNextRunAt, SCHEDULE_TIMEZONE } from '@/lib/schedule-time'
 
 // GET /api/schedules?batchId=X
 export async function GET(req: Request) {
@@ -66,7 +32,9 @@ export async function POST(req: Request) {
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json().catch(() => ({}))
-  const { batchId, frequency, customDays, dayOfWeek, dayOfMonth, hour = 9, timezone = 'America/Chicago' } = body
+  // `hour` is local time in this deployment's schedule time zone (default Arizona).
+  const { batchId, frequency, customDays, dayOfWeek, dayOfMonth, hour = 9 } = body
+  const timezone = SCHEDULE_TIMEZONE
 
   if (!batchId || !frequency) return NextResponse.json({ error: 'batchId and frequency required' }, { status: 400 })
 
@@ -75,7 +43,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Batch not found' }, { status: 404 })
   }
 
-  const nextRunAt = computeNextRunAt({ frequency, customDays, dayOfWeek, dayOfMonth, hour })
+  const nextRunAt = computeNextRunAt({ frequency, customDays, dayOfWeek, dayOfMonth, hour }, timezone)
 
   const schedule = await prisma.schedule.create({
     data: { batchId, frequency, customDays, dayOfWeek, dayOfMonth, hour, timezone, nextRunAt },
@@ -113,13 +81,14 @@ export async function PATCH(req: Request) {
         dayOfWeek: body.dayOfWeek ?? null,
         dayOfMonth: body.dayOfMonth ?? null,
         hour: body.hour ?? existing.hour,
+        timezone: SCHEDULE_TIMEZONE,
         nextRunAt: computeNextRunAt({
           frequency: body.frequency,
           customDays: body.customDays,
           dayOfWeek: body.dayOfWeek,
           dayOfMonth: body.dayOfMonth,
           hour: body.hour ?? existing.hour,
-        }),
+        }, SCHEDULE_TIMEZONE),
       } : {}),
     },
   })

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { sendRunCompleteEmail } from '@/lib/email'
 import { refreshGscCache, refreshGscQueryCache, crawlCommunityPages } from '@/lib/gsc'
 import { runPromptOnPlatforms } from '@/lib/run-prompt'
+import { computeNextRunAt, SCHEDULE_TIMEZONE } from '@/lib/schedule-time'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -22,41 +23,6 @@ const PLATFORM_TIMEOUT_MS = 120_000
 // Inngest plan and the AI providers' rate limits allow.
 const PROMPT_CONCURRENCY = Math.max(1, Number(process.env.INNGEST_PROMPT_CONCURRENCY) || 5)
 
-function computeNextRunAt(schedule: {
-  frequency: string
-  customDays?: number | null
-  dayOfWeek?: number | null
-  dayOfMonth?: number | null
-  hour: number
-}): Date {
-  const now = new Date()
-  const next = new Date(now)
-
-  switch (schedule.frequency) {
-    case 'daily':
-      next.setDate(next.getDate() + 1)
-      break
-    case 'weekly': {
-      const target = schedule.dayOfWeek ?? 1
-      let diff = target - now.getDay()
-      if (diff <= 0) diff += 7
-      next.setDate(next.getDate() + diff)
-      break
-    }
-    case 'monthly': {
-      const dom = schedule.dayOfMonth ?? 1
-      next.setMonth(next.getMonth() + 1)
-      next.setDate(dom)
-      break
-    }
-    case 'custom':
-    default:
-      next.setDate(next.getDate() + (schedule.customDays ?? 7))
-  }
-
-  next.setHours(schedule.hour, 0, 0, 0)
-  return next
-}
 
 // ─── Fan-out: one event per prompt ───────────────────────────────────────────
 
@@ -169,6 +135,21 @@ export const runSinglePrompt = inngest.createFunction(
 export const checkSchedules = inngest.createFunction(
   { id: 'check-schedules', triggers: [{ cron: '0 * * * *' }] },
   async ({ step }) => {
+    // Schedules saved before hours meant local time (stored with another zone,
+    // e.g. the old "America/Chicago" default, while their next run was worked
+    // out in UTC): keep their hour, read it as local time in this deployment's
+    // zone, and re-time their next run — once, without running them now.
+    await step.run('retime-schedules-to-local-zone', async () => {
+      const stale = await prisma.schedule.findMany({ where: { timezone: { not: SCHEDULE_TIMEZONE } } })
+      for (const s of stale) {
+        await prisma.schedule.update({
+          where: { id: s.id },
+          data: { timezone: SCHEDULE_TIMEZONE, nextRunAt: computeNextRunAt(s, SCHEDULE_TIMEZONE) },
+        })
+      }
+      return stale.length
+    })
+
     const due = await step.run('find-due-schedules', async () => {
       return prisma.schedule.findMany({
         where: { enabled: true, nextRunAt: { lte: new Date() } },
@@ -197,7 +178,7 @@ export const checkSchedules = inngest.createFunction(
             notifyEmail: null,
           },
         })
-        const nextRunAt = computeNextRunAt(schedule)
+        const nextRunAt = computeNextRunAt(schedule, SCHEDULE_TIMEZONE)
         await prisma.schedule.update({
           where: { id: schedule.id },
           data: { lastRunAt: new Date(), nextRunAt },
