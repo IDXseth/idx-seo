@@ -127,6 +127,19 @@ export function cleanLegacyAIOResponseText(text: string): string {
 
 // ─── DataForSEO transport ────────────────────────────────────────────────────
 
+const RETRYABLE_TASK_CODES = new Set([50301, 40101])
+
+// Waits before each retry of a transient task failure; one retry per entry.
+// Exported so tests can shorten it.
+export const dataforseoRetry = { delaysMs: [3000, 8000] }
+
+// A task DataForSEO accepted but couldn't complete (HTTP 200, task-level error).
+export class DataForSEOTaskError extends Error {
+  constructor(readonly statusCode: number | undefined, statusMessage: string | undefined) {
+    super(`DataForSEO task ${statusCode ?? '?'}: ${statusMessage ?? 'no task returned'}`)
+  }
+}
+
 // POSTs one task and returns tasks[0].result[0]. Records the task's billed cost
 // on the meter (tokens are added by the caller, which knows the result shape).
 // Throws on HTTP, API-level or task-level errors — DataForSEO returns HTTP 200
@@ -164,17 +177,21 @@ async function dataforseoPost(
     }
     const t = data.tasks?.[0]
     // DataForSEO charges per task (search, model tokens and its fee included) and
-    // reports the exact amount, so record it as-is rather than estimating.
-    if (typeof t?.cost === 'number') meter.addReported(0, 0, 1, t.cost)
-    // Transient, uncharged failures on DataForSEO's side — wait briefly and try once more:
+    // reports the exact amount, so record it as-is rather than estimating. Free
+    // failed attempts aren't recorded, so a retried task counts as one search.
+    if (typeof t?.cost === 'number' && (t.status_code === 20000 || t.cost > 0)) {
+      meter.addReported(0, 0, 1, t.cost)
+    }
+    // Transient, uncharged failures on DataForSEO's side — wait and try again:
     //   50301: the upstream provider (e.g. Gemini) rate-limited DataForSEO itself.
     //   40101: "Internal SE Server Error", a failed Google scrape (seen on google_aio).
-    if ((t?.status_code === 50301 || t?.status_code === 40101) && attempt < 2) {
-      await new Promise((r) => setTimeout(r, 3000))
+    const delay = dataforseoRetry.delaysMs[attempt - 1]
+    if (RETRYABLE_TASK_CODES.has(t?.status_code) && delay !== undefined) {
+      await new Promise((r) => setTimeout(r, delay))
       continue
     }
     if (!t || t.status_code !== 20000) {
-      throw new Error(`DataForSEO task ${t?.status_code ?? '?'}: ${t?.status_message ?? 'no task returned'}`)
+      throw new DataForSEOTaskError(t?.status_code, t?.status_message)
     }
     return t.result?.[0] ?? null
   }
@@ -387,7 +404,20 @@ async function googleOrganic(promptText: string, meter: UsageMeter, withAIOvervi
 }
 
 async function queryGoogleAIO(promptText: string, meter: UsageMeter): Promise<RawPlatformResult> {
-  const result = await googleOrganic(promptText, meter, true)
+  let result
+  try {
+    result = await googleOrganic(promptText, meter, true)
+  } catch (err) {
+    // Waiting for the asynchronously loaded overview is where Google scrapes fail
+    // (40101) even after retries. Google often includes the overview in the
+    // first page load, so try once without waiting. Use it only if an overview
+    // came back: not waiting can miss one, so an empty page isn't "no overview".
+    if (!(err instanceof DataForSEOTaskError) || err.statusCode !== 40101) throw err
+    const syncResult = await googleOrganic(promptText, meter, false).catch(() => null)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (!((syncResult?.items ?? []) as any[]).some((i) => i?.type === 'ai_overview')) throw err
+    result = syncResult
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const aio = ((result?.items ?? []) as any[]).find((i) => i?.type === 'ai_overview')
 
