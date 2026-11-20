@@ -10,7 +10,9 @@ export function CareLevelPicker({
   promptType,
   projectId,
   sessionId,
+  label = 'Level of Care',
 }: {
+  label?: string  // the project's name for this dimension (Level of Care, Service, …)
   levels: string[]
   currentLevel?: string
   basePath?: string
@@ -39,17 +41,17 @@ export function CareLevelPicker({
 
   return (
     <div className="flex items-center gap-2">
-      <Heart className="h-4 w-4 text-[#5a7a85] shrink-0" />
+      <Heart className="h-4 w-4 text-(--c-muted) shrink-0" />
       <div className="flex flex-col">
-        <label className="text-[10px] font-semibold text-[#8aadb8] uppercase tracking-wider mb-0.5">
-          Level of Care
+        <label className="text-[10px] font-semibold text-(--c-subtle) uppercase tracking-wider mb-0.5">
+          {label}
         </label>
         <select
           value={currentLevel ?? ''}
           onChange={(e) => handleChange(e.target.value)}
-          className="text-sm font-medium text-[#084c61] bg-white border border-[#dde6ea] rounded-lg px-3 py-1.5 pr-8 focus:outline-none focus:ring-2 focus:ring-[#177e89] cursor-pointer min-w-[180px]"
+          className="text-sm font-medium text-(--c-ink) bg-white border border-(--c-line) rounded-lg px-3 py-1.5 pr-8 focus:outline-none focus:ring-2 focus:ring-(--c-accent) cursor-pointer min-w-[180px]"
         >
-          <option value="">All levels of care</option>
+          <option value="">Any {label.toLowerCase()}</option>
           {levels.map((l) => (
             <option key={l} value={l}>{l}</option>
           ))}

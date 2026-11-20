@@ -12,7 +12,7 @@ const SLICES: { key: keyof Omit<SentimentCounts, 'total'>; label: string; color:
 const tooltipStyle = {
   fontSize: 12,
   borderRadius: 8,
-  border: '1px solid #dde6ea',
+  border: '1px solid var(--c-line)',
   boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
 }
 
@@ -22,8 +22,8 @@ function CustomTooltip({ active, payload }: any) {
   const { name, value, percent } = payload[0]
   return (
     <div style={{ ...tooltipStyle, background: '#fff', padding: '8px 12px' }}>
-      <p style={{ fontWeight: 600, color: '#084c61', margin: 0 }}>{name}</p>
-      <p style={{ color: '#5a7a85', margin: '2px 0 0' }}>
+      <p style={{ fontWeight: 600, color: 'var(--c-ink)', margin: 0 }}>{name}</p>
+      <p style={{ color: 'var(--c-muted)', margin: '2px 0 0' }}>
         {value} · {Math.round(percent * 100)}%
       </p>
     </div>
@@ -33,7 +33,7 @@ function CustomTooltip({ active, payload }: any) {
 export function SentimentPieChart({ counts }: { counts: SentimentCounts }) {
   if (counts.total === 0) {
     return (
-      <div className="py-12 text-center text-[#8aadb8] text-sm">
+      <div className="py-12 text-center text-(--c-subtle) text-sm">
         No sentiment data for this selection.
       </div>
     )
@@ -51,16 +51,21 @@ export function SentimentPieChart({ counts }: { counts: SentimentCounts }) {
               data={data}
               dataKey="value"
               nameKey="name"
-              innerRadius="55%"
-              outerRadius="85%"
+              innerRadius="50%"
+              outerRadius="75%"
               paddingAngle={2}
               cornerRadius={3}
               stroke="#fff"
               strokeWidth={2}
-              label={({ percent }) => `${Math.round((percent ?? 0) * 100)}%`}
+              // Direct labels use ink text, never the slice's own color. Styled
+              // here rather than via the Pie's style prop, whose fill would
+              // override every slice's Cell color.
+              label={({ x, y, textAnchor, percent }) => (
+                <text x={x} y={y} textAnchor={textAnchor} dominantBaseline="central" style={{ fontSize: 11, fontWeight: 600, fill: 'var(--c-ink)' }}>
+                  {`${Math.round((percent ?? 0) * 100)}%`}
+                </text>
+              )}
               labelLine={false}
-              // Direct labels use ink text, never the slice's own color.
-              style={{ fontSize: 11, fontWeight: 600, fill: '#084c61' }}
             >
               {data.map((d) => (
                 <Cell key={d.name} fill={d.color} />
@@ -71,22 +76,22 @@ export function SentimentPieChart({ counts }: { counts: SentimentCounts }) {
               wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
               iconType="circle"
               iconSize={8}
-              formatter={(value) => <span style={{ color: '#5a7a85' }}>{value}</span>}
+              formatter={(value) => <span style={{ color: 'var(--c-muted)' }}>{value}</span>}
             />
           </PieChart>
         </ResponsiveContainer>
         {/* Center total — donut hole doubles as a stat tile */}
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none" style={{ paddingBottom: 32 }}>
-          <p className="text-2xl font-bold text-[#084c61] leading-none">{counts.total.toLocaleString()}</p>
-          <p className="text-[10px] text-[#8aadb8] uppercase tracking-wide mt-0.5">Responses</p>
+          <p className="text-2xl font-bold text-(--c-ink) leading-none">{counts.total.toLocaleString()}</p>
+          <p className="text-[10px] text-(--c-subtle) uppercase tracking-wide mt-0.5">Responses</p>
         </div>
       </div>
       {/* Accessible text equivalent — counts alongside the legend's color */}
       <div className="grid grid-cols-3 gap-2 mt-2 text-center">
         {SLICES.map((s) => (
           <div key={s.key}>
-            <p className="text-sm font-semibold text-[#084c61]">{counts[s.key]}</p>
-            <p className="text-[10px] text-[#8aadb8]">
+            <p className="text-sm font-semibold text-(--c-ink)">{counts[s.key]}</p>
+            <p className="text-[10px] text-(--c-subtle)">
               {s.label} · {counts.total > 0 ? Math.round((counts[s.key] / counts.total) * 100) : 0}%
             </p>
           </div>

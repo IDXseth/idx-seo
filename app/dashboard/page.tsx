@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import { PLATFORMS, formatPercent } from '@/lib/utils'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -7,7 +8,7 @@ import { BrandScorecards } from '@/components/brand-scorecards'
 import { TrendCharts, TrendPoint } from '@/components/trend-charts'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
-import { ProjectPicker } from '@/components/project-picker'
+import { PromptSetPicker } from '@/components/prompt-set-picker'
 import { CareLevelPicker } from '@/components/care-level-picker'
 import { CompetitorViewPicker } from '@/components/competitor-view-picker'
 import { OptimizationPriorityTable } from '@/components/optimization-priority-table'
@@ -15,25 +16,35 @@ import { SentimentBreakdown } from '@/components/sentiment-breakdown'
 import { getSitemapAnalysis, SitemapAnalysis } from '@/lib/sitemap'
 import { getGscMetrics, getPageCrawlResults } from '@/lib/gsc'
 import { getSessionList } from '@/lib/run-sessions'
-import { getProjectList } from '@/lib/projects'
-import { getBrandSeries } from '@/lib/competitor-stats'
-import { slugify } from '@/lib/utils'
+import { getPromptSetList } from '@/lib/prompt-sets'
+import { getBrandSeries, getBrandTrendSeries, getCompetitorLeaderboard } from '@/lib/competitor-stats'
+import { getCitationSources, getVisibilityGaps } from '@/lib/competitive'
+import { competitorScope } from '@/lib/competitors'
+import { CompetitorComparison } from '@/components/competitor-comparison'
+import { ShareOfVoiceByPlatform, CitationSourcesCard, VisibilityGapsTable } from '@/components/competitive-insights'
+import { BrandTrendChart } from '@/components/brand-trend-chart'
+import { getViewer, canViewSiteHealth } from '@/lib/access'
+import { promptScope, getActiveProject, canCreateProjects, getSegmentLabels } from '@/lib/projects'
+import { PRESET_LABELS } from '@/lib/segment-labels'
+import { slugify, YOUR_BRAND_DOMAIN } from '@/lib/utils'
+import { APP_DASHBOARD_TAGLINE } from '@/lib/app-config'
 import { BarChart3, Target, Quote, Layers, ArrowRight, ExternalLink, Download, Users } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
 async function getTrendData(promptType?: string, projectId?: string, careLevel?: string): Promise<TrendPoint[]> {
+  const scope = await promptScope()
   const promptFilter = {
+    ...scope,
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
   }
-  const hasPromptFilter = Object.keys(promptFilter).length > 0
 
   const sessions = await prisma.runSession.findMany({
     where: {
       status: 'done',
-      results: projectId ? { some: { prompt: { batchId: projectId } } } : { some: {} },
+      results: { some: { prompt: projectId ? { ...scope, batchId: projectId } : scope } },
     },
     orderBy: { startedAt: 'asc' },
     select: {
@@ -41,7 +52,7 @@ async function getTrendData(promptType?: string, projectId?: string, careLevel?:
       startedAt: true,
       triggeredBy: true,
       results: {
-        where: hasPromptFilter ? { prompt: promptFilter } : undefined,
+        where: { prompt: promptFilter },
         select: { platform: true, isMentioned: true, isCited: true, sentiment: true },
       },
     },
@@ -85,7 +96,9 @@ async function getDashboardData(sessionId?: string, promptType?: string, project
   // One canonical prompt per unique promptText (first created wins) — prevents cross-batch
   // double-counting. Scoped to a single project's own prompts when one is selected, since
   // there's no cross-batch collision to worry about within one project.
+  const scope = await promptScope()
   const canonicalWhere = {
+    ...scope,
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
@@ -93,7 +106,7 @@ async function getDashboardData(sessionId?: string, promptType?: string, project
   const canonicalRows = await prisma.prompt.findMany({
     distinct: ['promptText'],
     orderBy: { createdAt: 'asc' },
-    where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
+    where: canonicalWhere,
     select: { id: true },
   })
   const canonicalIds = canonicalRows.map((r) => r.id)
@@ -241,13 +254,15 @@ async function getDashboardData(sessionId?: string, promptType?: string, project
 // (if any) is currently selected — so the picker always offers the full set rather
 // than collapsing to just the one already chosen.
 async function getCareLevelOptions(promptType?: string, projectId?: string): Promise<string[]> {
+  const scope = await promptScope()
   const where = {
+    ...scope,
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
   }
   const groups = await prisma.prompt.groupBy({
     by: ['levelOfCare'],
-    where: Object.keys(where).length > 0 ? where : undefined,
+    where: where,
   })
   return groups.map((g) => g.levelOfCare).filter(Boolean).sort()
 }
@@ -259,7 +274,9 @@ async function getCareLevelOptions(promptType?: string, projectId?: string): Pro
 // per-citation URLs (only isCited), so topCitationUrls is always empty here.
 
 async function getCompetitorOptions(promptType?: string, projectId?: string, careLevel?: string): Promise<{ id: string; brandName: string }[]> {
+  const scope = await promptScope()
   const canonicalWhere = {
+    ...scope,
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
@@ -267,7 +284,7 @@ async function getCompetitorOptions(promptType?: string, projectId?: string, car
   const canonicalIds = (
     await prisma.prompt.findMany({
       distinct: ['promptText'],
-      where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
+      where: canonicalWhere,
       select: { id: true },
     })
   ).map((r) => r.id)
@@ -282,7 +299,9 @@ async function getCompetitorOptions(promptType?: string, projectId?: string, car
 }
 
 async function getCompetitorDashboardData(competitorId: string, sessionId?: string, promptType?: string, projectId?: string, careLevel?: string) {
+  const scope = await promptScope()
   const canonicalWhere = {
+    ...scope,
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
@@ -290,7 +309,7 @@ async function getCompetitorDashboardData(competitorId: string, sessionId?: stri
   const canonicalRows = await prisma.prompt.findMany({
     distinct: ['promptText'],
     orderBy: { createdAt: 'asc' },
-    where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
+    where: canonicalWhere,
     select: { id: true, communityName: true, city: true, category: true, levelOfCare: true, market: true },
   })
   const canonicalIds = canonicalRows.map((r) => r.id)
@@ -394,17 +413,18 @@ async function getCompetitorDashboardData(competitorId: string, sessionId?: stri
 }
 
 async function getCompetitorTrendData(competitorId: string, promptType?: string, projectId?: string, careLevel?: string): Promise<TrendPoint[]> {
+  const scope = await promptScope()
   const promptFilter = {
+    ...scope,
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
   }
-  const hasPromptFilter = Object.keys(promptFilter).length > 0
 
   const sessions = await prisma.runSession.findMany({
     where: {
       status: 'done',
-      results: projectId ? { some: { prompt: { batchId: projectId } } } : { some: {} },
+      results: { some: { prompt: projectId ? { ...scope, batchId: projectId } : scope } },
     },
     orderBy: { startedAt: 'asc' },
     select: {
@@ -412,7 +432,7 @@ async function getCompetitorTrendData(competitorId: string, promptType?: string,
       startedAt: true,
       triggeredBy: true,
       results: {
-        where: hasPromptFilter ? { prompt: promptFilter } : undefined,
+        where: { prompt: promptFilter },
         select: {
           platform: true,
           competitorMentions: { where: { competitorId }, select: { isMentioned: true, isCited: true, sentiment: true } },
@@ -462,7 +482,9 @@ async function getCompetitorTrendData(competitorId: string, promptType?: string,
 // getBrandSeries directly instead. See lib/competitor-stats.ts.
 
 async function getBrandComparisonData(sessionId?: string, promptType?: string, projectId?: string, careLevel?: string) {
+  const scope = await promptScope()
   const canonicalWhere = {
+    ...scope,
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
@@ -470,7 +492,7 @@ async function getBrandComparisonData(sessionId?: string, promptType?: string, p
   const canonicalIds = (
     await prisma.prompt.findMany({
       distinct: ['promptText'],
-      where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
+      where: canonicalWhere,
       select: { id: true },
     })
   ).map((r) => r.id)
@@ -481,10 +503,48 @@ async function getBrandComparisonData(sessionId?: string, promptType?: string, p
   })
 }
 
+// ─── Competitive analysis ───────────────────────────────────────────────────
+// Your brand vs the project's tracked competitors over the same canonical
+// prompts as the rest of the dashboard. Null when no competitors are tracked.
+
+async function getCompetitiveData(sessionId?: string, promptType?: string, projectId?: string, careLevel?: string) {
+  const viewer = await getViewer()
+  if (!viewer) return null
+  const project = await getActiveProject()
+  const competitorWhere = competitorScope(project?.id, viewer.id)
+
+  const scope = await promptScope()
+  const canonicalWhere = {
+    ...scope,
+    ...(promptType ? { promptType } : {}),
+    ...(projectId ? { batchId: projectId } : {}),
+    ...(careLevel ? { levelOfCare: careLevel } : {}),
+  }
+  const canonicalIds = (
+    await prisma.prompt.findMany({ distinct: ['promptText'], orderBy: { createdAt: 'asc' }, where: canonicalWhere, select: { id: true } })
+  ).map((r) => r.id)
+  const resultWhere = { promptId: { in: canonicalIds }, ...(sessionId ? { runSessionId: sessionId } : {}) }
+
+  const [leaderboard, competitors] = await Promise.all([
+    getCompetitorLeaderboard(canonicalIds, competitorWhere, sessionId),
+    prisma.competitor.findMany({ where: { ...competitorWhere, active: true }, select: { id: true, brandName: true, domain: true } }),
+  ])
+  if (!leaderboard || competitors.length === 0) return null
+
+  const [citationSources, gaps, brandTrend] = await Promise.all([
+    getCitationSources(resultWhere, competitors),
+    getVisibilityGaps(resultWhere),
+    sessionId ? Promise.resolve([]) : getBrandTrendSeries({ id: { in: canonicalIds } }).catch(() => []),
+  ])
+  return { leaderboard, citationSources, gaps, brandTrend }
+}
+
 // ─── Sentiment breakdown ────────────────────────────────────────────────────
 
 async function getSentimentRows(sessionId?: string, promptType?: string, projectId?: string, careLevel?: string): Promise<{ sentiment: string; isMentioned: boolean }[]> {
+  const scope = await promptScope()
   const canonicalWhere = {
+    ...scope,
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
@@ -492,7 +552,7 @@ async function getSentimentRows(sessionId?: string, promptType?: string, project
   const canonicalIds = (
     await prisma.prompt.findMany({
       distinct: ['promptText'],
-      where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
+      where: canonicalWhere,
       select: { id: true },
     })
   ).map((r) => r.id)
@@ -509,7 +569,9 @@ async function getSentimentRows(sessionId?: string, promptType?: string, project
 }
 
 async function getCompetitorSentimentRows(competitorId: string, sessionId?: string, promptType?: string, projectId?: string, careLevel?: string): Promise<{ sentiment: string; isMentioned: boolean }[]> {
+  const scope = await promptScope()
   const canonicalWhere = {
+    ...scope,
     ...(promptType ? { promptType } : {}),
     ...(projectId ? { batchId: projectId } : {}),
     ...(careLevel ? { levelOfCare: careLevel } : {}),
@@ -517,7 +579,7 @@ async function getCompetitorSentimentRows(competitorId: string, sessionId?: stri
   const canonicalIds = (
     await prisma.prompt.findMany({
       distinct: ['promptText'],
-      where: Object.keys(canonicalWhere).length > 0 ? canonicalWhere : undefined,
+      where: canonicalWhere,
       select: { id: true },
     })
   ).map((r) => r.id)
@@ -548,14 +610,15 @@ export default async function DashboardPage({
   let data: Awaited<ReturnType<typeof getDashboardData>> | null = null
   let trendData: TrendPoint[] = []
   let sessions: SessionOption[] = []
-  let projects: Awaited<ReturnType<typeof getProjectList>> = []
+  let promptSets: Awaited<ReturnType<typeof getPromptSetList>> = []
   let competitorOptions: Awaited<ReturnType<typeof getCompetitorOptions>> = []
   let brandComparison: Awaited<ReturnType<typeof getBrandComparisonData>> | null = null
   let sitemapAnalysis: SitemapAnalysis | null = null
   let sentimentRows: { sentiment: string; isMentioned: boolean }[] = []
   let careLevelOptions: string[] = []
+  let competitive: Awaited<ReturnType<typeof getCompetitiveData>> = null
   try {
-    ;[data, trendData, sessions, projects, competitorOptions, brandComparison, sentimentRows, careLevelOptions] = await Promise.all([
+    ;[data, trendData, sessions, promptSets, competitorOptions, brandComparison, sentimentRows, careLevelOptions] = await Promise.all([
       competitorId
         ? getCompetitorDashboardData(competitorId, sessionId, promptType, projectId, careLevel)
         : getDashboardData(sessionId, promptType, projectId, careLevel),
@@ -563,7 +626,7 @@ export default async function DashboardPage({
         ? getCompetitorTrendData(competitorId, promptType, projectId, careLevel)
         : getTrendData(promptType, projectId, careLevel),
       getSessionList(projectId),
-      getProjectList(),
+      getPromptSetList(),
       getCompetitorOptions(promptType, projectId, careLevel).catch(() => []),
       getBrandComparisonData(sessionId, promptType, projectId, careLevel).catch(() => null),
       competitorId
@@ -571,12 +634,21 @@ export default async function DashboardPage({
         : getSentimentRows(sessionId, promptType, projectId, careLevel),
       getCareLevelOptions(promptType, projectId).catch(() => []),
     ])
+    competitive = await getCompetitiveData(sessionId, promptType, projectId, careLevel).catch(() => null)
   } catch {
     // DB not configured — show empty state
   }
   // Optimization Priority is about your own site's schema/indexing health,
   // not mention data — always your own brand's, regardless of the "Viewing" picker.
-  if (data && !competitorId) {
+  // The GSC/sitemap data is the Senior Lifestyle site's until it moves onto Project,
+  // so it's only shown in that project, and only to people allowed to see it.
+  const viewer = await getViewer().catch(() => null)
+  const activeProject = await getActiveProject().catch(() => null)
+  const showSiteHealth = activeProject?.primaryDomain === YOUR_BRAND_DOMAIN
+  const labels = await getSegmentLabels().catch(() => PRESET_LABELS['senior-living'])
+  // The deployment's tagline is written for its main industry; other projects get neutral wording.
+  const tagline = labels.preset === 'senior-living' ? APP_DASHBOARD_TAGLINE : 'AI mention and citation monitoring for this brand'
+  if (data && !competitorId && viewer && showSiteHealth && (await canViewSiteHealth(viewer).catch(() => false))) {
     try {
       const [gscMetrics, crawlResults] = await Promise.all([
         getGscMetrics().catch(() => undefined),
@@ -592,16 +664,16 @@ export default async function DashboardPage({
     return (
       <div>
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Dashboard</h1>
-          <p className="text-[#5a7a85] mt-1 text-sm">AI mention and citation monitoring across your senior living portfolio</p>
+          <h1 className="text-2xl font-bold text-(--c-ink)" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>{activeProject?.name ?? 'Dashboard'}</h1>
+          <p className="text-(--c-muted) mt-1 text-sm">{tagline}</p>
         </div>
-        <EmptyDashboard />
+        {activeProject ? <EmptyDashboard /> : <NoProject canCreate={!!viewer && canCreateProjects(viewer)} />}
       </div>
     )
   }
 
   const currentSession = sessions.find((s) => s.id === sessionId)
-  const currentProject = projects.find((p) => p.id === projectId)
+  const currentPromptSet = promptSets.find((p) => p.id === projectId)
   const currentCompetitor = competitorOptions.find((c) => c.id === competitorId)
   const exportSessionId = !competitorId ? sessionId ?? (sessions.length === 1 ? sessions[0]?.id : undefined) : undefined
 
@@ -617,19 +689,19 @@ export default async function DashboardPage({
       {/* Page header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>
-            {currentProject ? currentProject.name : 'Dashboard'}
+          <h1 className="text-2xl font-bold text-(--c-ink)" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>
+            {activeProject?.name ?? 'Dashboard'}
           </h1>
-          <p className="text-[#5a7a85] mt-1 text-sm">
+          <p className="text-(--c-muted) mt-1 text-sm">
             {currentSession
               ? `Showing data from ${new Date(currentSession.startedAt).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`
-              : currentProject
-              ? 'AI mention and citation monitoring for this project'
-              : 'AI mention and citation monitoring across your senior living portfolio'}
+              : currentPromptSet
+              ? `Prompt set: ${currentPromptSet.name}`
+              : tagline}
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <ProjectPicker projects={projects} currentProjectId={projectId} promptType={promptType} />
+          <PromptSetPicker promptSets={promptSets} currentSetId={projectId} promptType={promptType} />
           <PromptTypeToggle value={promptTypeParam} basePath="/dashboard" sessionId={sessionId} projectId={projectId} />
           <RunSessionPicker sessions={sessions} currentSessionId={sessionId} projectId={projectId} promptType={promptType} />
           <CompetitorViewPicker
@@ -643,9 +715,9 @@ export default async function DashboardPage({
       </div>
 
       {currentCompetitor && (
-        <div className="bg-[#e6f2f5] border border-[#b8d8e0] rounded-xl p-4 mb-6 flex items-center gap-3">
-          <Users className="h-4 w-4 text-[#177e89] flex-shrink-0" />
-          <p className="text-sm text-[#084c61]">
+        <div className="bg-(--c-tint) border border-(--c-accent-faint) rounded-xl p-4 mb-6 flex items-center gap-3">
+          <Users className="h-4 w-4 text-(--c-accent) flex-shrink-0" />
+          <p className="text-sm text-(--c-ink)">
             Showing AI-visibility data for <span className="font-semibold">{currentCompetitor.brandName}</span> — a tracked competitor, not your own brand.
             Optimization Priority and citation URLs aren&apos;t available in this view.
           </p>
@@ -656,8 +728,8 @@ export default async function DashboardPage({
         {/* Hero stat strip */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <StatCard
-            icon={<BarChart3 className="h-5 w-5 text-[#084c61]" />}
-            iconBg="bg-[#e6f2f5]"
+            icon={<BarChart3 className="h-5 w-5 text-(--c-ink)" />}
+            iconBg="bg-(--c-tint)"
             label="Prompts Analyzed"
             value={data.overview.totalPrompts.toLocaleString()}
           />
@@ -670,16 +742,16 @@ export default async function DashboardPage({
             subtextColor={rateTextColor(data.overview.overallMentionRate)}
           />
           <StatCard
-            icon={<Quote className="h-5 w-5 text-[#177e89]" />}
-            iconBg="bg-[#e6f2f5]"
+            icon={<Quote className="h-5 w-5 text-(--c-accent)" />}
+            iconBg="bg-(--c-tint)"
             label="Overall Citation Rate"
             value={formatPercent(data.overview.overallCitationRate)}
             subtext={rateLabel(data.overview.overallCitationRate)}
             subtextColor={rateTextColor(data.overview.overallCitationRate)}
           />
           <StatCard
-            icon={<Layers className="h-5 w-5 text-[#084c61]" />}
-            iconBg="bg-[#e6f2f5]"
+            icon={<Layers className="h-5 w-5 text-(--c-ink)" />}
+            iconBg="bg-(--c-tint)"
             label="Platforms Monitored"
             value={String(PLATFORMS.length)}
             subtext="AI platforms"
@@ -690,12 +762,14 @@ export default async function DashboardPage({
         <Tabs defaultValue="overview">
           <TabsList className="mb-6">
             <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="competitors">Competitors</TabsTrigger>
             <TabsTrigger value="trends">Trends</TabsTrigger>
-            <TabsTrigger value="community">By Community</TabsTrigger>
-            <TabsTrigger value="category">By Category</TabsTrigger>
-            <TabsTrigger value="careLevel">By Level of Care</TabsTrigger>
-            <TabsTrigger value="market">By Market</TabsTrigger>
-            <TabsTrigger value="optimization" disabled={!!competitorId}>Optimization Priority</TabsTrigger>
+            {/* Segment tabs only appear when the project's prompts are tagged with that dimension. */}
+            {data.communityStats.length > 0 && <TabsTrigger value="community">By {labels.entity}</TabsTrigger>}
+            {data.categoryStats.length > 0 && <TabsTrigger value="category">By {labels.category}</TabsTrigger>}
+            {data.careLevelStats.length > 0 && <TabsTrigger value="careLevel">By {labels.levelOfCare}</TabsTrigger>}
+            {data.marketStats.length > 0 && <TabsTrigger value="market">By {labels.market}</TabsTrigger>}
+            {showSiteHealth && <TabsTrigger value="optimization" disabled={!!competitorId}>Optimization Priority</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="overview">
@@ -705,7 +779,7 @@ export default async function DashboardPage({
                   <a
                     href={`/api/export?session=${exportSessionId}`}
                     download
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#dde6ea] text-xs font-medium text-[#5a7a85] hover:bg-[#f0f5f7] transition-colors"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-(--c-line) text-xs font-medium text-(--c-muted) hover:bg-(--c-surface-2) transition-colors"
                   >
                     <Download className="h-3.5 w-3.5" />
                     Export run
@@ -714,7 +788,7 @@ export default async function DashboardPage({
               )}
               {brandComparison && brandComparison.brands.length > 1 ? (
                 <div>
-                  <h2 className="text-sm font-semibold text-[#084c61] mb-4">Mention & Citation Rate by Brand</h2>
+                  <h2 className="text-sm font-semibold text-(--c-ink) mb-4">Mention & Citation Rate by Brand</h2>
                   <BrandScorecards brands={brandComparison.brands} promptCount={data.overview.totalPrompts} />
                 </div>
               ) : (
@@ -724,9 +798,9 @@ export default async function DashboardPage({
               )}
               <SectionCard title="Top Citation URLs">
                 {competitorId ? (
-                  <p className="text-sm text-[#8aadb8]">Citation URLs are only tracked for your own brand — the citation rate above still reflects this competitor.</p>
+                  <p className="text-sm text-(--c-subtle)">Citation URLs are only tracked for your own brand — the citation rate above still reflects this competitor.</p>
                 ) : data.topCitationUrls.length === 0 ? (
-                  <p className="text-sm text-[#8aadb8]">No citations recorded yet.</p>
+                  <p className="text-sm text-(--c-subtle)">No citations recorded yet.</p>
                 ) : (
                   <div className="space-y-2">
                     {data.topCitationUrls.map(({ url, title, count }) => {
@@ -738,14 +812,14 @@ export default async function DashboardPage({
                           href={url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-3 p-2.5 rounded-lg bg-[#f5f8fa] hover:bg-[#e6f2f5] transition-colors group"
+                          className="flex items-center gap-3 p-2.5 rounded-lg bg-(--c-surface) hover:bg-(--c-tint) transition-colors group"
                         >
-                          <ExternalLink className="h-3.5 w-3.5 text-[#8aadb8] flex-shrink-0 group-hover:text-[#177e89] transition-colors" />
+                          <ExternalLink className="h-3.5 w-3.5 text-(--c-subtle) flex-shrink-0 group-hover:text-(--c-accent) transition-colors" />
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-[#084c61] truncate">{title}</p>
-                            {domain && <p className="text-[10px] text-[#8aadb8]">{domain}</p>}
+                            <p className="text-xs font-medium text-(--c-ink) truncate">{title}</p>
+                            {domain && <p className="text-[10px] text-(--c-subtle)">{domain}</p>}
                           </div>
-                          <span className="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#e6f2f5] text-[#084c61]">
+                          <span className="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-(--c-tint) text-(--c-ink)">
                             {count}
                           </span>
                         </a>
@@ -756,6 +830,30 @@ export default async function DashboardPage({
               </SectionCard>
               <SentimentBreakdown results={sentimentRows} />
             </div>
+          </TabsContent>
+
+          <TabsContent value="competitors">
+            {competitive ? (
+              <div className="space-y-6">
+                <CompetitorComparison entries={competitive.leaderboard} />
+                <ShareOfVoiceByPlatform entries={competitive.leaderboard} />
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+                  <CitationSourcesCard sources={competitive.citationSources} entries={competitive.leaderboard} />
+                  <VisibilityGapsTable gaps={competitive.gaps} entityLabel={labels.entity} />
+                </div>
+                {competitive.brandTrend.length > 1 && competitive.brandTrend[0].points.length > 1 && (
+                  <BrandTrendChart brands={competitive.brandTrend} />
+                )}
+              </div>
+            ) : (
+              <SectionCard title="Competitors">
+                <p className="text-sm text-(--c-muted)">
+                  No competitors are tracked for this project yet.{' '}
+                  <Link href="/competitors" className="text-(--c-accent) font-medium hover:underline">Add competitors</Link>{' '}
+                  to compare share of voice, citations and gaps — they&apos;re scored from the next run onward.
+                </p>
+              </SectionCard>
+            )}
           </TabsContent>
 
           <TabsContent value="trends">
@@ -769,6 +867,7 @@ export default async function DashboardPage({
             <div className="space-y-4">
               <div className="flex justify-end">
                 <CareLevelPicker
+                  label={labels.levelOfCare}
                   levels={careLevelOptions}
                   currentLevel={careLevel}
                   basePath="/dashboard"
@@ -790,7 +889,7 @@ export default async function DashboardPage({
                     href={`/dashboard/community/${encodeURIComponent(slugify(c.communityName))}${drillQuery}`}
                   />
                 )}
-                empty="No community data available"
+                empty={`No ${labels.entity.toLowerCase()} data available`}
               />
             </div>
           </TabsContent>
@@ -799,6 +898,7 @@ export default async function DashboardPage({
             <div className="space-y-4">
               <div className="flex justify-end">
                 <CareLevelPicker
+                  label={labels.levelOfCare}
                   levels={careLevelOptions}
                   currentLevel={careLevel}
                   basePath="/dashboard"
@@ -819,7 +919,7 @@ export default async function DashboardPage({
                     href={`/dashboard/category/${encodeURIComponent(c.category)}${drillQuery}`}
                   />
                 )}
-                empty="No category data available"
+                empty={`No ${labels.category.toLowerCase()} data available`}
               />
             </div>
           </TabsContent>
@@ -837,7 +937,7 @@ export default async function DashboardPage({
                   href={`/dashboard/care-level/${encodeURIComponent(c.levelOfCare)}${drillQuery}`}
                 />
               )}
-              empty="No care level data available"
+              empty={`No ${labels.levelOfCare.toLowerCase()} data available`}
             />
           </TabsContent>
 
@@ -845,6 +945,7 @@ export default async function DashboardPage({
             <div className="space-y-4">
               <div className="flex justify-end">
                 <CareLevelPicker
+                  label={labels.levelOfCare}
                   levels={careLevelOptions}
                   currentLevel={careLevel}
                   basePath="/dashboard"
@@ -865,7 +966,7 @@ export default async function DashboardPage({
                     href={`/dashboard/market/${encodeURIComponent(m.market)}${drillQuery}`}
                   />
                 )}
-                empty="No market data available"
+                empty={`No ${labels.market.toLowerCase()} data available`}
               />
             </div>
           </TabsContent>
@@ -873,13 +974,13 @@ export default async function DashboardPage({
           <TabsContent value="optimization">
             {competitorId ? (
               <SectionCard title="Optimization Priority">
-                <p className="text-sm text-[#8aadb8]">This tab reflects your own site&apos;s pages and isn&apos;t available while viewing a competitor. Switch back to Your Brand above.</p>
+                <p className="text-sm text-(--c-subtle)">This tab reflects your own site&apos;s pages and isn&apos;t available while viewing a competitor. Switch back to Your Brand above.</p>
               </SectionCard>
             ) : sitemapAnalysis ? (
               <OptimizationPriorityTable {...sitemapAnalysis} />
             ) : (
               <SectionCard title="Optimization Priority">
-                <p className="text-sm text-[#8aadb8]">Sitemap analysis unavailable.</p>
+                <p className="text-sm text-(--c-subtle)">Sitemap analysis unavailable.</p>
               </SectionCard>
             )}
           </TabsContent>
@@ -907,14 +1008,14 @@ function StatCard({
   subtextColor?: string
 }) {
   return (
-    <div className="bg-white rounded-xl border border-[#dde6ea] p-5">
+    <div className="bg-white rounded-xl border border-(--c-line) p-5">
       <div className="flex items-center gap-3 mb-3">
         <div className={`p-2 rounded-lg ${iconBg}`}>{icon}</div>
-        <p className="text-xs font-medium text-[#5a7a85]">{label}</p>
+        <p className="text-xs font-medium text-(--c-muted)">{label}</p>
       </div>
-      <p className="text-3xl font-bold text-[#084c61] leading-none">{value}</p>
+      <p className="text-3xl font-bold text-(--c-ink) leading-none">{value}</p>
       {subtext && (
-        <p className={`text-xs mt-1.5 font-medium ${subtextColor ?? 'text-[#8aadb8]'}`}>{subtext}</p>
+        <p className={`text-xs mt-1.5 font-medium ${subtextColor ?? 'text-(--c-subtle)'}`}>{subtext}</p>
       )}
     </div>
   )
@@ -922,8 +1023,8 @@ function StatCard({
 
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
-      <h2 className="text-sm font-semibold text-[#084c61] mb-4">{title}</h2>
+    <div className="bg-white rounded-xl border border-(--c-line) p-6">
+      <h2 className="text-sm font-semibold text-(--c-ink) mb-4">{title}</h2>
       {children}
     </div>
   )
@@ -940,8 +1041,8 @@ function TabGrid<T>({
 }) {
   if (items.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-[#dde6ea] py-12 text-center">
-        <p className="text-[#8aadb8] text-sm">{empty}</p>
+      <div className="bg-white rounded-xl border border-(--c-line) py-12 text-center">
+        <p className="text-(--c-subtle) text-sm">{empty}</p>
       </div>
     )
   }
@@ -952,10 +1053,31 @@ function TabGrid<T>({
   )
 }
 
+function NoProject({ canCreate }: { canCreate: boolean }) {
+  return (
+    <div className="bg-white rounded-2xl border border-(--c-line) px-8 py-12 text-center">
+      <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-(--c-tint) mb-4">
+        <Layers className="h-7 w-7 text-(--c-accent)" />
+      </div>
+      <h2 className="text-xl font-bold text-(--c-ink) mb-1" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>No projects yet</h2>
+      <p className="text-(--c-muted) text-sm max-w-md mx-auto mb-6">
+        {canCreate
+          ? 'A project tracks one brand in AI answers — its names, its domain, and the competitors to compare it against.'
+          : 'Once a project is shared with you, its results will appear here.'}
+      </p>
+      {canCreate && (
+        <Link href="/projects/new" className="inline-flex items-center gap-2 rounded-lg bg-(--c-ink) px-4 py-2 text-sm font-medium text-white hover:bg-(--c-ink-hover)">
+          Create your first project <ArrowRight className="h-4 w-4" />
+        </Link>
+      )}
+    </div>
+  )
+}
+
 function EmptyDashboard() {
   return (
-    <div className="bg-white rounded-2xl border border-[#dde6ea] overflow-hidden">
-      <div className="px-8 py-12 text-center" style={{ background: 'linear-gradient(135deg, #084c61 0%, #054166 100%)' }}>
+    <div className="bg-white rounded-2xl border border-(--c-line) overflow-hidden">
+      <div className="px-8 py-12 text-center" style={{ background: 'linear-gradient(135deg, var(--c-ink) 0%, var(--c-ink-hover) 100%)' }}>
         <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-white/10 backdrop-blur mb-4">
           <BarChart3 className="h-7 w-7 text-white" />
         </div>
@@ -966,12 +1088,12 @@ function EmptyDashboard() {
       </div>
 
       <div className="px-8 py-8">
-        <p className="text-xs font-semibold text-[#8aadb8] uppercase tracking-wider mb-5">Get started in 2 steps</p>
+        <p className="text-xs font-semibold text-(--c-subtle) uppercase tracking-wider mb-5">Get started in 2 steps</p>
         <div className="grid sm:grid-cols-2 gap-4">
           <StepCard
             step="1"
             title="Upload your prompts"
-            description="Upload an .xlsx or .csv file with prompt text, community names, care levels, markets, and categories."
+            description="Upload an .xlsx or .csv file of the prompts to track, tagged with the location, service, market and category each one is about."
             href="/upload"
             cta="Upload spreadsheet"
           />
@@ -1004,16 +1126,16 @@ function StepCard({
   return (
     <a
       href={href}
-      className="group block p-5 rounded-xl border border-[#dde6ea] hover:border-[#177e89] hover:shadow-sm transition-all"
+      className="group block p-5 rounded-xl border border-(--c-line) hover:border-(--c-accent) hover:shadow-sm transition-all"
     >
       <div className="flex items-center gap-3 mb-3">
-        <span className="inline-flex items-center justify-center h-7 w-7 rounded-full text-white text-xs font-bold flex-shrink-0" style={{ background: '#084c61' }}>
+        <span className="inline-flex items-center justify-center h-7 w-7 rounded-full text-white text-xs font-bold flex-shrink-0" style={{ background: 'var(--c-ink)' }}>
           {step}
         </span>
-        <h3 className="font-semibold text-[#084c61] text-sm">{title}</h3>
+        <h3 className="font-semibold text-(--c-ink) text-sm">{title}</h3>
       </div>
-      <p className="text-xs text-[#5a7a85] leading-relaxed mb-4">{description}</p>
-      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#177e89] group-hover:gap-2.5 transition-all">
+      <p className="text-xs text-(--c-muted) leading-relaxed mb-4">{description}</p>
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-(--c-accent) group-hover:gap-2.5 transition-all">
         {cta} <ArrowRight className="h-3.5 w-3.5" />
       </span>
     </a>

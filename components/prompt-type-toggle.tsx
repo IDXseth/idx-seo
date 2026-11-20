@@ -39,7 +39,7 @@ export function PromptTypeToggle({
   }
 
   return (
-    <div className="flex items-center gap-0.5 bg-[#f0f4f7] rounded-lg p-1">
+    <div className="flex items-center gap-0.5 bg-(--c-page) rounded-lg p-1">
       {OPTIONS.map(([type, label]) => (
         <button
           key={type}
@@ -47,8 +47,8 @@ export function PromptTypeToggle({
           className={cn(
             'px-3 py-1 text-xs font-medium rounded-md transition-colors',
             value === type
-              ? 'bg-white text-[#084c61] shadow-sm'
-              : 'text-[#5a7a85] hover:text-[#084c61]'
+              ? 'bg-white text-(--c-ink) shadow-sm'
+              : 'text-(--c-muted) hover:text-(--c-ink)'
           )}
         >
           {label}

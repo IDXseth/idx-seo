@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeRow } from '@/lib/normalize'
+import { normalizeRow, toGenericFields } from '@/lib/normalize'
+import { getActiveProject } from '@/lib/projects'
 
 interface CommitSuggestion {
   category?: string
@@ -37,8 +38,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'At least one prompt is required' }, { status: 400 })
   }
 
+  const project = await getActiveProject()
+  if (!project) {
+    return NextResponse.json({ error: 'Create or select a project first' }, { status: 400 })
+  }
+
+  // Skip prompts already tracked anywhere in this project
   const existingPrompts = await prisma.prompt.findMany({
-    where: { batch: { userId } },
+    where: { batch: { projectId: project.id } },
     select: { promptText: true },
   })
   const existingTexts = new Set(existingPrompts.map((p) => p.promptText))
@@ -54,7 +61,7 @@ export async function POST(req: Request) {
         market: String(market),
         levelOfCare: p.levelOfCare ?? '',
         promptText: p.promptText,
-      })
+      }, { seniorLiving: project.labels.preset === 'senior-living' })
     )
 
   const uniqueRows = rows
@@ -68,12 +75,13 @@ export async function POST(req: Request) {
       name: String(batchName).trim() || 'AI-Suggested Prompts',
       fileName: 'ai-suggested-prompts',
       userId,
+      projectId: project.id,
     },
   })
 
   if (uniqueRows.length > 0) {
     await prisma.prompt.createMany({
-      data: uniqueRows.map((r) => ({ batchId: batch.id, ...r })),
+      data: uniqueRows.map((r) => ({ batchId: batch.id, projectId: project.id, ...r, ...toGenericFields(r) })),
     })
   }
 

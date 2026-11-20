@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { canViewSiteHealth } from '@/lib/access'
+import { getActiveProject, getActiveBrand } from '@/lib/projects'
+import { PRESET_LABELS } from '@/lib/segment-labels'
+import { competitorScope } from '@/lib/competitors'
 import { generatePromptSuggestions } from '@/lib/prompt-suggestions'
 
 export const maxDuration = 60
@@ -22,8 +26,14 @@ export async function POST(req: Request) {
       count = 20,
     } = body
 
+    const [project, brand] = await Promise.all([getActiveProject(), getActiveBrand()])
+    const labels = project?.labels ?? PRESET_LABELS['senior-living']
     const result = await generatePromptSuggestions({
-      userId: session.user.id,
+      preset: labels.preset,
+      brand: { label: brand.label, domain: brand.domains[0] ?? null },
+      serviceLabel: labels.levelOfCare,
+      competitorScope: competitorScope(project?.id, session.user.id),
+      useGscQueries: await canViewSiteHealth({ id: session.user.id, email: session.user.email?.toLowerCase() ?? null }),
       communityName: String(communityName).trim(),
       city: String(city).trim(),
       market: String(market).trim(),

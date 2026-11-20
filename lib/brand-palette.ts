@@ -11,3 +11,11 @@ export const BRAND_PALETTE = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87b
 export function brandColorMap(brandIds: string[]): Map<string, string> {
   return new Map(brandIds.map((id, i) => [id, BRAND_PALETTE[i % BRAND_PALETTE.length]]))
 }
+
+// The color for a brand's fixed slot (you = 0, competitors by name = 1, 2, …).
+export function brandColor(colorIndex: number): string {
+  return BRAND_PALETTE[colorIndex % BRAND_PALETTE.length]
+}
+
+// Neutral for "everyone else" (sites that are no tracked brand) — never a palette slot.
+export const OTHER_COLOR = 'var(--c-faint)'

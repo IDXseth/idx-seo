@@ -26,7 +26,7 @@ function TooltipIcon({ text }: { text: string }) {
             transform: 'translate(-100%, -100%)',
             zIndex: 9999,
           }}
-          className="w-52 px-2.5 py-1.5 rounded-lg text-xs bg-[#084c61] text-white whitespace-normal text-center leading-snug pointer-events-none"
+          className="w-52 px-2.5 py-1.5 rounded-lg text-xs bg-(--c-ink) text-white whitespace-normal text-center leading-snug pointer-events-none"
         >
           {text}
         </div>,
@@ -105,27 +105,27 @@ function CommunityRow({
 }) {
   return (
     <>
-      <tr className="border-b border-[#f0f5f7] hover:bg-[#f9fbfc] transition-colors">
+      <tr className="border-b border-(--c-surface-2) hover:bg-(--c-surface-soft) transition-colors">
         <td className="px-4 py-3 text-center">
           {rank != null ? (
-            <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-[#084c61] text-white text-xs font-bold">
+            <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-(--c-ink) text-white text-xs font-bold">
               {rank}
             </span>
           ) : (
-            <span className="text-[#c0d5dc] text-xs">—</span>
+            <span className="text-(--c-line-strong) text-xs">—</span>
           )}
         </td>
         <td className="px-4 py-3">
-          <p className="text-sm font-medium text-[#084c61]">{c.communityName}</p>
+          <p className="text-sm font-medium text-(--c-ink)">{c.communityName}</p>
         </td>
-        <td className="px-4 py-3 text-sm text-[#5a7a85] whitespace-nowrap">{c.city}</td>
+        <td className="px-4 py-3 text-sm text-(--c-muted) whitespace-nowrap">{c.city}</td>
         <td className="px-4 py-3 text-center">
           <ScorePill score={c.visibilityScore} />
         </td>
-        <td className="px-4 py-3 text-center text-sm text-[#5a7a85]">
+        <td className="px-4 py-3 text-center text-sm text-(--c-muted)">
           {Math.round(c.mentionRate * 100)}%
         </td>
-        <td className="px-4 py-3 text-center text-sm text-[#5a7a85]">
+        <td className="px-4 py-3 text-center text-sm text-(--c-muted)">
           {Math.round(c.citationRate * 100)}%
         </td>
         <td className="px-4 py-3 text-center">
@@ -137,12 +137,12 @@ function CommunityRow({
               href={c.sitemapUrl.split('?')[0]}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center justify-center text-[#177e89] hover:text-[#084c61] transition-colors"
+              className="inline-flex items-center justify-center text-(--c-accent) hover:text-(--c-ink) transition-colors"
             >
               <ExternalLink className="h-4 w-4" />
             </a>
           ) : (
-            <span className="text-[#c0d5dc]">—</span>
+            <span className="text-(--c-line-strong)">—</span>
           )}
         </td>
         {gscEnabled && (
@@ -151,13 +151,13 @@ function CommunityRow({
               {c.gsc ? (
                 <GscIndexBadge isIndexed={c.gsc.isIndexed} />
               ) : (
-                <span className="text-[#c0d5dc] text-xs">—</span>
+                <span className="text-(--c-line-strong) text-xs">—</span>
               )}
             </td>
-            <td className="px-4 py-3 text-center text-sm text-[#5a7a85]">
+            <td className="px-4 py-3 text-center text-sm text-(--c-muted)">
               {c.gsc ? c.gsc.impressions.toLocaleString() : '—'}
             </td>
-            <td className="px-4 py-3 text-center text-sm text-[#5a7a85]">
+            <td className="px-4 py-3 text-center text-sm text-(--c-muted)">
               {c.gsc?.position != null ? c.gsc.position.toFixed(1) : '—'}
             </td>
           </>
@@ -249,14 +249,14 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
     <div className="space-y-6">
       {/* GSC banner — GscSiteSelector handles connect vs domain-pick internally */}
       {!gscEnabled && (
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4 bg-[#f0f5f7] border border-[#dde6ea] rounded-xl p-4">
-          <BarChart2 className="h-5 w-5 text-[#177e89] flex-shrink-0" />
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 bg-(--c-surface-2) border border-(--c-line) rounded-xl p-4">
+          <BarChart2 className="h-5 w-5 text-(--c-accent) flex-shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-[#084c61]">Connect Google Search Console</p>
-            <p className="text-xs text-[#5a7a85] mt-0.5">
+            <p className="text-sm font-semibold text-(--c-ink)">Connect Google Search Console</p>
+            <p className="text-xs text-(--c-muted) mt-0.5">
               Unlock index status, organic impressions, and position data per community. Scores will use the
               enhanced formula:{' '}
-              <span className="font-mono text-[#084c61]">mention×0.35 + citation×0.35 + impressions×0.15 + indexed×0.15</span>
+              <span className="font-mono text-(--c-ink)">mention×0.35 + citation×0.35 + impressions×0.15 + indexed×0.15</span>
             </p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -264,7 +264,7 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
             <button
               onClick={handleSync}
               disabled={syncing}
-              className="px-4 py-2 rounded-lg bg-[#084c61] text-white text-xs font-semibold hover:bg-[#177e89] disabled:opacity-50 transition-colors whitespace-nowrap"
+              className="px-4 py-2 rounded-lg bg-(--c-ink) text-white text-xs font-semibold hover:bg-(--c-accent) disabled:opacity-50 transition-colors whitespace-nowrap"
             >
               {syncing ? 'Syncing…' : 'Sync now'}
             </button>
@@ -290,7 +290,7 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
         </div>
       )}
       {syncMsg && (
-        <p className="text-xs text-[#5a7a85] px-1">{syncMsg}</p>
+        <p className="text-xs text-(--c-muted) px-1">{syncMsg}</p>
       )}
 
       {/* Error banner */}
@@ -312,16 +312,16 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
           { label: 'Missing a Page', value: summary.noPage, color: 'text-rose-500' },
           { label: 'Not Yet Tracked', value: summary.notTracked, color: 'text-gray-400' },
         ].map((s) => (
-          <div key={s.label} className="bg-white rounded-xl border border-[#dde6ea] p-4">
-            <p className="text-xs font-medium text-[#5a7a85] mb-1">{s.label}</p>
-            <p className={`text-2xl font-bold ${s.color ?? 'text-[#084c61]'}`}>{s.value}</p>
+          <div key={s.label} className="bg-white rounded-xl border border-(--c-line) p-4">
+            <p className="text-xs font-medium text-(--c-muted) mb-1">{s.label}</p>
+            <p className={`text-2xl font-bold ${s.color ?? 'text-(--c-ink)'}`}>{s.value}</p>
           </div>
         ))}
       </div>
 
-      <div className="bg-white rounded-xl border border-[#dde6ea] overflow-hidden">
+      <div className="bg-white rounded-xl border border-(--c-line) overflow-hidden">
         {/* Controls */}
-        <div className="px-5 pt-5 pb-4 flex flex-col sm:flex-row sm:items-center gap-3 border-b border-[#f0f5f7]">
+        <div className="px-5 pt-5 pb-4 flex flex-col sm:flex-row sm:items-center gap-3 border-b border-(--c-surface-2)">
           {/* Filter tabs */}
           <div className="flex gap-1 flex-wrap">
             {filterTabs.map((t) => (
@@ -330,12 +330,12 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
                 onClick={() => setFilter(t.key)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                   filter === t.key
-                    ? 'bg-[#084c61] text-white'
-                    : 'bg-[#f0f5f7] text-[#5a7a85] hover:bg-[#e4edf0]'
+                    ? 'bg-(--c-ink) text-white'
+                    : 'bg-(--c-surface-2) text-(--c-muted) hover:bg-(--c-line-soft-2)'
                 }`}
               >
                 {t.label}
-                <span className={`ml-1.5 ${filter === t.key ? 'text-white/70' : 'text-[#8aadb8]'}`}>
+                <span className={`ml-1.5 ${filter === t.key ? 'text-white/70' : 'text-(--c-subtle)'}`}>
                   {t.count}
                 </span>
               </button>
@@ -344,11 +344,11 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
 
           {/* Sort */}
           <div className="sm:ml-auto flex items-center gap-2">
-            <span className="text-xs text-[#8aadb8]">Sort:</span>
+            <span className="text-xs text-(--c-subtle)">Sort:</span>
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as SortKey)}
-              className="text-xs border border-[#dde6ea] rounded-lg px-2.5 py-1.5 text-[#084c61] bg-white focus:outline-none focus:ring-1 focus:ring-[#177e89]"
+              className="text-xs border border-(--c-line) rounded-lg px-2.5 py-1.5 text-(--c-ink) bg-white focus:outline-none focus:ring-1 focus:ring-(--c-accent)"
             >
               <option value="priority">Priority (default)</option>
               <option value="score_asc">Score: Low → High</option>
@@ -362,11 +362,11 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px]">
             <thead>
-              <tr className="border-b border-[#f0f5f7]">
+              <tr className="border-b border-(--c-surface-2)">
                 {headers.map(({ label, tooltip }) => (
                   <th
                     key={label}
-                    className="px-4 py-3 text-xs font-semibold text-[#8aadb8] uppercase tracking-wider text-center"
+                    className="px-4 py-3 text-xs font-semibold text-(--c-subtle) uppercase tracking-wider text-center"
                   >
                     {tooltip ? (
                       <span className="inline-flex items-center justify-center gap-1">
@@ -385,7 +385,7 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
                 <tr>
                   <td
                     colSpan={gscEnabled ? 11 : 8}
-                    className="px-4 py-10 text-center text-sm text-[#8aadb8]"
+                    className="px-4 py-10 text-center text-sm text-(--c-subtle)"
                   >
                     No communities match this filter.
                   </td>
@@ -406,21 +406,21 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
 
         {/* Untracked pages section */}
         {filter === 'not_tracked' && untrackedPages.length > 0 && (
-          <div className="border-t border-[#f0f5f7] px-5 py-4">
-            <p className="text-xs font-semibold text-[#5a7a85] mb-3">
+          <div className="border-t border-(--c-surface-2) px-5 py-4">
+            <p className="text-xs font-semibold text-(--c-muted) mb-3">
               Sitemap pages not yet in monitoring ({untrackedPages.length})
             </p>
             <ul className="space-y-1.5">
               {untrackedPages.map((p) => (
                 <li key={p.url} className="flex items-center gap-2">
-                  <span className="text-xs text-[#5a7a85] truncate">{p.communitySlug}</span>
-                  <span className="text-[#c0d5dc] text-xs">/</span>
-                  <span className="text-xs text-[#8aadb8]">{p.citySlug}</span>
+                  <span className="text-xs text-(--c-muted) truncate">{p.communitySlug}</span>
+                  <span className="text-(--c-line-strong) text-xs">/</span>
+                  <span className="text-xs text-(--c-subtle)">{p.citySlug}</span>
                   <a
                     href={p.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[#177e89] hover:text-[#084c61] ml-auto flex-shrink-0"
+                    className="text-(--c-accent) hover:text-(--c-ink) ml-auto flex-shrink-0"
                   >
                     <ExternalLink className="h-3.5 w-3.5" />
                   </a>
@@ -431,8 +431,8 @@ export function OptimizationPriorityTable({ communities, untrackedPages, summary
         )}
 
         {/* Freshness note */}
-        <div className="px-5 py-3 border-t border-[#f0f5f7] bg-[#f9fbfc]">
-          <p className="text-xs text-[#8aadb8]">
+        <div className="px-5 py-3 border-t border-(--c-surface-2) bg-(--c-surface-soft)">
+          <p className="text-xs text-(--c-subtle)">
             Sitemap last fetched:{' '}
             {new Date(fetchedAt).toLocaleString('en-US', {
               month: 'short',

@@ -18,7 +18,15 @@ function emptyRow(): CompetitorRow {
   return { brandName: '', domain: '', aliases: '', active: true, dirty: true }
 }
 
-export function CompetitorsManager({ promptCount }: { promptCount: number }) {
+export function CompetitorsManager({
+  promptCount,
+  projectName,
+  canEdit,
+}: {
+  promptCount: number
+  projectName: string | null
+  canEdit: boolean
+}) {
   const [rows, setRows] = useState<CompetitorRow[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -89,9 +97,18 @@ export function CompetitorsManager({ promptCount }: { promptCount: number }) {
     }
   }
 
+  if (!projectName) {
+    return (
+      <div className="text-center py-24">
+        <p className="text-(--c-ink) font-semibold">No project selected</p>
+        <p className="text-sm text-(--c-muted) mt-1">Competitors are tracked per project. Create or select a project first.</p>
+      </div>
+    )
+  }
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24 text-[#8aadb8]">
+      <div className="flex items-center justify-center py-24 text-(--c-subtle)">
         <Loader2 className="h-5 w-5 animate-spin" />
       </div>
     )
@@ -100,13 +117,18 @@ export function CompetitorsManager({ promptCount }: { promptCount: number }) {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Track Competitors</h1>
-        <p className="text-[#5a7a85] mt-1 text-sm">Add named competitors to monitor their mentions, citations, and sentiment alongside your own.</p>
+        <h1 className="text-2xl font-bold text-(--c-ink)" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Track Competitors</h1>
+        <p className="text-(--c-muted) mt-1 text-sm">
+          Competitors tracked for <span className="font-semibold text-(--c-ink)">{projectName}</span> — their mentions, citations, and sentiment alongside your own.
+        </p>
+        {!canEdit && (
+          <p className="text-xs text-(--c-subtle) mt-2">Only the project owner can change this list.</p>
+        )}
       </div>
 
-      <div className="bg-[#e6f2f5] border border-[#b8d8e0] rounded-xl p-4 mb-6 flex gap-3">
-        <Info className="h-4 w-4 text-[#177e89] flex-shrink-0 mt-0.5" />
-        <p className="text-sm text-[#084c61] leading-relaxed">
+      <div className="bg-(--c-tint) border border-(--c-accent-faint) rounded-xl p-4 mb-6 flex gap-3">
+        <Info className="h-4 w-4 text-(--c-accent) flex-shrink-0 mt-0.5" />
+        <p className="text-sm text-(--c-ink) leading-relaxed">
           <span className="font-semibold">Applied to your existing prompt set — </span>
           These competitors will be evaluated against the{' '}
           <span className="font-semibold">{promptCount.toLocaleString()} prompt{promptCount !== 1 ? 's' : ''}</span>{' '}
@@ -122,12 +144,13 @@ export function CompetitorsManager({ promptCount }: { promptCount: number }) {
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-[#dde6ea] overflow-hidden mb-4">
-        <div className="grid grid-cols-[1.3fr_1.3fr_1.6fr_0.7fr_32px] gap-3.5 px-5 py-3 bg-[#f5f8fa] border-b border-[#eef3f5]">
-          <span className="text-[10px] font-bold text-[#8aadb8] uppercase tracking-wide">Competitor Brand</span>
-          <span className="text-[10px] font-bold text-[#8aadb8] uppercase tracking-wide">Domain</span>
-          <span className="text-[10px] font-bold text-[#8aadb8] uppercase tracking-wide">Aliases / AKA</span>
-          <span className="text-[10px] font-bold text-[#8aadb8] uppercase tracking-wide">Tracking</span>
+      <fieldset disabled={!canEdit} className="contents">
+      <div className="bg-white rounded-xl border border-(--c-line) overflow-hidden mb-4">
+        <div className="grid grid-cols-[1.3fr_1.3fr_1.6fr_0.7fr_32px] gap-3.5 px-5 py-3 bg-(--c-surface) border-b border-(--c-line-soft)">
+          <span className="text-[10px] font-bold text-(--c-subtle) uppercase tracking-wide">Competitor Brand</span>
+          <span className="text-[10px] font-bold text-(--c-subtle) uppercase tracking-wide">Domain</span>
+          <span className="text-[10px] font-bold text-(--c-subtle) uppercase tracking-wide">Aliases / AKA</span>
+          <span className="text-[10px] font-bold text-(--c-subtle) uppercase tracking-wide">Tracking</span>
           <span />
         </div>
 
@@ -136,7 +159,7 @@ export function CompetitorsManager({ promptCount }: { promptCount: number }) {
             key={row.id ?? `new-${idx}`}
             className={cn(
               'grid grid-cols-[1.3fr_1.3fr_1.6fr_0.7fr_32px] gap-3.5 items-center px-5 py-3',
-              idx !== rows.length - 1 && 'border-b border-[#eef3f5]',
+              idx !== rows.length - 1 && 'border-b border-(--c-line-soft)',
               !row.active && 'opacity-55'
             )}
           >
@@ -145,16 +168,16 @@ export function CompetitorsManager({ promptCount }: { promptCount: number }) {
               value={row.brandName}
               onChange={(e) => updateRow(idx, { brandName: e.target.value })}
               placeholder="Brookdale Senior Living"
-              className="px-2.5 py-1.5 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61] focus:border-transparent"
+              className="px-2.5 py-1.5 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink) focus:border-transparent"
             />
             <div className="relative">
-              <Globe className="h-3.5 w-3.5 text-[#b8cdd3] absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <Globe className="h-3.5 w-3.5 text-(--c-faint) absolute left-2.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={row.domain}
                 onChange={(e) => updateRow(idx, { domain: e.target.value })}
                 placeholder="brookdale.com"
-                className="w-full pl-8 pr-2.5 py-1.5 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61] focus:border-transparent"
+                className="w-full pl-8 pr-2.5 py-1.5 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink) focus:border-transparent"
               />
             </div>
             <input
@@ -162,7 +185,7 @@ export function CompetitorsManager({ promptCount }: { promptCount: number }) {
               value={row.aliases}
               onChange={(e) => updateRow(idx, { aliases: e.target.value })}
               placeholder="Brookdale, Brookdale Assisted Living"
-              className="px-2.5 py-1.5 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61] focus:border-transparent"
+              className="px-2.5 py-1.5 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink) focus:border-transparent"
             />
             <button
               type="button"
@@ -171,7 +194,7 @@ export function CompetitorsManager({ promptCount }: { promptCount: number }) {
               onClick={() => updateRow(idx, { active: !row.active })}
               className={cn(
                 'w-[34px] h-[19px] rounded-full relative transition-colors flex-shrink-0',
-                row.active ? 'bg-[#177e89]' : 'bg-[#dde6ea]'
+                row.active ? 'bg-(--c-accent)' : 'bg-(--c-line)'
               )}
             >
               <span
@@ -184,7 +207,7 @@ export function CompetitorsManager({ promptCount }: { promptCount: number }) {
             <button
               type="button"
               onClick={() => removeRow(idx)}
-              className="text-[#b8cdd3] hover:text-rose-500 transition-colors"
+              className="text-(--c-faint) hover:text-rose-500 transition-colors"
               aria-label="Remove competitor"
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -196,27 +219,27 @@ export function CompetitorsManager({ promptCount }: { promptCount: number }) {
       <button
         type="button"
         onClick={addRow}
-        className="w-full border-2 border-dashed border-[#dde6ea] hover:border-[#177e89] hover:bg-[#f5f8fa] rounded-lg py-2.5 text-sm font-semibold text-[#177e89] flex items-center justify-center gap-1.5 transition-colors mb-6"
+        className="w-full border-2 border-dashed border-(--c-line) hover:border-(--c-accent) hover:bg-(--c-surface) rounded-lg py-2.5 text-sm font-semibold text-(--c-accent) flex items-center justify-center gap-1.5 transition-colors mb-6"
       >
         <Plus className="h-3.5 w-3.5" />
         Add competitor
       </button>
 
-      <div className="bg-[#f5f8fa] border border-[#eef3f5] rounded-xl p-4 mb-7">
-        <p className="text-[11px] font-bold text-[#8aadb8] uppercase tracking-wide mb-2">How matching works</p>
+      <div className="bg-(--c-surface) border border-(--c-line-soft) rounded-xl p-4 mb-7">
+        <p className="text-[11px] font-bold text-(--c-subtle) uppercase tracking-wide mb-2">How matching works</p>
         <div className="space-y-1.5">
-          <p className="text-xs text-[#5a7a85] leading-relaxed">
-            <span className="font-semibold text-[#084c61]">Domain</span> — a citation counts for this competitor when the cited URL&apos;s domain matches exactly, or is a known subdomain (e.g. reviews.brookdale.com).
+          <p className="text-xs text-(--c-muted) leading-relaxed">
+            <span className="font-semibold text-(--c-ink)">Domain</span> — a citation counts for this competitor when the cited URL&apos;s domain matches exactly, or is a known subdomain (e.g. reviews.brookdale.com).
           </p>
-          <p className="text-xs text-[#5a7a85] leading-relaxed">
-            <span className="font-semibold text-[#084c61]">Aliases</span> — the response text is scanned case-insensitively for any alias to catch a mention even when the AI doesn&apos;t include a link.
+          <p className="text-xs text-(--c-muted) leading-relaxed">
+            <span className="font-semibold text-(--c-ink)">Aliases</span> — the response text is scanned for the brand name or any alias as a whole word, in any capitalization, to catch a mention even when the AI doesn&apos;t include a link.
           </p>
         </div>
       </div>
 
-      <div className="flex items-center justify-between pt-5 border-t border-[#dde6ea]">
-        <p className="text-xs text-[#8aadb8]">
-          <span className="font-semibold text-[#5a7a85]">{filledCount} competitor{filledCount !== 1 ? 's' : ''} added</span>
+      <div className="flex items-center justify-between pt-5 border-t border-(--c-line)">
+        <p className="text-xs text-(--c-subtle)">
+          <span className="font-semibold text-(--c-muted)">{filledCount} competitor{filledCount !== 1 ? 's' : ''} added</span>
           {' '}· {activeCount} active
           {savedAt && (
             <span className="inline-flex items-center gap-1 text-emerald-600 font-medium ml-2">
@@ -228,6 +251,7 @@ export function CompetitorsManager({ promptCount }: { promptCount: number }) {
           {saving ? 'Saving…' : 'Save & Start Tracking'}
         </Button>
       </div>
+      </fieldset>
     </div>
   )
 }

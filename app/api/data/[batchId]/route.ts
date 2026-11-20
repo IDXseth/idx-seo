@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { getViewer, canReadBatch } from '@/lib/access'
 import { prisma } from '@/lib/prisma'
 import { PLATFORMS } from '@/lib/utils'
 
@@ -8,8 +8,8 @@ export async function GET(
   { params }: { params: Promise<{ batchId: string }> }
 ) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
+    const viewer = await getViewer()
+    if (!viewer) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -20,7 +20,7 @@ export async function GET(
       select: { id: true, name: true },
     })
 
-    if (!batch) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    if (!batch || !(await canReadBatch(viewer, batchId))) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     const prompts = await prisma.prompt.findMany({
       where: { batchId },

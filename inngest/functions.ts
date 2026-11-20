@@ -1,57 +1,38 @@
 import { inngest } from '@/lib/inngest'
 import { prisma } from '@/lib/prisma'
-import { queryPlatform } from '@/lib/ai-clients'
-import { UsageMeter, usageColumns } from '@/lib/usage'
-import { PLATFORMS } from '@/lib/utils'
 import { sendRunCompleteEmail } from '@/lib/email'
 import { refreshGscCache, refreshGscQueryCache, crawlCommunityPages } from '@/lib/gsc'
-import { getActiveCompetitors, matchCompetitors, saveCompetitorMentions } from '@/lib/competitors'
+import { runPromptOnPlatforms } from '@/lib/run-prompt'
+import { computeNextRunAt, SCHEDULE_TIMEZONE } from '@/lib/schedule-time'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function computeNextRunAt(schedule: {
-  frequency: string
-  customDays?: number | null
-  dayOfWeek?: number | null
-  dayOfMonth?: number | null
-  hour: number
-}): Date {
-  const now = new Date()
-  const next = new Date(now)
-
-  switch (schedule.frequency) {
-    case 'daily':
-      next.setDate(next.getDate() + 1)
-      break
-    case 'weekly': {
-      const target = schedule.dayOfWeek ?? 1
-      let diff = target - now.getDay()
-      if (diff <= 0) diff += 7
-      next.setDate(next.getDate() + diff)
-      break
-    }
-    case 'monthly': {
-      const dom = schedule.dayOfMonth ?? 1
-      next.setMonth(next.getMonth() + 1)
-      next.setDate(dom)
-      break
-    }
-    case 'custom':
-    default:
-      next.setDate(next.getDate() + (schedule.customDays ?? 7))
-  }
-
-  next.setHours(schedule.hour, 0, 0, 0)
-  return next
+interface PromptRunEvent {
+  promptId: string
+  batchRunId: string
+  runSessionId: string
 }
+
+// Per-platform limit for background runs. All platforms are queried in
+// parallel, so a prompt's step takes at most about this long plus scoring,
+// inside the /api/inngest route's maxDuration (300s).
+const PLATFORM_TIMEOUT_MS = 120_000
+
+// Prompts run at once. Each runs every platform in parallel, so this many
+// times the platform count API calls can be in flight. Raise it only if the
+// Inngest plan and the AI providers' rate limits allow.
+const PROMPT_CONCURRENCY = Math.max(1, Number(process.env.INNGEST_PROMPT_CONCURRENCY) || 5)
+
 
 // ─── Fan-out: one event per prompt ───────────────────────────────────────────
 
 export const batchFanOut = inngest.createFunction(
   { id: 'batch-fan-out', triggers: [{ event: 'batch/run.requested' }] },
   async ({ event, step }) => {
-    const { batchId, batchRunId, runSessionId, isRerun } = event.data as {
+    const { batchId, userId, projectId, batchRunId, runSessionId, isRerun } = event.data as {
       batchId?: string
+      userId?: string  // set for "run all" (no batchId): only that user's batches…
+      projectId?: string  // …in this project
       batchRunId: string
       runSessionId: string
       isRerun?: boolean
@@ -61,7 +42,9 @@ export const batchFanOut = inngest.createFunction(
     const prompts = await step.run('fetch-prompts', async () => {
       return prisma.prompt.findMany({
         where: {
-          ...(batchId ? { batchId } : {}),
+          // Same scope /api/run/queue counted: one batch, or all of the requester's batches.
+          // Never every prompt in the database — an event with neither runs nothing.
+          ...(batchId ? { batchId } : { batch: { userId: userId ?? '', ...(projectId ? { projectId } : {}) } }),
           // For re-runs include all; for first runs only unrun ones
           ...(isRerun ? {} : { results: { none: {} } }),
         },
@@ -95,23 +78,29 @@ export const batchFanOut = inngest.createFunction(
   }
 )
 
-// ─── Per-prompt runner (max 5 concurrent) ────────────────────────────────────
+// ─── Per-prompt runner (PROMPT_CONCURRENCY at once) ─────────────────────────────────────────────────────────────
 
 export const runSinglePrompt = inngest.createFunction(
   {
     id: 'run-single-prompt',
     triggers: [{ event: 'prompt/run.requested' }],
-    concurrency: { limit: 5 },
+    concurrency: { limit: PROMPT_CONCURRENCY },
+    // Out of retries: count the prompt as failed so the run still finishes
+    // and its progress doesn't stall short of the total.
+    onFailure: async ({ event, step }) => {
+      const { promptId, batchRunId, runSessionId } = event.data.event.data as PromptRunEvent
+      await step.run('count-failure', async () => {
+        await prisma.$executeRaw`UPDATE "Prompt" SET "jobStatus" = 'failed' WHERE id = ${promptId}`
+        await prisma.$executeRaw`UPDATE "BatchRun" SET "failCount" = "failCount" + 1 WHERE id = ${batchRunId}`
+        await checkAndFinalize(batchRunId, runSessionId)
+      })
+    },
   },
   async ({ event, step }) => {
-    const { promptId, batchRunId, runSessionId } = event.data as {
-      promptId: string
-      batchRunId: string
-      runSessionId: string
-    }
+    const { promptId, batchRunId, runSessionId } = event.data as PromptRunEvent
 
     const prompt = await step.run('fetch-prompt', async () => {
-      return prisma.prompt.findUnique({ where: { id: promptId }, include: { batch: { select: { userId: true } } } })
+      return prisma.prompt.findUnique({ where: { id: promptId }, include: { batch: { select: { userId: true, projectId: true } } } })
     })
 
     if (!prompt) {
@@ -122,63 +111,17 @@ export const runSinglePrompt = inngest.createFunction(
       return
     }
 
-    // Skip if already run in THIS session (idempotent per session)
-    const existing = await step.run('check-existing', async () => {
-      return prisma.result.findFirst({ where: { promptId, runSessionId } })
-    })
-
-    if (existing) {
-      await step.run('skip-already-run', async () => {
-        await prisma.$executeRaw`UPDATE "BatchRun" SET "doneCount" = "doneCount" + 1 WHERE id = ${batchRunId}`
-        await checkAndFinalize(batchRunId, runSessionId)
-      })
-      return
-    }
-
     await step.run('mark-running', async () => {
       await prisma.$executeRaw`UPDATE "Prompt" SET "jobStatus" = 'running' WHERE id = ${promptId}`
     })
 
+    // Every platform is time-limited so the step always finishes well inside
+    // the function's max duration. A step killed by the platform timeout
+    // never reaches the doneCount update and gets retried from scratch, which
+    // left runs stuck at 0 done. A retry skips platforms already saved in
+    // this session.
     await step.run('query-and-save', async () => {
-      const [platformResults, competitors] = await Promise.all([
-        Promise.all(
-          PLATFORMS.map(async (platform) => {
-            const result = await queryPlatform(platform, prompt.promptText, prompt.communityName, prompt.city ?? undefined)
-            return { platform, result }
-          })
-        ),
-        getActiveCompetitors(prompt.batch.userId),
-      ])
-
-      for (const { platform, result } of platformResults) {
-        // Matched before saving so competitor sentiment calls count toward this result's cost.
-        const competitorUsage = new UsageMeter()
-        const matches = await matchCompetitors(result.responseText, result.citations, competitors, competitorUsage)
-        const saved = await prisma.result.create({
-          data: {
-            promptId,
-            runSessionId,
-            platform,
-            responseText: result.responseText,
-            isMentioned: result.isMentioned,
-            isCited: result.isCited,
-            sentiment: result.sentiment,
-            ...usageColumns(result.usage, competitorUsage.totals),
-          },
-        })
-        if (result.citations.length > 0) {
-          await prisma.citation.createMany({
-            data: result.citations.map((c) => ({
-              resultId: saved.id,
-              url: c.url,
-              title: c.title,
-              domain: c.domain,
-              isExplicitCitation: c.isExplicitCitation,
-            })),
-          })
-        }
-        await saveCompetitorMentions(saved.id, matches)
-      }
+      await runPromptOnPlatforms(prompt, { runSessionId, timeoutMs: PLATFORM_TIMEOUT_MS })
 
       await prisma.$executeRaw`UPDATE "Prompt" SET "jobStatus" = 'done' WHERE id = ${promptId}`
       await prisma.$executeRaw`UPDATE "BatchRun" SET "doneCount" = "doneCount" + 1 WHERE id = ${batchRunId}`
@@ -192,6 +135,21 @@ export const runSinglePrompt = inngest.createFunction(
 export const checkSchedules = inngest.createFunction(
   { id: 'check-schedules', triggers: [{ cron: '0 * * * *' }] },
   async ({ step }) => {
+    // Schedules saved before hours meant local time (stored with another zone,
+    // e.g. the old "America/Chicago" default, while their next run was worked
+    // out in UTC): keep their hour, read it as local time in this deployment's
+    // zone, and re-time their next run — once, without running them now.
+    await step.run('retime-schedules-to-local-zone', async () => {
+      const stale = await prisma.schedule.findMany({ where: { timezone: { not: SCHEDULE_TIMEZONE } } })
+      for (const s of stale) {
+        await prisma.schedule.update({
+          where: { id: s.id },
+          data: { timezone: SCHEDULE_TIMEZONE, nextRunAt: computeNextRunAt(s, SCHEDULE_TIMEZONE) },
+        })
+      }
+      return stale.length
+    })
+
     const due = await step.run('find-due-schedules', async () => {
       return prisma.schedule.findMany({
         where: { enabled: true, nextRunAt: { lte: new Date() } },
@@ -220,7 +178,7 @@ export const checkSchedules = inngest.createFunction(
             notifyEmail: null,
           },
         })
-        const nextRunAt = computeNextRunAt(schedule)
+        const nextRunAt = computeNextRunAt(schedule, SCHEDULE_TIMEZONE)
         await prisma.schedule.update({
           where: { id: schedule.id },
           data: { lastRunAt: new Date(), nextRunAt },
