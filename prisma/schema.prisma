@@ -24,6 +24,8 @@ model User {
   projects      Project[]
   sharedBatches ProjectShare[]
   competitors   Competitor[]
+  oauthCodes    OAuthAuthCode[]
+  oauthTokens   OAuthToken[]
 }
 
 model Account {
@@ -296,4 +298,50 @@ model PageCrawlResult {
   hasSeniorCare    Boolean?
   crawledAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+}
+
+// ─── MCP connector OAuth (lib/mcp/oauth.ts) ─────────────────────────────────
+// Claude (or another MCP client) registers itself, the user approves it at
+// /oauth/authorize while signed in, and the client gets tokens that act as
+// that user on /api/mcp. Only SHA-256 hashes of codes and tokens are stored.
+
+model OAuthClient {
+  id           String          @id @default(cuid())  // the client_id
+  name         String
+  redirectUris String[]
+  createdAt    DateTime        @default(now())
+  codes        OAuthAuthCode[]
+  tokens       OAuthToken[]
+}
+
+model OAuthAuthCode {
+  id            String      @id @default(cuid())
+  codeHash      String      @unique
+  clientId      String
+  client        OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  redirectUri   String
+  codeChallenge String      // PKCE S256
+  scope         String      @default("")
+  expiresAt     DateTime
+  usedAt        DateTime?
+  createdAt     DateTime    @default(now())
+}
+
+model OAuthToken {
+  id               String      @id @default(cuid())
+  accessTokenHash  String      @unique
+  refreshTokenHash String      @unique
+  clientId         String
+  client           OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scope            String      @default("")
+  accessExpiresAt  DateTime
+  refreshExpiresAt DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime    @default(now())
+
+  @@index([userId])
 }
