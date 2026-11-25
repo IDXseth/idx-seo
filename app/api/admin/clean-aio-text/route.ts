@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { isSuperUser } from '@/lib/access'
 import { prisma } from '@/lib/prisma'
 import { cleanLegacyAIOResponseText } from '@/lib/ai-clients'
 
@@ -14,6 +15,10 @@ export async function POST(req: Request) {
   const session = await auth()
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  // Operates on every project's data (or the one global GSC cache) — super users only.
+  if (!isSuperUser(session.user.email)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const dryRun = new URL(req.url).searchParams.get('dryRun') === '1'

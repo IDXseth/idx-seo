@@ -1,11 +1,13 @@
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getViewer, readablePromptWhere } from '@/lib/access'
+import { getLabelsForProject } from '@/lib/projects'
 import { Badge } from '@/components/ui/badge'
 import { RunSessionPicker, SessionOption } from '@/components/run-session-picker'
-import { PLATFORM_LABELS, PLATFORM_COLORS, YOUR_BRAND_NAME, YOUR_BRAND_DOMAIN } from '@/lib/utils'
-import { getActiveCompetitors, domainMatches, CompetitorInput } from '@/lib/competitors'
+import { PLATFORM_LABELS, PLATFORM_COLORS } from '@/lib/utils'
+import { getDetectionContext } from '@/lib/detection-context'
+import { splitMentions, citationPointsTo, type DetectionContext } from '@/lib/detection'
 import { SentimentBreakdown } from '@/components/sentiment-breakdown'
 import { ChevronLeft, ExternalLink, MapPin, Building2, Tag, Heart, Info } from 'lucide-react'
 
@@ -78,6 +80,13 @@ export default async function ResultsDetailPage({
 }) {
   const [{ promptId }, { session: sessionParam }] = await Promise.all([params, searchParams])
 
+  const viewer = await getViewer().catch(() => null)
+  if (!viewer) redirect(`/login?callbackUrl=/results/${promptId}`)
+  const canRead = await prisma.prompt
+    .count({ where: { id: promptId, ...readablePromptWhere(viewer) } })
+    .catch(() => 0)
+  if (!canRead) notFound()
+
   let sessions: SessionOption[] = []
   try { sessions = await getSessionsForPrompt(promptId) } catch { /* DB not configured */ }
 
@@ -97,26 +106,26 @@ export default async function ResultsDetailPage({
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
 
-  // Competitor summary — how many of this prompt's platform results mention each tracked brand
-  let competitors: Awaited<ReturnType<typeof getActiveCompetitors>> = []
-  try {
-    const session = await auth()
-    if (session?.user?.id) competitors = await getActiveCompetitors(session.user.id)
-  } catch { /* not signed in / DB not configured */ }
+  // The same brand and competitors the prompt's runs were scored against, so
+  // highlights and badges here always agree with the stored results.
+  const ctx = await getDetectionContext(prompt)
+  const labels = await getLabelsForProject(prompt.projectId ?? prompt.batch.projectId)
+  const brand = ctx.brand
+  const competitors = ctx.competitors
 
   const mentionsByResult = await getCompetitorMentionsByResult(sortedResults.map((r) => r.id))
 
   const brandSummary = [
     {
       id: 'you',
-      brandName: YOUR_BRAND_NAME,
+      brandName: brand.label,
       isYou: true,
       mentionedCount: sortedResults.filter((r) => r.isMentioned).length,
       citedCount: sortedResults.filter((r) => r.isCited).length,
     },
     ...competitors.map((c) => ({
       id: c.id,
-      brandName: c.brandName,
+      brandName: c.label,
       isYou: false,
       mentionedCount: sortedResults.filter((r) => (mentionsByResult.get(r.id) ?? []).some((m) => m.competitorId === c.id && m.isMentioned)).length,
       citedCount: sortedResults.filter((r) => (mentionsByResult.get(r.id) ?? []).some((m) => m.competitorId === c.id && m.isCited)).length,
@@ -128,36 +137,36 @@ export default async function ResultsDetailPage({
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2">
-        <Link href="/dashboard" className="flex items-center gap-1 text-sm text-[#177e89] hover:text-[#084c61] font-medium transition-colors">
+        <Link href="/dashboard" className="flex items-center gap-1 text-sm text-(--c-accent) hover:text-(--c-ink) font-medium transition-colors">
           <ChevronLeft className="h-4 w-4" />
           Dashboard
         </Link>
-        <span className="text-[#b8cdd3]">/</span>
-        <span className="text-sm text-[#5a7a85]">Prompt Results</span>
+        <span className="text-(--c-faint)">/</span>
+        <span className="text-sm text-(--c-muted)">Prompt Results</span>
       </div>
 
       {/* Description */}
-      <div className="flex gap-3 p-4 bg-[#e6f2f5] border border-[#b8d8e0] rounded-xl">
-        <Info className="h-4 w-4 text-[#177e89] flex-shrink-0 mt-0.5" />
-        <div className="text-sm text-[#084c61] leading-relaxed">
+      <div className="flex gap-3 p-4 bg-(--c-tint) border border-(--c-accent-faint) rounded-xl">
+        <Info className="h-4 w-4 text-(--c-accent) flex-shrink-0 mt-0.5" />
+        <div className="text-sm text-(--c-ink) leading-relaxed">
           <span className="font-semibold">AI Visibility Results — </span>
-          This report shows how each AI platform responded to the prompt below. For each platform we record whether Senior Lifestyle was <span className="font-semibold">mentioned</span> by name, whether a <span className="font-semibold">seniorlifestyle.com link was cited</span> in the response, the overall <span className="font-semibold">sentiment</span> of the response, and the source URLs involved — split into <span className="font-semibold">Citations</span> the platform explicitly referenced in its answer and sources <span className="font-semibold">also surfaced in search</span> that it retrieved but didn&apos;t directly cite.
+          This report shows how each AI platform responded to the prompt below. For each platform we record whether {brand.label} was <span className="font-semibold">mentioned</span> by name, whether a <span className="font-semibold">{brand.domains[0] ?? 'brand'} link was cited</span> in the response, the overall <span className="font-semibold">sentiment</span> of the response, and the source URLs involved — split into <span className="font-semibold">Citations</span> the platform explicitly referenced in its answer and sources <span className="font-semibold">also surfaced in search</span> that it retrieved but didn&apos;t directly cite.
         </div>
       </div>
 
       {/* Prompt metadata card */}
-      <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
+      <div className="bg-white rounded-xl border border-(--c-line) p-6">
         <div className="flex items-start justify-between gap-4 mb-5">
-          <p className="text-base font-medium text-[#1a1a1a] leading-relaxed flex-1">{prompt.promptText}</p>
+          <p className="text-base font-medium text-(--c-text) leading-relaxed flex-1">{prompt.promptText}</p>
           <Badge variant={prompt.promptType === 'brand' ? 'default' : 'secondary'} className="flex-shrink-0">
             {prompt.promptType}
           </Badge>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-[#eef3f5]">
-          <MetaItem icon={<Building2 className="h-4 w-4 text-[#8aadb8]" />} label="Community" value={prompt.communityName} />
-          <MetaItem icon={<MapPin className="h-4 w-4 text-[#8aadb8]" />} label="City / Market" value={prompt.city + (prompt.market ? ` · ${prompt.market}` : '')} />
-          <MetaItem icon={<Tag className="h-4 w-4 text-[#8aadb8]" />} label="Category" value={prompt.category} />
-          <MetaItem icon={<Heart className="h-4 w-4 text-[#8aadb8]" />} label="Level of Care" value={prompt.levelOfCare} />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-(--c-line-soft)">
+          <MetaItem icon={<Building2 className="h-4 w-4 text-(--c-subtle)" />} label={labels.entity} value={prompt.communityName} />
+          <MetaItem icon={<MapPin className="h-4 w-4 text-(--c-subtle)" />} label="City / Market" value={prompt.city + (prompt.market ? ` · ${prompt.market}` : '')} />
+          <MetaItem icon={<Tag className="h-4 w-4 text-(--c-subtle)" />} label="Category" value={prompt.category} />
+          <MetaItem icon={<Heart className="h-4 w-4 text-(--c-subtle)" />} label={labels.levelOfCare} value={prompt.levelOfCare} />
         </div>
       </div>
 
@@ -170,9 +179,9 @@ export default async function ResultsDetailPage({
             basePath={`/results/${promptId}`}
           />
           {activeSession && (
-            <p className="text-xs text-[#8aadb8]">
+            <p className="text-xs text-(--c-subtle)">
               Showing results from{' '}
-              <span className="font-medium text-[#5a7a85]">
+              <span className="font-medium text-(--c-muted)">
                 {new Date(activeSession.startedAt).toLocaleDateString('en-US', {
                   month: 'long', day: 'numeric', year: 'numeric',
                 })}{' '}
@@ -194,18 +203,18 @@ export default async function ResultsDetailPage({
               key={b.id}
               className={
                 b.isYou
-                  ? 'bg-[#e6f2f5] border border-[#b8d8e0] rounded-xl p-3.5'
-                  : 'bg-white border border-[#dde6ea] rounded-xl p-3.5'
+                  ? 'bg-(--c-tint) border border-(--c-accent-faint) rounded-xl p-3.5'
+                  : 'bg-white border border-(--c-line) rounded-xl p-3.5'
               }
             >
-              <p className={`text-xs font-semibold mb-2 truncate ${b.isYou ? 'text-[#084c61]' : 'text-[#1a1a1a]'}`}>
+              <p className={`text-xs font-semibold mb-2 truncate ${b.isYou ? 'text-(--c-ink)' : 'text-(--c-text)'}`}>
                 {b.brandName}{b.isYou && ' (You)'}
               </p>
 
               <div className="space-y-0.5 mb-1.5">
-                <p className="text-[9px] font-semibold text-[#8aadb8] uppercase tracking-wider">Mentions</p>
-                <p className="text-xl font-extrabold text-[#084c61] leading-none">
-                  {b.mentionedCount}<span className="text-xs font-semibold text-[#5a7a85]"> / {platformCount} platforms</span>
+                <p className="text-[9px] font-semibold text-(--c-subtle) uppercase tracking-wider">Mentions</p>
+                <p className="text-xl font-extrabold text-(--c-ink) leading-none">
+                  {b.mentionedCount}<span className="text-xs font-semibold text-(--c-muted)"> / {platformCount} platforms</span>
                 </p>
               </div>
               <div className="flex gap-1 mb-2.5">
@@ -215,16 +224,16 @@ export default async function ResultsDetailPage({
                     <div
                       key={r.id}
                       className="h-1.5 flex-1 rounded-sm"
-                      style={{ backgroundColor: filled ? (b.isYou ? '#177e89' : '#8aadb8') : '#eef3f5' }}
+                      style={{ backgroundColor: filled ? (b.isYou ? 'var(--c-accent)' : 'var(--c-subtle)') : 'var(--c-line-soft)' }}
                     />
                   )
                 })}
               </div>
 
               <div className="space-y-0.5 mb-1.5">
-                <p className="text-[9px] font-semibold text-[#8aadb8] uppercase tracking-wider">Citations</p>
+                <p className="text-[9px] font-semibold text-(--c-subtle) uppercase tracking-wider">Citations</p>
                 <p className="text-base font-bold text-[#b45309] leading-none">
-                  {b.citedCount}<span className="text-xs font-semibold text-[#5a7a85]"> / {platformCount} platforms</span>
+                  {b.citedCount}<span className="text-xs font-semibold text-(--c-muted)"> / {platformCount} platforms</span>
                 </p>
               </div>
               <div className="flex gap-1">
@@ -234,7 +243,7 @@ export default async function ResultsDetailPage({
                     <div
                       key={r.id}
                       className="h-1.5 flex-1 rounded-sm"
-                      style={{ backgroundColor: filled ? '#d97706' : '#eef3f5' }}
+                      style={{ backgroundColor: filled ? '#d97706' : 'var(--c-line-soft)' }}
                     />
                   )
                 })}
@@ -249,25 +258,25 @@ export default async function ResultsDetailPage({
 
       {/* Platform results */}
       {sortedResults.length === 0 ? (
-        <div className="bg-white rounded-xl border border-[#dde6ea] py-16 text-center">
-          <p className="text-[#8aadb8] mb-3">No results yet for this prompt.</p>
-          <Link href="/run" className="text-sm font-semibold text-[#177e89] hover:text-[#084c61] transition-colors">
+        <div className="bg-white rounded-xl border border-(--c-line) py-16 text-center">
+          <p className="text-(--c-subtle) mb-3">No results yet for this prompt.</p>
+          <Link href="/run" className="text-sm font-semibold text-(--c-accent) hover:text-(--c-ink) transition-colors">
             Run prompts →
           </Link>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {sortedResults.map((result) => {
-            const color = PLATFORM_COLORS[result.platform] || '#084c61'
+            const color = PLATFORM_COLORS[result.platform] || 'var(--c-ink)'
             const label = PLATFORM_LABELS[result.platform] || result.platform
             const isNoAIO = result.responseText?.startsWith('[No AI Overview]')
             return (
-              <div key={result.id} className="bg-white rounded-xl border border-[#dde6ea] flex flex-col overflow-hidden">
+              <div key={result.id} className="bg-white rounded-xl border border-(--c-line) flex flex-col overflow-hidden">
                 {/* Platform header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-[#eef3f5]">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-(--c-line-soft)">
                   <div className="flex items-center gap-2.5">
                     <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
-                    <span className="font-semibold text-[#084c61] text-sm">{label}</span>
+                    <span className="font-semibold text-(--c-ink) text-sm">{label}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     {!isNoAIO && (result.isMentioned ? (
@@ -275,12 +284,12 @@ export default async function ResultsDetailPage({
                         Mentioned
                       </span>
                     ) : (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#f0f4f7] text-[#8aadb8]">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-(--c-page) text-(--c-subtle)">
                         Not Mentioned
                       </span>
                     ))}
                     {!isNoAIO && result.isCited && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#e6f2f5] text-[#084c61] border border-[#b8d8e0]">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-(--c-tint) text-(--c-ink) border border-(--c-accent-faint)">
                         Cited
                       </span>
                     )}
@@ -294,7 +303,7 @@ export default async function ResultsDetailPage({
                         Negative
                       </span>
                     ) : result.sentiment ? (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#f0f4f7] text-[#8aadb8]">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-(--c-page) text-(--c-subtle)">
                         Neutral
                       </span>
                     ) : null)}
@@ -304,7 +313,7 @@ export default async function ResultsDetailPage({
                 {/* Brands detected (yours + tracked competitors) */}
                 {competitors.length > 0 && (() => {
                   const detected = [
-                    ...(result.isMentioned ? [{ id: 'you', brandName: YOUR_BRAND_NAME, isYou: true, sentiment: result.sentiment }] : []),
+                    ...(result.isMentioned ? [{ id: 'you', brandName: brand.label, isYou: true, sentiment: result.sentiment }] : []),
                     ...(mentionsByResult.get(result.id) ?? [])
                       .filter((m) => m.isMentioned)
                       .map((m) => ({ id: m.competitorId, brandName: m.brandName, isYou: false, sentiment: m.sentiment })),
@@ -312,18 +321,18 @@ export default async function ResultsDetailPage({
                   if (detected.length === 0) return null
                   return (
                     <div className="px-5 pt-4">
-                      <p className="text-[10px] font-semibold text-[#8aadb8] uppercase tracking-wider mb-2">Brands Detected</p>
+                      <p className="text-[10px] font-semibold text-(--c-subtle) uppercase tracking-wider mb-2">Brands Detected</p>
                       <div className="flex flex-wrap gap-1.5">
                         {detected.map((d) => {
                           const tone = d.sentiment === 'positive'
                             ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                             : d.sentiment === 'negative'
                             ? 'bg-rose-50 border-rose-200 text-rose-800'
-                            : 'bg-[#f5f8fa] border-[#eef3f5] text-[#5a7a85]'
+                            : 'bg-(--c-surface) border-(--c-line-soft) text-(--c-muted)'
                           return (
                             <span
                               key={d.id}
-                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10.5px] font-semibold ${tone} ${d.isYou ? 'ring-1 ring-inset ring-[#177e89]' : ''}`}
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10.5px] font-semibold ${tone} ${d.isYou ? 'ring-1 ring-inset ring-(--c-accent)' : ''}`}
                             >
                               {d.brandName}{d.isYou && ' · You'}
                             </span>
@@ -336,11 +345,11 @@ export default async function ResultsDetailPage({
 
                 {/* Response text */}
                 <div className="px-5 py-4 flex-1">
-                  <p className="text-[10px] font-semibold text-[#8aadb8] uppercase tracking-wider mb-2">Response</p>
+                  <p className="text-[10px] font-semibold text-(--c-subtle) uppercase tracking-wider mb-2">Response</p>
                   {isNoAIO ? (
-                    <p className="text-xs text-[#8aadb8] italic">No AI Overview was served for this query.</p>
+                    <p className="text-xs text-(--c-subtle) italic">No AI Overview was served for this query.</p>
                   ) : (
-                    <p className="text-xs text-[#1a1a1a] leading-relaxed">{highlightTerms(result.responseText ?? '', prompt.communityName, competitors)}</p>
+                    <p className="text-xs text-(--c-text) leading-relaxed">{highlightTerms(result.responseText ?? '', ctx)}</p>
                   )}
                 </div>
 
@@ -349,15 +358,15 @@ export default async function ResultsDetailPage({
                   const explicitCitations = result.citations.filter((c) => c.isExplicitCitation)
                   const additionalSources = result.citations.filter((c) => !c.isExplicitCitation)
                   return (
-                    <div className="px-5 pb-4 border-t border-[#eef3f5] pt-3 space-y-3">
+                    <div className="px-5 pb-4 border-t border-(--c-line-soft) pt-3 space-y-3">
                       {explicitCitations.length > 0 && (
                         <div>
-                          <p className="text-[10px] font-semibold text-[#8aadb8] uppercase tracking-wider mb-2">
+                          <p className="text-[10px] font-semibold text-(--c-subtle) uppercase tracking-wider mb-2">
                             Citations ({explicitCitations.length})
                           </p>
                           <div className="space-y-1.5">
                             {explicitCitations.map((citation) => (
-                              <CitationLink key={citation.id} citation={citation} competitors={competitors} />
+                              <CitationLink key={citation.id} citation={citation} ctx={ctx} />
                             ))}
                           </div>
                         </div>
@@ -365,14 +374,14 @@ export default async function ResultsDetailPage({
                       {additionalSources.length > 0 && (
                         <div>
                           <p
-                            className="text-[10px] font-semibold text-[#b8cdd3] uppercase tracking-wider mb-2"
+                            className="text-[10px] font-semibold text-(--c-faint) uppercase tracking-wider mb-2"
                             title="Pages the platform's web search retrieved but did not directly cite in its answer"
                           >
                             Also Surfaced in Search ({additionalSources.length})
                           </p>
                           <div className="space-y-1.5 opacity-75">
                             {additionalSources.map((citation) => (
-                              <CitationLink key={citation.id} citation={citation} competitors={competitors} />
+                              <CitationLink key={citation.id} citation={citation} ctx={ctx} />
                             ))}
                           </div>
                         </div>
@@ -389,66 +398,41 @@ export default async function ResultsDetailPage({
   )
 }
 
-const BRAND_TERMS = ['Senior Lifestyle Corporation', 'Senior Lifestyle']
-
-interface HighlightTerm {
-  term: string
-  brandName: string
-  isYou: boolean
-}
-
-// Highlights every occurrence of your brand's name (or the specific community's
-// name) in yellow, and every occurrence of a tracked competitor's brand name or
-// alias in blue — the same substring match matchCompetitors() uses to compute
-// isMentioned, so a highlighted mention here always agrees with the "Mentioned"
-// badge and the Brands Detected row above.
-function highlightTerms(
-  text: string,
-  communityName: string,
-  competitors: Array<{ id: string; brandName: string; aliases: string }>
-): React.ReactNode {
-  const yourTerms: HighlightTerm[] = [...new Set([communityName, ...BRAND_TERMS].filter(Boolean))]
-    .map((term) => ({ term, brandName: YOUR_BRAND_NAME, isYou: true }))
-  const competitorTerms: HighlightTerm[] = competitors.flatMap((c) =>
-    [c.brandName, ...c.aliases.split(',')]
-      .map((t) => t.trim())
-      .filter(Boolean)
-      .map((term) => ({ term, brandName: c.brandName, isYou: false }))
-  )
-  const terms = [...yourTerms, ...competitorTerms]
-  if (terms.length === 0) return text
-
-  // Sort longest-first so e.g. "Senior Lifestyle Corporation" matches before "Senior Lifestyle"
-  terms.sort((a, b) => b.term.length - a.term.length)
-  const pattern = new RegExp(`(${terms.map((t) => t.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi')
-  const parts = text.split(pattern)
-  return parts.map((part, i) => {
-    const match = terms.find((t) => t.term.toLowerCase() === part.toLowerCase())
-    if (!match) return part
-    return (
+// Highlights your brand's names (and the prompt's own entity) in yellow and
+// tracked competitors' names in blue, using detection's own whole-word
+// matching, so a highlight here always agrees with the "Mentioned" badge.
+function highlightTerms(text: string, ctx: DetectionContext): React.ReactNode {
+  const segments = splitMentions(text, [
+    { owner: { label: ctx.brand.label, isYou: true }, terms: [...ctx.brand.names, ctx.entityName ?? ''] },
+    ...ctx.competitors.map((c) => ({ owner: { label: c.label, isYou: false }, terms: c.names })),
+  ])
+  return segments.map((seg, i) =>
+    seg.owner ? (
       <mark
         key={i}
-        title={match.isYou ? 'Your brand' : `Tracked competitor: ${match.brandName}`}
-        className={match.isYou ? 'bg-yellow-100 text-yellow-900 rounded px-0.5' : 'bg-sky-100 text-sky-900 rounded px-0.5'}
+        title={seg.owner.isYou ? 'Your brand' : `Tracked competitor: ${seg.owner.label}`}
+        className={seg.owner.isYou ? 'bg-yellow-100 text-yellow-900 rounded px-0.5' : 'bg-sky-100 text-sky-900 rounded px-0.5'}
       >
-        {part}
+        {seg.text}
       </mark>
+    ) : (
+      seg.text
     )
-  })
+  )
 }
 
 function CitationLink({
   citation,
-  competitors,
+  ctx,
 }: {
   citation: { id: string; url: string; title: string; domain: string }
-  competitors: CompetitorInput[]
+  ctx: DetectionContext
 }) {
-  const owner = domainMatches(citation.domain, YOUR_BRAND_DOMAIN)
-    ? { label: YOUR_BRAND_NAME, isYou: true }
+  const owner = citationPointsTo(citation, ctx.brand.domains)
+    ? { label: ctx.brand.label, isYou: true }
     : (() => {
-        const c = competitors.find((c) => domainMatches(citation.domain, c.domain))
-        return c ? { label: c.brandName, isYou: false } : null
+        const c = ctx.competitors.find((c) => citationPointsTo(citation, c.domains))
+        return c ? { label: c.label, isYou: false } : null
       })()
   return (
     <a
@@ -458,20 +442,20 @@ function CitationLink({
       className={`flex items-start gap-2 p-2 rounded-lg transition-colors group ${
         owner
           ? owner.isYou
-            ? 'bg-[#e6f2f5] ring-1 ring-inset ring-[#177e89] hover:bg-[#d9edf1]'
+            ? 'bg-(--c-tint) ring-1 ring-inset ring-(--c-accent) hover:bg-(--c-tint-strong)'
             : 'bg-sky-50 ring-1 ring-inset ring-sky-200 hover:bg-sky-100'
-          : 'bg-[#f5f8fa] hover:bg-[#e6f2f5]'
+          : 'bg-(--c-surface) hover:bg-(--c-tint)'
       }`}
     >
-      <ExternalLink className="h-3 w-3 text-[#8aadb8] mt-0.5 flex-shrink-0 group-hover:text-[#177e89] transition-colors" />
+      <ExternalLink className="h-3 w-3 text-(--c-subtle) mt-0.5 flex-shrink-0 group-hover:text-(--c-accent) transition-colors" />
       <div className="min-w-0 flex-1">
-        <p className="text-xs font-medium text-[#084c61] truncate">{citation.title}</p>
-        <p className="text-[10px] text-[#8aadb8]">{citation.domain}</p>
+        <p className="text-xs font-medium text-(--c-ink) truncate">{citation.title}</p>
+        <p className="text-[10px] text-(--c-subtle)">{citation.domain}</p>
       </div>
       {owner && (
         <span
           className={`flex-shrink-0 inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
-            owner.isYou ? 'bg-[#177e89] text-white' : 'bg-sky-600 text-white'
+            owner.isYou ? 'bg-(--c-accent) text-white' : 'bg-sky-600 text-white'
           }`}
         >
           {owner.isYou ? 'You' : owner.label}
@@ -486,8 +470,8 @@ function MetaItem({ icon, label, value }: { icon: React.ReactNode; label: string
     <div className="flex items-center gap-2.5">
       {icon}
       <div>
-        <p className="text-[10px] text-[#8aadb8] uppercase tracking-wide font-medium">{label}</p>
-        <p className="text-sm font-medium text-[#084c61]">{value || '—'}</p>
+        <p className="text-[10px] text-(--c-subtle) uppercase tracking-wide font-medium">{label}</p>
+        <p className="text-sm font-medium text-(--c-ink)">{value || '—'}</p>
       </div>
     </div>
   )

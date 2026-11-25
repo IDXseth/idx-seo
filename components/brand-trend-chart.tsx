@@ -20,20 +20,20 @@ function CustomTooltip({ active, payload, label }: any) {
       style={{
         fontSize: 12,
         borderRadius: 8,
-        border: '1px solid #dde6ea',
+        border: '1px solid var(--c-line)',
         boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
         background: '#fff',
         padding: '10px 14px',
         minWidth: 160,
       }}
     >
-      <p style={{ fontWeight: 600, color: '#084c61', marginBottom: 6 }}>{label}</p>
+      <p style={{ fontWeight: 600, color: 'var(--c-ink)', marginBottom: 6 }}>{label}</p>
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
       {payload.map((p: any) => (
         <p key={p.dataKey} style={{ margin: '2px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ display: 'inline-block', width: 10, height: 2, background: p.stroke, flexShrink: 0 }} />
-          <span style={{ color: '#5a7a85' }}>{p.dataKey}:</span>
-          <strong style={{ color: '#084c61' }}>{p.value}%</strong>
+          <span style={{ color: 'var(--c-muted)' }}>{p.dataKey}:</span>
+          <strong style={{ color: 'var(--c-ink)' }}>{p.value}%</strong>
         </p>
       ))}
     </div>
@@ -46,7 +46,7 @@ export function BrandTrendChart({ brands }: { brands: BrandTrendSeries[] }) {
 
   const colorOf = useMemo(() => {
     const map = brandColorMap(brands.map((b) => b.id))
-    return (id: string) => map.get(id) ?? '#8aadb8'
+    return (id: string) => map.get(id) ?? 'var(--c-subtle)'
   }, [brands])
 
   const toggle = (id: string) => {
@@ -79,7 +79,7 @@ export function BrandTrendChart({ brands }: { brands: BrandTrendSeries[] }) {
   }, [brands, activeIds, metric])
 
   if ((brands[0]?.points.length ?? 0) < 2) {
-    return <div className="py-16 text-center text-[#8aadb8] text-sm">Run prompts at least twice to see trends over time.</div>
+    return <div className="py-16 text-center text-(--c-subtle) text-sm">Run prompts at least twice to see trends over time.</div>
   }
 
   return (
@@ -93,26 +93,26 @@ export function BrandTrendChart({ brands }: { brands: BrandTrendSeries[] }) {
                 key={b.id}
                 onClick={() => toggle(b.id)}
                 className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                  on ? 'bg-white border-[#dde6ea] text-[#084c61]' : 'bg-[#f5f8fa] border-[#eef3f5] text-[#b8cdd3]'
+                  on ? 'bg-white border-(--c-line) text-(--c-ink)' : 'bg-(--c-surface) border-(--c-line-soft) text-(--c-faint)'
                 }`}
                 title={on ? `Hide ${b.label}` : `Show ${b.label}`}
               >
-                <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ background: on ? colorOf(b.id) : '#dde6ea' }} />
+                <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ background: on ? colorOf(b.id) : 'var(--c-line)' }} />
                 {b.label}
-                {b.id === 'you' && <span className="text-[9px] font-bold text-[#177e89]">YOU</span>}
-                <span className={on ? 'text-[#5a7a85]' : 'text-[#c5d3d8]'}>{formatPercent(latestRateOf(b))}</span>
+                {b.id === 'you' && <span className="text-[9px] font-bold text-(--c-accent)">YOU</span>}
+                <span className={on ? 'text-(--c-muted)' : 'text-(--c-line-strong-4)'}>{formatPercent(latestRateOf(b))}</span>
               </button>
             )
           })}
         </div>
 
-        <div className="flex items-center gap-0.5 bg-[#f0f4f7] rounded-lg p-1 flex-shrink-0">
+        <div className="flex items-center gap-0.5 bg-(--c-page) rounded-lg p-1 flex-shrink-0">
           {(['mention', 'citation'] as Metric[]).map((m) => (
             <button
               key={m}
               onClick={() => setMetric(m)}
               className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                metric === m ? 'bg-white text-[#084c61] shadow-sm' : 'text-[#5a7a85] hover:text-[#084c61]'
+                metric === m ? 'bg-white text-(--c-ink) shadow-sm' : 'text-(--c-muted) hover:text-(--c-ink)'
               }`}
             >
               {m === 'mention' ? 'Mention Rate' : 'Citation Rate'}
@@ -122,13 +122,13 @@ export function BrandTrendChart({ brands }: { brands: BrandTrendSeries[] }) {
       </div>
 
       {visibleBrands.length === 0 ? (
-        <div className="py-16 text-center text-sm text-[#8aadb8]">Select at least one brand above to see the chart.</div>
+        <div className="py-16 text-center text-sm text-(--c-subtle)">Select at least one brand above to see the chart.</div>
       ) : (
         <ResponsiveContainer width="100%" height={280}>
           <LineChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#eef3f5" vertical={false} />
-            <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#5a7a85' }} axisLine={false} tickLine={false} />
-            <YAxis tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11, fill: '#8aadb8' }} domain={[0, 100]} axisLine={false} tickLine={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--c-line-soft)" vertical={false} />
+            <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--c-muted)' }} axisLine={false} tickLine={false} />
+            <YAxis tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11, fill: 'var(--c-subtle)' }} domain={[0, 100]} axisLine={false} tickLine={false} />
             <Tooltip content={<CustomTooltip />} />
             <Legend wrapperStyle={{ fontSize: 12, paddingTop: 12 }} iconType="circle" iconSize={8} />
             {visibleBrands.map((b) => (

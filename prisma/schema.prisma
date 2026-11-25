@@ -21,8 +21,11 @@ model User {
   accounts      Account[]
   sessions      Session[]
   batches       Batch[]
+  projects      Project[]
   sharedBatches ProjectShare[]
   competitors   Competitor[]
+  oauthCodes    OAuthAuthCode[]
+  oauthTokens   OAuthToken[]
 }
 
 model Account {
@@ -71,12 +74,40 @@ model ProjectShare {
   @@unique([batchId, email])
 }
 
+// A tracked brand: one primary domain plus the brand names and competitors
+// that AI responses are scored against. Batches (prompt uploads) belong to a project.
+model Project {
+  id                String       @id @default(cuid())
+  name              String
+  primaryDomain     String       // bare hostname, e.g. "seniorlifestyle.com" (no protocol, no www)
+  additionalDomains String[]     @default([])  // other owned hostnames counted as citations
+  brandNames        String[]     @default([])  // names/aliases matched as brand mentions
+  sitemapUrl        String?
+  sitemapPathPrefix String?
+  gscSiteUrl        String?
+  segmentLabels     Json?        // display labels for Prompt.segments keys, e.g. {"market":"Market"}
+  logoUrl           String?
+  brandColor        String?
+  userId            String       // owner
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  competitors       Competitor[]
+  batches           Batch[]
+  prompts           Prompt[]
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@unique([userId, primaryDomain])
+}
+
+
 model Batch {
   id          String         @id @default(cuid())
   name        String
   fileName    String
   userId      String
   user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId   String?        // nullable until every batch is backfilled — see scripts/backfill-projects.ts
+  project     Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   isPrivate   Boolean        @default(true)
   shareToken  String?        @unique @default(cuid())
   prompts     Prompt[]
@@ -85,6 +116,8 @@ model Batch {
   runSessions RunSession[]
   schedules   Schedule[]
   createdAt   DateTime       @default(now())
+
+  @@index([projectId])
 }
 
 model BatchRun {
@@ -100,6 +133,9 @@ model BatchRun {
   status       String      @default("running")  // "running" | "done"
   startedAt    DateTime    @default(now())
   finishedAt   DateTime?
+
+  @@index([batchId])
+  @@index([runSessionId])
 }
 
 model RunSession {
@@ -114,6 +150,9 @@ model RunSession {
   results     Result[]
   startedAt   DateTime   @default(now())
   finishedAt  DateTime?
+
+  @@index([batchId])
+  @@index([scheduleId])
 }
 
 model Schedule {
@@ -131,14 +170,21 @@ model Schedule {
   lastRunAt   DateTime?
   runSessions RunSession[]
   createdAt   DateTime     @default(now())
+
+  @@index([batchId])
 }
 
 model Prompt {
   id            String   @id @default(cuid())
   batchId       String
   batch         Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  projectId     String?  // denormalized from Batch for project-scoped queries
+  project       Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   promptType    String   // "brand" | "nonbrand"
   category      String
+  entityName    String   @default("")  // location / product / service line the prompt is about
+  segments      Json?    // arbitrary dimensions, e.g. {"market":"Chicago","levelOfCare":"Memory Care"}
+  // Legacy senior-living columns — superseded by entityName/segments, dropped once all readers move over.
   communityName String
   city          String
   market        String
@@ -148,6 +194,9 @@ model Prompt {
   jobError      String?
   results       Result[]
   createdAt     DateTime @default(now())
+
+  @@index([projectId])
+  @@index([batchId])
 }
 
 model Result {
@@ -161,8 +210,9 @@ model Result {
   isMentioned  Boolean     @default(false)
   isCited      Boolean     @default(false)
   sentiment    String      @default("neutral")  // "positive" | "neutral" | "negative"
+  brandPosition Int?       // 1-based order the project's brand appears among tracked brands; null if not mentioned
   citations    Citation[]
-  competitorMentions CompetitorMention[]
+  competitorMentions CompetitorMention[]  // per-competitor detection; the project's own brand stays on the fields above
   // Usage and estimated USD cost of producing this result (lib/usage.ts).
   // Null on rows saved before cost tracking, or when the platform timed out.
   inputTokens  Int?
@@ -170,7 +220,11 @@ model Result {
   searchCount  Int?
   costUsd      Float?
   runAt        DateTime    @default(now())
+
+  @@index([promptId])
+  @@index([runSessionId])
 }
+
 
 model Citation {
   id       String @id @default(cuid())
@@ -183,6 +237,8 @@ model Citation {
   // false: the source was retrieved by the platform's web search but not directly
   // cited — surfaced separately so it isn't counted toward isMentioned/isCited stats.
   isExplicitCitation Boolean @default(true)
+
+  @@index([resultId])
 }
 
 // A named competitor tracked against the user's existing prompt set.
@@ -190,12 +246,16 @@ model Competitor {
   id        String              @id @default(cuid())
   userId    String
   user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId String?             // nullable until backfilled — see scripts/backfill-projects.ts
+  project   Project?            @relation(fields: [projectId], references: [id], onDelete: Cascade)
   brandName String
   domain    String              // used to match citation domains (e.g. "brookdale.com")
   aliases   String              @default("")  // comma-separated alternate names scanned in response text
   active    Boolean             @default(true)
   mentions  CompetitorMention[]
   createdAt DateTime            @default(now())
+
+  @@index([projectId])
 }
 
 // One row per (Result, Competitor) — mirrors Result.isMentioned/isCited/sentiment
@@ -209,6 +269,7 @@ model CompetitorMention {
   isMentioned  Boolean    @default(false)
   isCited      Boolean    @default(false)
   sentiment    String     @default("neutral")  // "positive" | "neutral" | "negative"
+  position     Int?       // 1-based order among tracked brands; null if not mentioned
 
   @@unique([resultId, competitorId])
 }
@@ -251,4 +312,50 @@ model PageCrawlResult {
   hasSeniorCare    Boolean?
   crawledAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+}
+
+// ─── MCP connector OAuth (lib/mcp/oauth.ts) ─────────────────────────────────
+// Claude (or another MCP client) registers itself, the user approves it at
+// /oauth/authorize while signed in, and the client gets tokens that act as
+// that user on /api/mcp. Only SHA-256 hashes of codes and tokens are stored.
+
+model OAuthClient {
+  id           String          @id @default(cuid())  // the client_id
+  name         String
+  redirectUris String[]
+  createdAt    DateTime        @default(now())
+  codes        OAuthAuthCode[]
+  tokens       OAuthToken[]
+}
+
+model OAuthAuthCode {
+  id            String      @id @default(cuid())
+  codeHash      String      @unique
+  clientId      String
+  client        OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  redirectUri   String
+  codeChallenge String      // PKCE S256
+  scope         String      @default("")
+  expiresAt     DateTime
+  usedAt        DateTime?
+  createdAt     DateTime    @default(now())
+}
+
+model OAuthToken {
+  id               String      @id @default(cuid())
+  accessTokenHash  String      @unique
+  refreshTokenHash String      @unique
+  clientId         String
+  client           OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scope            String      @default("")
+  accessExpiresAt  DateTime
+  refreshExpiresAt DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime    @default(now())
+
+  @@index([userId])
 }

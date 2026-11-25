@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -8,10 +8,14 @@ import { Progress } from '@/components/ui/progress'
 import {
   Play, CheckCircle2, AlertCircle, RefreshCw, BarChart3,
   Mail, Pencil, Trash2, Share2, X, Check, Link2, UserPlus,
-  Calendar, Plus, Clock, RotateCcw, ChevronDown, ChevronUp, History, Download,
+  Calendar, Plus, Clock, RotateCcw, ChevronDown, ChevronUp, History, Download, FileSpreadsheet,
 } from 'lucide-react'
 import Link from 'next/link'
+import { useActiveProject } from '@/components/active-project-banner'
+import { PRESET_LABELS, type SegmentLabels } from '@/lib/segment-labels'
+import { GOOGLE_ONLY_SIGN_IN } from '@/lib/app-config'
 import { PLATFORM_LABELS } from '@/lib/utils'
+import { SCHEDULE_TIMEZONE, scheduleTimezoneLabel, formatInScheduleZone } from '@/lib/schedule-time'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -94,8 +98,25 @@ interface RunStatus {
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const LEVEL_OF_CARE_OPTIONS = ['', 'Assisted Living', 'Independent Living', 'Memory Care', 'Skilled Nursing', 'Short Term Care']
 
+// The active project's dimension names, for the prompt forms nested below RunPage.
+const LabelsContext = createContext<SegmentLabels>(PRESET_LABELS['senior-living'])
+
+// Senior-living projects pick from the known levels of care; others type their own service.
+function ServiceField({ value, onChange, className }: { value: string; onChange: (v: string) => void; className: string }) {
+  const labels = useContext(LabelsContext)
+  if (labels.preset === 'senior-living') {
+    return (
+      <select value={value} onChange={(e) => onChange(e.target.value)} className={className} aria-label={labels.levelOfCare}>
+        {LEVEL_OF_CARE_OPTIONS.map((o) => <option key={o} value={o}>{o || '— None —'}</option>)}
+      </select>
+    )
+  }
+  return <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={labels.levelOfCare} className={className} aria-label={labels.levelOfCare} />
+}
+
 function formatScheduleLabel(s: Schedule): string {
-  const hour = `${s.hour === 0 ? 12 : s.hour > 12 ? s.hour - 12 : s.hour}${s.hour >= 12 ? 'pm' : 'am'}`
+  // Hours are local to the deployment's schedule zone (see lib/schedule-time.ts).
+  const hour = `${s.hour === 0 ? 12 : s.hour > 12 ? s.hour - 12 : s.hour}${s.hour >= 12 ? 'pm' : 'am'} ${scheduleTimezoneLabel(SCHEDULE_TIMEZONE)}`
   switch (s.frequency) {
     case 'daily': return `Daily at ${hour}`
     case 'weekly': return `Weekly on ${DAYS_OF_WEEK[s.dayOfWeek ?? 1]} at ${hour}`
@@ -174,40 +195,40 @@ function ScheduleModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-white rounded-2xl border border-[#dde6ea] shadow-xl overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#dde6ea]">
+      <div className="relative w-full max-w-md bg-white rounded-2xl border border-(--c-line) shadow-xl overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-(--c-line)">
           <div>
-            <h2 className="font-semibold text-[#084c61]">Scheduled Runs</h2>
-            <p className="text-xs text-[#5a7a85] mt-0.5 truncate max-w-xs">{batch.name}</p>
+            <h2 className="font-semibold text-(--c-ink)">Scheduled Runs</h2>
+            <p className="text-xs text-(--c-muted) mt-0.5 truncate max-w-xs">{batch.name}</p>
           </div>
-          <button onClick={onClose} className="text-[#8aadb8] hover:text-[#084c61] transition-colors">
+          <button onClick={onClose} className="text-(--c-subtle) hover:text-(--c-ink) transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
 
         <div className="p-6 space-y-4">
-          {loading && <p className="text-sm text-[#8aadb8]">Loading…</p>}
+          {loading && <p className="text-sm text-(--c-subtle)">Loading…</p>}
 
           {!loading && schedules.length === 0 && !showForm && (
-            <p className="text-sm text-[#5a7a85]">No schedules yet. Add one to run prompts automatically.</p>
+            <p className="text-sm text-(--c-muted)">No schedules yet. Add one to run prompts automatically.</p>
           )}
 
           {schedules.map((s) => (
-            <div key={s.id} className="flex items-center justify-between bg-[#f5f8fa] rounded-lg px-4 py-3">
+            <div key={s.id} className="flex items-center justify-between bg-(--c-surface) rounded-lg px-4 py-3">
               <div>
-                <p className="text-sm font-medium text-[#084c61]">{formatScheduleLabel(s)}</p>
-                <p className="text-xs text-[#8aadb8] mt-0.5">
-                  Next: {new Date(s.nextRunAt).toLocaleDateString()} — {s.enabled ? 'Active' : 'Paused'}
+                <p className="text-sm font-medium text-(--c-ink)">{formatScheduleLabel(s)}</p>
+                <p className="text-xs text-(--c-subtle) mt-0.5">
+                  Next: {formatInScheduleZone(s.nextRunAt)} — {s.enabled ? 'Active' : 'Paused'}
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => handleToggle(s.id, !s.enabled)}
-                  className={`relative w-9 h-5 rounded-full transition-colors ${s.enabled ? 'bg-[#177e89]' : 'bg-[#c5d7de]'}`}
+                  className={`relative w-9 h-5 rounded-full transition-colors ${s.enabled ? 'bg-(--c-accent)' : 'bg-(--c-line-strong-2)'}`}
                 >
                   <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${s.enabled ? 'translate-x-4' : ''}`} />
                 </button>
-                <button onClick={() => handleDelete(s.id)} className="text-[#b8cdd3] hover:text-rose-500 transition-colors">
+                <button onClick={() => handleDelete(s.id)} className="text-(--c-faint) hover:text-rose-500 transition-colors">
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
@@ -215,13 +236,13 @@ function ScheduleModal({
           ))}
 
           {showForm ? (
-            <div className="space-y-3 border border-[#dde6ea] rounded-xl p-4">
+            <div className="space-y-3 border border-(--c-line) rounded-xl p-4">
               <div>
-                <label className="text-xs font-medium text-[#5a7a85] block mb-1">Frequency</label>
+                <label className="text-xs font-medium text-(--c-muted) block mb-1">Frequency</label>
                 <select
                   value={frequency}
                   onChange={(e) => setFrequency(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+                  className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)"
                 >
                   <option value="daily">Daily</option>
                   <option value="weekly">Weekly</option>
@@ -232,11 +253,11 @@ function ScheduleModal({
 
               {frequency === 'weekly' && (
                 <div>
-                  <label className="text-xs font-medium text-[#5a7a85] block mb-1">Day of week</label>
+                  <label className="text-xs font-medium text-(--c-muted) block mb-1">Day of week</label>
                   <select
                     value={dayOfWeek}
                     onChange={(e) => setDayOfWeek(Number(e.target.value))}
-                    className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+                    className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)"
                   >
                     {DAYS_OF_WEEK.map((d, i) => <option key={d} value={i}>{d}</option>)}
                   </select>
@@ -245,32 +266,32 @@ function ScheduleModal({
 
               {frequency === 'monthly' && (
                 <div>
-                  <label className="text-xs font-medium text-[#5a7a85] block mb-1">Day of month</label>
+                  <label className="text-xs font-medium text-(--c-muted) block mb-1">Day of month</label>
                   <input
                     type="number" min={1} max={28} value={dayOfMonth}
                     onChange={(e) => setDayOfMonth(Number(e.target.value))}
-                    className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+                    className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)"
                   />
                 </div>
               )}
 
               {frequency === 'custom' && (
                 <div>
-                  <label className="text-xs font-medium text-[#5a7a85] block mb-1">Every N days</label>
+                  <label className="text-xs font-medium text-(--c-muted) block mb-1">Every N days</label>
                   <input
                     type="number" min={1} max={365} value={customDays}
                     onChange={(e) => setCustomDays(Number(e.target.value))}
-                    className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+                    className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)"
                   />
                 </div>
               )}
 
               <div>
-                <label className="text-xs font-medium text-[#5a7a85] block mb-1">Hour of day (UTC)</label>
+                <label className="text-xs font-medium text-(--c-muted) block mb-1">Hour of day ({scheduleTimezoneLabel(SCHEDULE_TIMEZONE)})</label>
                 <select
                   value={hour}
                   onChange={(e) => setHour(Number(e.target.value))}
-                  className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+                  className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)"
                 >
                   {Array.from({ length: 24 }, (_, i) => (
                     <option key={i} value={i}>
@@ -288,7 +309,7 @@ function ScheduleModal({
           ) : (
             <button
               onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 text-sm text-[#177e89] hover:text-[#084c61] transition-colors"
+              className="flex items-center gap-2 text-sm text-(--c-accent) hover:text-(--c-ink) transition-colors"
             >
               <Plus className="h-4 w-4" />
               Add schedule
@@ -311,6 +332,7 @@ function AddPromptModal({
   onClose: () => void
   onAdded: () => void
 }) {
+  const labels = useContext(LabelsContext)
   const [promptText, setPromptText] = useState('')
   const [communityName, setCommunityName] = useState('')
   const [promptType, setPromptType] = useState('brand')
@@ -351,81 +373,79 @@ function AddPromptModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-white rounded-2xl border border-[#dde6ea] shadow-xl overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#dde6ea]">
+      <div className="relative w-full max-w-lg bg-white rounded-2xl border border-(--c-line) shadow-xl overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-(--c-line)">
           <div>
-            <h2 className="font-semibold text-[#084c61]">Add Prompt</h2>
-            <p className="text-xs text-[#5a7a85] mt-0.5 truncate max-w-xs">{batch.name}</p>
+            <h2 className="font-semibold text-(--c-ink)">Add Prompt</h2>
+            <p className="text-xs text-(--c-muted) mt-0.5 truncate max-w-xs">{batch.name}</p>
           </div>
-          <button onClick={onClose} className="text-[#8aadb8] hover:text-[#084c61] transition-colors">
+          <button onClick={onClose} className="text-(--c-subtle) hover:text-(--c-ink) transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
 
         <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
           <div>
-            <label className="text-xs font-medium text-[#5a7a85] block mb-1">Prompt text <span className="text-rose-500">*</span></label>
+            <label className="text-xs font-medium text-(--c-muted) block mb-1">Prompt text <span className="text-rose-500">*</span></label>
             <textarea
               value={promptText}
               onChange={(e) => setPromptText(e.target.value)}
               rows={3}
               placeholder="e.g. What are the best assisted living communities in Chicago?"
-              className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61] resize-none"
+              className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink) resize-none"
             />
           </div>
 
           <div>
-            <label className="text-xs font-medium text-[#5a7a85] block mb-1">Community name <span className="text-[#8aadb8] font-normal">(optional)</span></label>
+            <label className="text-xs font-medium text-(--c-muted) block mb-1">{labels.entity} <span className="text-(--c-subtle) font-normal">(optional)</span></label>
             <input
               type="text"
               value={communityName}
               onChange={(e) => setCommunityName(e.target.value)}
-              placeholder="Leave blank for a general, non-community-specific prompt"
-              className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+              placeholder={`Leave blank for a general prompt not about one ${labels.entity.toLowerCase()}`}
+              className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-[#5a7a85] block mb-1">Prompt type</label>
+              <label className="text-xs font-medium text-(--c-muted) block mb-1">Prompt type</label>
               <select
                 value={promptType}
                 onChange={(e) => setPromptType(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+                className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)"
               >
                 <option value="brand">Brand</option>
                 <option value="nonbrand">Non-brand</option>
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-[#5a7a85] block mb-1">Level of care</label>
-              <select
+              <label className="text-xs font-medium text-(--c-muted) block mb-1">{labels.levelOfCare}</label>
+              <ServiceField
                 value={levelOfCare}
-                onChange={(e) => setLevelOfCare(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]"
-              >
-                {LEVEL_OF_CARE_OPTIONS.map((o) => <option key={o} value={o}>{o || '— None —'}</option>)}
-              </select>
+                onChange={setLevelOfCare}
+                className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)"
+              />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-[#5a7a85] block mb-1">City</label>
+              <label className="text-xs font-medium text-(--c-muted) block mb-1">City</label>
               <input type="text" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Chicago"
-                className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+                className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
             </div>
             <div>
-              <label className="text-xs font-medium text-[#5a7a85] block mb-1">Market</label>
+              <label className="text-xs font-medium text-(--c-muted) block mb-1">{labels.market}</label>
               <input type="text" value={market} onChange={(e) => setMarket(e.target.value)} placeholder="Midwest"
-                className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+                className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
             </div>
           </div>
 
           <div>
-            <label className="text-xs font-medium text-[#5a7a85] block mb-1">Category</label>
+            <label className="text-xs font-medium text-(--c-muted) block mb-1">Category</label>
             <input type="text" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Discovery"
-              className="w-full px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+              className="w-full px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
           </div>
 
           {error && <p className="text-xs text-rose-500">{error}</p>}
@@ -434,6 +454,215 @@ function AddPromptModal({
             <Button onClick={handleSave} disabled={saving}>{saving ? 'Adding…' : 'Add prompt'}</Button>
             <Button variant="outline" onClick={onClose}>Cancel</Button>
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Import Prompts Modal ─────────────────────────────────────────────────────
+
+interface ImportSummary {
+  saved: boolean
+  rows: number
+  blankRows: number
+  duplicates: string[]
+  alreadyInSet: number
+  added: number
+  alsoInOtherSets: number
+  updatedInSet: number
+  updatedElsewhere: number
+  unlistedCount: number
+  unlisted: string[]
+  setTotalAfter: number
+}
+
+function ImportPromptsModal({
+  batch,
+  onClose,
+  onImported,
+  onRun,
+}: {
+  batch: BatchInfo
+  onClose: () => void
+  onImported: () => void
+  onRun: (batchId: string, rerun: boolean) => void
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [file, setFile] = useState<File | null>(null)
+  const [updateExisting, setUpdateExisting] = useState(true)
+  const [updateOtherSets, setUpdateOtherSets] = useState(true)
+  const [summary, setSummary] = useState<ImportSummary | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Every option change re-previews, so the counts shown are what Save does.
+  const send = async (f: File, commit: boolean, opts = { updateExisting, updateOtherSets }) => {
+    setBusy(true)
+    setSaving(commit)
+    setError(null)
+    try {
+      const form = new FormData()
+      form.append('file', f)
+      form.append('commit', String(commit))
+      form.append('updateExisting', String(opts.updateExisting))
+      form.append('updateOtherSets', String(opts.updateOtherSets))
+      const res = await fetch(`/api/batches/${batch.id}/import`, { method: 'POST', body: form })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setSummary(null); setError(data.error || 'Import failed'); return }
+      setSummary(data)
+      if (commit) onImported()
+    } catch {
+      setError('Import failed')
+    } finally {
+      setBusy(false)
+      setSaving(false)
+    }
+  }
+
+  const chooseFile = (f: File | undefined) => {
+    if (!f) return
+    setFile(f)
+    setSummary(null)
+    send(f, false)
+  }
+
+  const toggle = (which: 'existing' | 'other', value: boolean) => {
+    const opts = which === 'existing' ? { updateExisting: value, updateOtherSets } : { updateExisting, updateOtherSets: value }
+    setUpdateExisting(opts.updateExisting)
+    setUpdateOtherSets(opts.updateOtherSets)
+    if (file) send(file, false, opts)
+  }
+
+  const s = summary
+  const changes = s ? s.added + s.updatedInSet + s.updatedElsewhere : 0
+  const line = (label: string, value: number) => (
+    <div className="flex justify-between text-sm py-1">
+      <span className="text-(--c-muted)">{label}</span>
+      <span className="font-semibold text-(--c-ink) tabular-nums">{value}</span>
+    </div>
+  )
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative w-full max-w-lg bg-white rounded-2xl border border-(--c-line) shadow-xl overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-(--c-line)">
+          <div>
+            <h2 className="font-semibold text-(--c-ink)">Add prompts from spreadsheet</h2>
+            <p className="text-xs text-(--c-muted) mt-0.5 truncate max-w-xs">{batch.name}</p>
+          </div>
+          <button onClick={onClose} className="text-(--c-subtle) hover:text-(--c-ink) transition-colors">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+          {s?.saved ? (
+            <>
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+                <p className="text-sm text-(--c-ink)">
+                  Added {s.added} prompt{s.added === 1 ? '' : 's'} and recategorized {s.updatedInSet + s.updatedElsewhere}.
+                  The set now has {s.setTotalAfter} prompts.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {s.added > 0 && (
+                  <Button onClick={() => { onRun(batch.id, false); onClose() }}>
+                    <Play className="h-4 w-4 mr-1.5" /> Run new prompts
+                  </Button>
+                )}
+                <Button variant="outline" onClick={() => { onRun(batch.id, true); onClose() }}>
+                  <RotateCcw className="h-4 w-4 mr-1.5" /> Re-run whole set
+                </Button>
+                <Button variant="outline" onClick={onClose}>Done</Button>
+              </div>
+              {s.added > 0 && (
+                <p className="text-xs text-(--c-subtle)">&ldquo;Run new prompts&rdquo; runs every prompt in the set that has no results yet.</p>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-(--c-muted)">
+                Same columns as an upload: <code>prompt</code>, <code>category</code>, <code>prompt_type</code>, and optionally
+                location, city, market and service. Prompts already in this set are matched by their text. Nothing is deleted.
+              </p>
+
+              <div className="flex items-center gap-3">
+                <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
+                  onChange={(e) => { chooseFile(e.target.files?.[0]); e.target.value = '' }} />
+                <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={busy}>
+                  <FileSpreadsheet className="h-4 w-4 mr-1.5" /> {file ? 'Choose another file' : 'Choose file'}
+                </Button>
+                {file && <span className="text-xs text-(--c-muted) truncate">{file.name}</span>}
+              </div>
+
+              <div className="space-y-2">
+                <label className="flex items-start gap-2 text-sm text-(--c-ink)">
+                  <input type="checkbox" className="mt-1" checked={updateExisting} disabled={busy}
+                    onChange={(e) => toggle('existing', e.target.checked)} />
+                  <span>Update the category and type of prompts already in this set</span>
+                </label>
+                <label className="flex items-start gap-2 text-sm text-(--c-ink)">
+                  <input type="checkbox" className="mt-1" checked={updateOtherSets} disabled={busy}
+                    onChange={(e) => toggle('other', e.target.checked)} />
+                  <span>
+                    Also update the same prompts in this project&rsquo;s other sets
+                    <span className="block text-xs text-(--c-subtle)">So every set reports them in the same category. Only sets you can edit.</span>
+                  </span>
+                </label>
+              </div>
+
+              {busy && !s && <p className="text-xs text-(--c-muted)">Reading the spreadsheet…</p>}
+
+              {s && (
+                <div className="rounded-lg border border-(--c-line) px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-(--c-subtle) mb-1">Preview</p>
+                  {line('Prompts in the spreadsheet', s.rows)}
+                  {line('Already in this set', s.alreadyInSet)}
+                  {line('Added to this set', s.added)}
+                  {s.alsoInOtherSets > 0 && (
+                    <p className="text-xs text-(--c-subtle) -mt-0.5 mb-1">
+                      {`${s.alsoInOtherSets} of these ${s.alsoInOtherSets === 1 ? 'is' : 'are'} already tracked in another set. They're copied in, and the other set keeps its results.`}
+                    </p>
+                  )}
+                  {line('Recategorized in this set', s.updatedInSet)}
+                  {line('Recategorized in other sets', s.updatedElsewhere)}
+                  {line('Prompts in the set afterwards', s.setTotalAfter)}
+                  {(s.blankRows > 0 || s.duplicates.length > 0) && (
+                    <p className="text-xs text-amber-700 mt-2">
+                      Skipped {[
+                        s.blankRows > 0 && `${s.blankRows} row${s.blankRows === 1 ? '' : 's'} with no prompt`,
+                        s.duplicates.length > 0 && `${s.duplicates.length} prompt${s.duplicates.length === 1 ? '' : 's'} listed twice (the first row is used)`,
+                      ].filter(Boolean).join(' and ')}.
+                    </p>
+                  )}
+                  {s.unlistedCount > 0 && (
+                    <details className="mt-2">
+                      <summary className="text-xs text-(--c-muted) cursor-pointer">
+                        {s.unlistedCount} prompt{s.unlistedCount === 1 ? ' is' : 's are'} in the set but not in the spreadsheet; {s.unlistedCount === 1 ? 'it stays' : 'they stay'}
+                      </summary>
+                      <ul className="mt-1 space-y-0.5 text-xs text-(--c-muted) list-disc pl-4">
+                        {s.unlisted.map((t) => <li key={t}>{t}</li>)}
+                        {s.unlistedCount > s.unlisted.length && <li>and {s.unlistedCount - s.unlisted.length} more</li>}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              )}
+
+              {error && <p className="text-xs text-rose-500">{error}</p>}
+
+              <div className="flex gap-2 pt-1">
+                <Button onClick={() => file && send(file, true)} disabled={!file || !s || busy || changes === 0}>
+                  {saving ? 'Saving…' : changes === 0 && s ? 'Nothing to change' : 'Save changes'}
+                </Button>
+                <Button variant="outline" onClick={onClose}>Cancel</Button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -467,7 +696,7 @@ function ShareModal({
       : null
 
   useEffect(() => {
-    fetch(`/api/projects/${batch.id}/share`)
+    fetch(`/api/batches/${batch.id}/share`)
       .then((r) => r.json())
       .then((data) => { if (Array.isArray(data)) setShares(data) })
       .catch(() => {})
@@ -479,7 +708,7 @@ function ShareModal({
     if (!inviteEmail.includes('@')) { setInviteError('Please enter a valid email address'); return }
     setInviting(true)
     try {
-      const res = await fetch(`/api/projects/${batch.id}/share`, {
+      const res = await fetch(`/api/batches/${batch.id}/share`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: inviteEmail.trim().toLowerCase() }),
@@ -494,7 +723,7 @@ function ShareModal({
 
   const handleRevoke = async (email: string) => {
     try {
-      await fetch(`/api/projects/${batch.id}/share`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) })
+      await fetch(`/api/batches/${batch.id}/share`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) })
       setShares((prev) => prev.filter((s) => s.email !== email))
     } catch {}
   }
@@ -503,10 +732,10 @@ function ShareModal({
     setTogglingLink(true)
     try {
       if (shareToken) {
-        const res = await fetch(`/api/projects/${batch.id}/share-link`, { method: 'DELETE' })
+        const res = await fetch(`/api/batches/${batch.id}/share-link`, { method: 'DELETE' })
         if (res.ok) { setShareToken(null); onShareTokenChange(batch.id, null) }
       } else {
-        const res = await fetch(`/api/projects/${batch.id}/share-link`, { method: 'POST' })
+        const res = await fetch(`/api/batches/${batch.id}/share-link`, { method: 'POST' })
         const data = await res.json()
         if (data.shareToken) { setShareToken(data.shareToken); onShareTokenChange(batch.id, data.shareToken) }
       }
@@ -516,57 +745,62 @@ function ShareModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-white rounded-2xl border border-[#dde6ea] shadow-xl overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#dde6ea]">
+      <div className="relative w-full max-w-md bg-white rounded-2xl border border-(--c-line) shadow-xl overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-(--c-line)">
           <div>
-            <h2 className="font-semibold text-[#084c61]">Share Project</h2>
-            <p className="text-xs text-[#5a7a85] mt-0.5 truncate max-w-xs">{batch.name}</p>
+            <h2 className="font-semibold text-(--c-ink)">Share Prompt Set</h2>
+            <p className="text-xs text-(--c-muted) mt-0.5 truncate max-w-xs">{batch.name}</p>
           </div>
-          <button onClick={onClose} className="text-[#8aadb8] hover:text-[#084c61] transition-colors"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} className="text-(--c-subtle) hover:text-(--c-ink) transition-colors"><X className="h-5 w-5" /></button>
         </div>
         <div className="p-6 space-y-6">
           <div>
-            <div className="flex items-center gap-2 mb-3"><UserPlus className="h-4 w-4 text-[#177e89]" /><h3 className="text-sm font-semibold text-[#084c61]">Invite by email</h3></div>
+            <div className="flex items-center gap-2 mb-3"><UserPlus className="h-4 w-4 text-(--c-accent)" /><h3 className="text-sm font-semibold text-(--c-ink)">Invite by email</h3></div>
             <div className="flex gap-2">
               <input type="email" value={inviteEmail} onChange={(e) => { setInviteEmail(e.target.value); setInviteError(null) }} onKeyDown={(e) => e.key === 'Enter' && handleInvite()} placeholder="colleague@example.com"
-                className="flex-1 px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+                className="flex-1 px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
               <Button size="sm" onClick={handleInvite} disabled={inviting || !inviteEmail}>{inviting ? '…' : 'Add'}</Button>
             </div>
             {inviteError && <p className="text-xs text-rose-500 mt-1.5">{inviteError}</p>}
             {lastInvited && !inviteError && (
               <div className="mt-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 space-y-1">
-                <p className="font-semibold">Invite sent to {lastInvited}</p>
-                <p>They need to <strong>sign in or create an account</strong> at this app using that exact email address. Ask them to check their spam folder for the invitation email.</p>
+                {GOOGLE_ONLY_SIGN_IN ? <>
+                  <p className="font-semibold">Shared with {lastInvited}</p>
+                  <p>They&apos;ll see it after they <strong>sign in with Google</strong> at this app using that exact email address.</p>
+                </> : <>
+                  <p className="font-semibold">Invite sent to {lastInvited}</p>
+                  <p>They need to <strong>sign in or create an account</strong> at this app using that exact email address. Ask them to check their spam folder for the invitation email.</p>
+                </>}
               </div>
             )}
             {!loadingShares && shares.length > 0 && (
               <ul className="mt-3 space-y-2">
                 {shares.map((share) => (
-                  <li key={share.id} className="flex items-center justify-between text-sm bg-[#f5f8fa] rounded-lg px-3 py-2">
-                    <span className="text-[#084c61]">{share.email}</span>
-                    <button onClick={() => handleRevoke(share.email)} className="text-[#8aadb8] hover:text-rose-500 transition-colors"><X className="h-4 w-4" /></button>
+                  <li key={share.id} className="flex items-center justify-between text-sm bg-(--c-surface) rounded-lg px-3 py-2">
+                    <span className="text-(--c-ink)">{share.email}</span>
+                    <button onClick={() => handleRevoke(share.email)} className="text-(--c-subtle) hover:text-rose-500 transition-colors"><X className="h-4 w-4" /></button>
                   </li>
                 ))}
               </ul>
             )}
-            {loadingShares && <p className="text-xs text-[#8aadb8] mt-2">Loading…</p>}
-            {!loadingShares && shares.length === 0 && <p className="text-xs text-[#8aadb8] mt-2">No one has been invited yet</p>}
+            {loadingShares && <p className="text-xs text-(--c-subtle) mt-2">Loading…</p>}
+            {!loadingShares && shares.length === 0 && <p className="text-xs text-(--c-subtle) mt-2">No one has been invited yet</p>}
           </div>
-          <hr className="border-[#dde6ea]" />
+          <hr className="border-(--c-line)" />
           <div>
-            <div className="flex items-center gap-2 mb-3"><Link2 className="h-4 w-4 text-[#177e89]" /><h3 className="text-sm font-semibold text-[#084c61]">Shareable link</h3></div>
-            <div className="flex items-center justify-between bg-[#f5f8fa] rounded-lg px-4 py-3">
+            <div className="flex items-center gap-2 mb-3"><Link2 className="h-4 w-4 text-(--c-accent)" /><h3 className="text-sm font-semibold text-(--c-ink)">Shareable link</h3></div>
+            <div className="flex items-center justify-between bg-(--c-surface) rounded-lg px-4 py-3">
               <div>
-                <p className="text-sm text-[#084c61] font-medium">{shareToken ? 'Link sharing enabled' : 'Link sharing disabled'}</p>
-                <p className="text-xs text-[#8aadb8] mt-0.5">{shareToken ? 'Anyone with the link can view this project' : 'Enable to share with anyone'}</p>
+                <p className="text-sm text-(--c-ink) font-medium">{shareToken ? 'Link sharing enabled' : 'Link sharing disabled'}</p>
+                <p className="text-xs text-(--c-subtle) mt-0.5">{shareToken ? 'Anyone with the link can view this prompt set' : 'Enable to share with anyone'}</p>
               </div>
-              <button onClick={handleToggleLink} disabled={togglingLink} className={`relative w-10 h-5 rounded-full transition-colors ${shareToken ? 'bg-[#177e89]' : 'bg-[#c5d7de]'}`}>
+              <button onClick={handleToggleLink} disabled={togglingLink} className={`relative w-10 h-5 rounded-full transition-colors ${shareToken ? 'bg-(--c-accent)' : 'bg-(--c-line-strong-2)'}`}>
                 <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${shareToken ? 'translate-x-5' : 'translate-x-0'}`} />
               </button>
             </div>
             {shareToken && shareUrl && (
               <div className="mt-3 flex gap-2">
-                <input readOnly value={shareUrl} className="flex-1 px-3 py-2 text-xs border border-[#dde6ea] rounded-lg bg-[#f5f8fa] text-[#5a7a85] truncate" />
+                <input readOnly value={shareUrl} className="flex-1 px-3 py-2 text-xs border border-(--c-line) rounded-lg bg-(--c-surface) text-(--c-muted) truncate" />
                 <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(shareUrl)}><Check className="h-4 w-4" /></Button>
               </div>
             )}
@@ -579,18 +813,27 @@ function ShareModal({
 
 // ─── Delete Confirm Dialog ────────────────────────────────────────────────────
 
-function DeleteConfirmDialog({ batchName, onConfirm, onCancel }: { batchName: string; onConfirm: () => void; onCancel: () => void }) {
+function DeleteConfirmDialog({ batchName, deleting, error, onConfirm, onCancel }: {
+  batchName: string
+  deleting: boolean
+  error: string | null
+  onConfirm: () => void
+  onCancel: () => void
+}) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
-      <div className="relative w-full max-w-sm bg-white rounded-2xl border border-[#dde6ea] shadow-xl p-6">
-        <h2 className="font-semibold text-[#084c61] mb-2">Delete Project</h2>
-        <p className="text-sm text-[#5a7a85] mb-6">
-          Are you sure you want to delete <strong className="text-[#084c61]">{batchName}</strong>? This will also delete all prompts and results. This action cannot be undone.
+      <div className="relative w-full max-w-sm bg-white rounded-2xl border border-(--c-line) shadow-xl p-6">
+        <h2 className="font-semibold text-(--c-ink) mb-2">Delete Prompt Set</h2>
+        <p className="text-sm text-(--c-muted) mb-6">
+          Are you sure you want to delete <strong className="text-(--c-ink)">{batchName}</strong>? This will also delete all prompts and results. This action cannot be undone.
         </p>
+        {error && <p className="text-sm text-rose-600 -mt-3 mb-4">{error}</p>}
         <div className="flex gap-3 justify-end">
-          <Button variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
-          <button onClick={onConfirm} className="px-4 py-2 text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors">Delete</button>
+          <Button variant="outline" size="sm" onClick={onCancel} disabled={deleting}>Cancel</Button>
+          <button onClick={onConfirm} disabled={deleting} className="px-4 py-2 text-sm font-semibold bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white rounded-lg transition-colors">
+            {deleting ? 'Deleting…' : error ? 'Try again' : 'Delete'}
+          </button>
         </div>
       </div>
     </div>
@@ -621,6 +864,7 @@ function PromptEditForm({
   onCancel: () => void
   saving: boolean
 }) {
+  const labels = useContext(LabelsContext)
   const [promptText, setPromptText] = useState(prompt.promptText)
   const [communityName, setCommunityName] = useState(prompt.communityName)
   const [promptType, setPromptType] = useState(prompt.promptType)
@@ -630,48 +874,47 @@ function PromptEditForm({
   const [levelOfCare, setLevelOfCare] = useState(prompt.levelOfCare)
 
   return (
-    <div className="px-3 py-3 rounded-lg bg-[#f5f8fa] space-y-2">
+    <div className="px-3 py-3 rounded-lg bg-(--c-surface) space-y-2">
       <textarea
         value={promptText}
         onChange={(e) => setPromptText(e.target.value)}
         rows={2}
-        className="w-full px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61] resize-none"
+        className="w-full px-2 py-1.5 text-xs border border-(--c-line) rounded-md focus:outline-none focus:ring-2 focus:ring-(--c-ink) resize-none"
       />
       <input
         value={communityName}
         onChange={(e) => setCommunityName(e.target.value)}
-        placeholder="Community name (optional)"
-        className="w-full px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+        placeholder={`${labels.entity} (optional)`}
+        className="w-full px-2 py-1.5 text-xs border border-(--c-line) rounded-md focus:outline-none focus:ring-2 focus:ring-(--c-ink)"
       />
       <div className="grid grid-cols-2 gap-2">
-        <select value={promptType} onChange={(e) => setPromptType(e.target.value)} className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]">
+        <select value={promptType} onChange={(e) => setPromptType(e.target.value)} className="px-2 py-1.5 text-xs border border-(--c-line) rounded-md focus:outline-none focus:ring-2 focus:ring-(--c-ink)">
           <option value="brand">Brand</option>
           <option value="nonbrand">Non-brand</option>
         </select>
-        <select value={levelOfCare} onChange={(e) => setLevelOfCare(e.target.value)} className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]">
-          {LEVEL_OF_CARE_OPTIONS.map((o) => <option key={o} value={o}>{o || '— None —'}</option>)}
-        </select>
+        <ServiceField value={levelOfCare} onChange={setLevelOfCare} className="px-2 py-1.5 text-xs border border-(--c-line) rounded-md focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
       </div>
       <div className="grid grid-cols-3 gap-2">
-        <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
-        <input value={market} onChange={(e) => setMarket(e.target.value)} placeholder="Market" className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
-        <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Category" className="px-2 py-1.5 text-xs border border-[#dde6ea] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+        <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" className="px-2 py-1.5 text-xs border border-(--c-line) rounded-md focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
+        <input value={market} onChange={(e) => setMarket(e.target.value)} placeholder={labels.market} className="px-2 py-1.5 text-xs border border-(--c-line) rounded-md focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
+        <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Category" className="px-2 py-1.5 text-xs border border-(--c-line) rounded-md focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
       </div>
       <div className="flex gap-2 pt-1">
         <button
           onClick={() => onSave({ promptText, communityName, promptType, category, city, market, levelOfCare })}
           disabled={saving || !promptText.trim()}
-          className="text-[11px] font-semibold text-white bg-[#084c61] hover:bg-[#063a4a] px-2.5 py-1 rounded-md transition-colors disabled:opacity-50"
+          className="text-[11px] font-semibold text-white bg-(--c-ink) hover:bg-(--c-ink-deep) px-2.5 py-1 rounded-md transition-colors disabled:opacity-50"
         >
           {saving ? 'Saving…' : 'Save'}
         </button>
-        <button onClick={onCancel} className="text-[11px] text-[#5a7a85] hover:text-[#084c61] px-2.5 py-1 rounded-md transition-colors">Cancel</button>
+        <button onClick={onCancel} className="text-[11px] text-(--c-muted) hover:text-(--c-ink) px-2.5 py-1 rounded-md transition-colors">Cancel</button>
       </div>
     </div>
   )
 }
 
 function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; canWrite: boolean; onCountChange: (delta: number) => void }) {
+  const labels = useContext(LabelsContext)
   const [prompts, setPrompts] = useState<PromptDetail[]>([])
   const [loading, setLoading] = useState(true)
   const [confirmId, setConfirmId] = useState<string | null>(null)
@@ -729,8 +972,8 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
     } catch {} finally { setSaving(false) }
   }
 
-  if (loading) return <p className="text-xs text-[#8aadb8] py-2">Loading…</p>
-  if (prompts.length === 0) return <p className="text-xs text-[#8aadb8] py-2">No prompts.</p>
+  if (loading) return <p className="text-xs text-(--c-subtle) py-2">Loading…</p>
+  if (prompts.length === 0) return <p className="text-xs text-(--c-subtle) py-2">No prompts.</p>
 
   const sortedPrompts = sortBy === 'none'
     ? prompts
@@ -743,14 +986,14 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-end gap-1.5">
-        <label className="text-[10px] text-[#8aadb8]">Sort by</label>
+        <label className="text-[10px] text-(--c-subtle)">Sort by</label>
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as 'none' | 'community' | 'category')}
-          className="text-[10px] px-1.5 py-1 border border-[#dde6ea] rounded-md text-[#5a7a85] focus:outline-none focus:ring-2 focus:ring-[#084c61]"
+          className="text-[10px] px-1.5 py-1 border border-(--c-line) rounded-md text-(--c-muted) focus:outline-none focus:ring-2 focus:ring-(--c-ink)"
         >
           <option value="none">Default</option>
-          <option value="community">Community</option>
+          <option value="community">{labels.entity}</option>
           <option value="category">Category</option>
         </select>
       </div>
@@ -762,7 +1005,7 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
           const isCommunityConfirming = communityConfirm === p.communityName
           items.push(
             <div key={`group-${p.communityName}`} className="flex items-center justify-between gap-3 px-3 pt-3 pb-1">
-              <span className="text-[11px] font-semibold text-[#084c61] truncate">{p.communityName || '(no community)'} <span className="font-normal text-[#8aadb8]">({groupCount})</span></span>
+              <span className="text-[11px] font-semibold text-(--c-ink) truncate">{p.communityName || '(no community)'} <span className="font-normal text-(--c-subtle)">({groupCount})</span></span>
               {canWrite && (
                 isCommunityConfirming ? (
                   <div className="flex items-center gap-1 flex-shrink-0">
@@ -774,12 +1017,12 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
                     >
                       {communityDeleting === p.communityName ? '…' : 'Yes'}
                     </button>
-                    <button onClick={() => setCommunityConfirm(null)} className="text-[10px] text-[#5a7a85] hover:text-[#084c61] px-1.5 py-0.5 rounded transition-colors">No</button>
+                    <button onClick={() => setCommunityConfirm(null)} className="text-[10px] text-(--c-muted) hover:text-(--c-ink) px-1.5 py-0.5 rounded transition-colors">No</button>
                   </div>
                 ) : (
                   <button
                     onClick={() => setCommunityConfirm(p.communityName)}
-                    className="flex items-center gap-1 text-[10px] text-[#b8cdd3] hover:text-rose-500 transition-colors flex-shrink-0"
+                    className="flex items-center gap-1 text-[10px] text-(--c-faint) hover:text-rose-500 transition-colors flex-shrink-0"
                     title="Remove this community and all its prompts"
                   >
                     <Trash2 className="h-3 w-3" />Remove community
@@ -804,10 +1047,10 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
         }
         const isConfirming = confirmId === p.id
         items.push(
-          <div key={p.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-[#f5f8fa] group">
+          <div key={p.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-(--c-surface) group">
             <div className="min-w-0">
-              <p className="text-xs text-[#084c61] truncate">{p.promptText}</p>
-              <p className="text-[10px] text-[#8aadb8] truncate">{p.communityName || '(no community)'}</p>
+              <p className="text-xs text-(--c-ink) truncate">{p.promptText}</p>
+              <p className="text-[10px] text-(--c-subtle) truncate">{p.communityName || '(no community)'}</p>
             </div>
             {canWrite && (
               <div className="flex items-center gap-1 flex-shrink-0">
@@ -821,14 +1064,14 @@ function PromptsPanel({ batchId, canWrite, onCountChange }: { batchId: string; c
                     >
                       {deleting === p.id ? '…' : 'Yes'}
                     </button>
-                    <button onClick={() => setConfirmId(null)} className="text-[10px] text-[#5a7a85] hover:text-[#084c61] px-1.5 py-0.5 rounded transition-colors">No</button>
+                    <button onClick={() => setConfirmId(null)} className="text-[10px] text-(--c-muted) hover:text-(--c-ink) px-1.5 py-0.5 rounded transition-colors">No</button>
                   </>
                 ) : (
                   <>
-                    <button onClick={() => setEditId(p.id)} className="text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Edit prompt">
+                    <button onClick={() => setEditId(p.id)} className="text-(--c-faint) hover:text-(--c-accent) transition-colors" title="Edit prompt">
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
-                    <button onClick={() => setConfirmId(p.id)} className="text-[#b8cdd3] hover:text-rose-500 transition-colors" title="Delete prompt">
+                    <button onClick={() => setConfirmId(p.id)} className="text-(--c-faint) hover:text-rose-500 transition-colors" title="Delete prompt">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </>
@@ -865,7 +1108,7 @@ function RunHistoryPanel({
   }
 
   if (sessions.length === 0) {
-    return <p className="text-xs text-[#8aadb8] py-2">No runs recorded yet.</p>
+    return <p className="text-xs text-(--c-subtle) py-2">No runs recorded yet.</p>
   }
 
   return (
@@ -878,19 +1121,19 @@ function RunHistoryPanel({
         const cost = hasTrackedCost(s.cost) ? s.cost : null
         const isExpanded = expandedId === s.id && !!cost
         return (
-          <div key={s.id} className="rounded-lg bg-[#f5f8fa]">
+          <div key={s.id} className="rounded-lg bg-(--c-surface)">
           <div className="flex items-center justify-between gap-3 px-3 py-2 group">
             <div className="flex items-center gap-2 min-w-0">
-              <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${s.status === 'done' ? 'bg-emerald-500' : s.status === 'running' ? 'bg-amber-400' : 'bg-[#b8cdd3]'}`} />
-              <span className="text-xs text-[#084c61] truncate">{label}</span>
-              <span className="text-[10px] text-[#8aadb8] flex-shrink-0">{s.triggeredBy}</span>
+              <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${s.status === 'done' ? 'bg-emerald-500' : s.status === 'running' ? 'bg-amber-400' : 'bg-(--c-faint)'}`} />
+              <span className="text-xs text-(--c-ink) truncate">{label}</span>
+              <span className="text-[10px] text-(--c-subtle) flex-shrink-0">{s.triggeredBy}</span>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <span className="text-[10px] text-[#8aadb8]">{s.resultCount} results</span>
+              <span className="text-[10px] text-(--c-subtle)">{s.resultCount} results</span>
               {cost && (
                 <button
                   onClick={() => setExpandedId(isExpanded ? null : s.id)}
-                  className="flex items-center gap-0.5 text-[10px] font-semibold text-[#177e89] hover:text-[#084c61] transition-colors"
+                  className="flex items-center gap-0.5 text-[10px] font-semibold text-(--c-accent) hover:text-(--c-ink) transition-colors"
                   title="Estimated cost of this run, by platform"
                 >
                   {formatUsd(cost.costUsd)}<span className="hidden sm:inline">&nbsp;· {formatTokens(cost.inputTokens + cost.outputTokens)} tokens</span>
@@ -909,7 +1152,7 @@ function RunHistoryPanel({
                   </button>
                   <button
                     onClick={() => setConfirmId(null)}
-                    className="text-[10px] text-[#5a7a85] hover:text-[#084c61] px-1.5 py-0.5 rounded transition-colors"
+                    className="text-[10px] text-(--c-muted) hover:text-(--c-ink) px-1.5 py-0.5 rounded transition-colors"
                   >
                     No
                   </button>
@@ -917,7 +1160,7 @@ function RunHistoryPanel({
               ) : (
                 <button
                   onClick={() => setConfirmId(s.id)}
-                  className="text-[#8aadb8] hover:text-rose-500 transition-colors"
+                  className="text-(--c-subtle) hover:text-rose-500 transition-colors"
                   title="Delete this run"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -927,9 +1170,9 @@ function RunHistoryPanel({
           </div>
           {isExpanded && cost && (
             <div className="px-3 pb-2">
-              <table className="w-full text-[10px] text-[#5a7a85]">
+              <table className="w-full text-[10px] text-(--c-muted)">
                 <thead>
-                  <tr className="text-[#8aadb8]">
+                  <tr className="text-(--c-subtle)">
                     <th className="text-left font-medium py-0.5">Platform</th>
                     <th className="text-right font-medium py-0.5">Input</th>
                     <th className="text-right font-medium py-0.5">Output</th>
@@ -939,18 +1182,18 @@ function RunHistoryPanel({
                 </thead>
                 <tbody>
                   {[...cost.byPlatform].sort((a, b) => b.costUsd - a.costUsd).map((p) => (
-                    <tr key={p.platform} className="border-t border-[#e6eef1]">
-                      <td className="py-0.5 text-[#084c61]">{PLATFORM_LABELS[p.platform] ?? p.platform}</td>
+                    <tr key={p.platform} className="border-t border-(--c-line-soft-2)">
+                      <td className="py-0.5 text-(--c-ink)">{PLATFORM_LABELS[p.platform] ?? p.platform}</td>
                       <td className="py-0.5 text-right tabular-nums">{formatTokens(p.inputTokens)}</td>
                       <td className="py-0.5 text-right tabular-nums">{formatTokens(p.outputTokens)}</td>
                       <td className="py-0.5 text-right tabular-nums">{p.searchCount}</td>
-                      <td className="py-0.5 text-right tabular-nums font-semibold text-[#084c61]">{formatUsd(p.costUsd)}</td>
+                      <td className="py-0.5 text-right tabular-nums font-semibold text-(--c-ink)">{formatUsd(p.costUsd)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               {cost.untrackedResults > 0 && (
-                <p className="mt-1 text-[10px] text-[#8aadb8]">{cost.untrackedResults} result{cost.untrackedResults !== 1 ? 's' : ''} without cost data (timed out or saved before cost tracking).</p>
+                <p className="mt-1 text-[10px] text-(--c-subtle)">{cost.untrackedResults} result{cost.untrackedResults !== 1 ? 's' : ''} without cost data (timed out or saved before cost tracking).</p>
               )}
             </div>
           )}
@@ -964,7 +1207,7 @@ function RunHistoryPanel({
 // ─── Batch Card ───────────────────────────────────────────────────────────────
 
 function BatchCard({
-  batch, running, onRun, onRerun, onRename, onDelete, onShare, onSchedule, onAddPrompt, onDeleteSession,
+  batch, running, onRun, onRerun, onRename, onDelete, onShare, onSchedule, onAddPrompt, onImport, onDeleteSession,
 }: {
   batch: BatchInfo
   running: string | null
@@ -975,6 +1218,7 @@ function BatchCard({
   onShare: (batch: BatchInfo) => void
   onSchedule: (batch: BatchInfo) => void
   onAddPrompt: (batch: BatchInfo) => void
+  onImport: (batch: BatchInfo) => void
   onDeleteSession: (batchId: string, sessionId: string) => void
 }) {
   const [editMode, setEditMode] = useState(false)
@@ -983,6 +1227,12 @@ function BatchCard({
   const [showHistory, setShowHistory] = useState(false)
   const [showPrompts, setShowPrompts] = useState(false)
   const [promptCount, setPromptCount] = useState(batch._count.prompts)
+  // Follow the server's count when the set is refetched (after an import or an added prompt).
+  const [serverCount, setServerCount] = useState(batch._count.prompts)
+  if (serverCount !== batch._count.prompts) {
+    setServerCount(batch._count.prompts)
+    setPromptCount(batch._count.prompts)
+  }
   const inputRef = useRef<HTMLInputElement>(null)
   const sessions = batch.recentSessions ?? []
 
@@ -992,7 +1242,7 @@ function BatchCard({
     if (!editName.trim() || editName.trim() === batch.name) { setEditMode(false); setEditName(batch.name); return }
     setSaving(true)
     try {
-      const res = await fetch(`/api/projects/${batch.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: editName.trim() }) })
+      const res = await fetch(`/api/batches/${batch.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: editName.trim() }) })
       if (res.ok) { onRename(batch.id, editName.trim()); setEditMode(false) }
     } catch {} finally { setSaving(false) }
   }
@@ -1008,43 +1258,43 @@ function BatchCard({
               <div className="flex items-center gap-2 mb-1">
                 <input ref={inputRef} value={editName} onChange={(e) => setEditName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') saveRename(); if (e.key === 'Escape') { setEditMode(false); setEditName(batch.name) } }}
-                  className="flex-1 px-2 py-1 text-sm border border-[#084c61] rounded-md focus:outline-none focus:ring-2 focus:ring-[#084c61]" />
+                  className="flex-1 px-2 py-1 text-sm border border-(--c-ink) rounded-md focus:outline-none focus:ring-2 focus:ring-(--c-ink)" />
                 <button onClick={saveRename} disabled={saving} className="text-emerald-600 hover:text-emerald-700 transition-colors"><Check className="h-4 w-4" /></button>
-                <button onClick={() => { setEditMode(false); setEditName(batch.name) }} className="text-[#8aadb8] hover:text-[#084c61] transition-colors"><X className="h-4 w-4" /></button>
+                <button onClick={() => { setEditMode(false); setEditName(batch.name) }} className="text-(--c-subtle) hover:text-(--c-ink) transition-colors"><X className="h-4 w-4" /></button>
               </div>
             ) : (
               <div className="flex items-center gap-2 mb-1">
-                <h3 className="font-semibold text-[#084c61] truncate">{batch.name}</h3>
+                <h3 className="font-semibold text-(--c-ink) truncate">{batch.name}</h3>
                 {batch.canWrite && (
-                  <button onClick={() => setEditMode(true)} className="text-[#b8cdd3] hover:text-[#177e89] transition-colors shrink-0" title="Rename"><Pencil className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => setEditMode(true)} className="text-(--c-faint) hover:text-(--c-accent) transition-colors shrink-0" title="Rename"><Pencil className="h-3.5 w-3.5" /></button>
                 )}
               </div>
             )}
-            <p className="text-sm text-[#5a7a85]">{batch.fileName}</p>
+            <p className="text-sm text-(--c-muted)">{batch.fileName}</p>
             {batch.userEmail && (
-              <p className="text-xs text-[#8aadb8] mt-0.5">by {batch.userEmail}</p>
+              <p className="text-xs text-(--c-subtle) mt-0.5">by {batch.userEmail}</p>
             )}
             <div className="flex items-center gap-3 mt-2">
-              <span className="text-sm text-[#5a7a85]">{promptCount} prompts</span>
+              <span className="text-sm text-(--c-muted)">{promptCount} prompts</span>
               {batch.unrunCount > 0 ? (
                 <Badge variant="warning">{batch.unrunCount} unrun</Badge>
               ) : (
                 <Badge variant="success">All run</Badge>
               )}
-              <span className="text-xs text-[#8aadb8]">{new Date(batch.createdAt).toLocaleDateString()}</span>
+              <span className="text-xs text-(--c-subtle)">{new Date(batch.createdAt).toLocaleDateString()}</span>
             </div>
             {batch.lastRunAt && (() => {
               const d = new Date(batch.lastRunAt)
               const pad = (n: number) => String(n).padStart(2, '0')
               const label = `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-              return <p className="text-xs text-[#8aadb8] mt-1">Last run: {label}</p>
+              return <p className="text-xs text-(--c-subtle) mt-1">Last run: {label}</p>
             })()}
             {hasTrackedCost(batch.cost) && (
-              <p className="text-xs text-[#5a7a85] mt-1" title="Estimated at list prices; excludes runs from before cost tracking">
-                Spend to date: <span className="font-semibold text-[#084c61]">{formatUsd(batch.cost.costUsd)}</span>
+              <p className="text-xs text-(--c-muted) mt-1" title="Estimated at list prices; excludes runs from before cost tracking">
+                Spend to date: <span className="font-semibold text-(--c-ink)">{formatUsd(batch.cost.costUsd)}</span>
                 {' · '}{formatTokens(batch.cost.inputTokens + batch.cost.outputTokens)} tokens
                 {' · '}{batch.cost.searchCount} searches
-                {batch.cost.untrackedResults > 0 && <span className="text-[#8aadb8]"> (earlier runs not tracked)</span>}
+                {batch.cost.untrackedResults > 0 && <span className="text-(--c-subtle)"> (earlier runs not tracked)</span>}
               </p>
             )}
           </div>
@@ -1065,16 +1315,19 @@ function BatchCard({
             <Link href={`/data/${batch.id}`}><Button variant="outline" size="sm">Data</Button></Link>
             {batch.canWrite && (
               <>
-                <button onClick={() => onAddPrompt(batch)} className="p-1.5 text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Add prompt">
+                <button onClick={() => onAddPrompt(batch)} className="p-1.5 text-(--c-faint) hover:text-(--c-accent) transition-colors" title="Add prompt">
                   <Plus className="h-4 w-4" />
                 </button>
-                <button onClick={() => onSchedule(batch)} className="p-1.5 text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Schedule">
+                <button onClick={() => onImport(batch)} className="p-1.5 text-(--c-faint) hover:text-(--c-accent) transition-colors" title="Add prompts from spreadsheet">
+                  <FileSpreadsheet className="h-4 w-4" />
+                </button>
+                <button onClick={() => onSchedule(batch)} className="p-1.5 text-(--c-faint) hover:text-(--c-accent) transition-colors" title="Schedule">
                   <Calendar className="h-4 w-4" />
                 </button>
-                <button onClick={() => onShare(batch)} className="p-1.5 text-[#b8cdd3] hover:text-[#177e89] transition-colors" title="Share">
+                <button onClick={() => onShare(batch)} className="p-1.5 text-(--c-faint) hover:text-(--c-accent) transition-colors" title="Share">
                   <Share2 className="h-4 w-4" />
                 </button>
-                <button onClick={() => onDelete(batch.id)} className="p-1.5 text-[#b8cdd3] hover:text-rose-500 transition-colors" title="Delete">
+                <button onClick={() => onDelete(batch.id)} className="p-1.5 text-(--c-faint) hover:text-rose-500 transition-colors" title="Delete">
                   <Trash2 className="h-4 w-4" />
                 </button>
               </>
@@ -1083,10 +1336,10 @@ function BatchCard({
         </div>
 
         {/* Run history collapsible */}
-        <div className="mt-4 pt-3 border-t border-[#eef3f5]">
+        <div className="mt-4 pt-3 border-t border-(--c-line-soft)">
           <button
             onClick={() => setShowHistory((v) => !v)}
-            className="flex items-center gap-1.5 text-xs font-medium text-[#5a7a85] hover:text-[#084c61] transition-colors"
+            className="flex items-center gap-1.5 text-xs font-medium text-(--c-muted) hover:text-(--c-ink) transition-colors"
           >
             <History className="h-3.5 w-3.5" />
             Run History ({sessions.length})
@@ -1100,10 +1353,10 @@ function BatchCard({
         </div>
 
         {/* Prompts collapsible */}
-        <div className="mt-3 pt-3 border-t border-[#eef3f5]">
+        <div className="mt-3 pt-3 border-t border-(--c-line-soft)">
           <button
             onClick={() => setShowPrompts((v) => !v)}
-            className="flex items-center gap-1.5 text-xs font-medium text-[#5a7a85] hover:text-[#084c61] transition-colors"
+            className="flex items-center gap-1.5 text-xs font-medium text-(--c-muted) hover:text-(--c-ink) transition-colors"
           >
             <Plus className="h-3.5 w-3.5" />
             Prompts ({promptCount})
@@ -1111,7 +1364,7 @@ function BatchCard({
           </button>
           {showPrompts && (
             <div className="mt-3">
-              <PromptsPanel batchId={batch.id} canWrite={batch.canWrite} onCountChange={(delta) => setPromptCount((c) => c + delta)} />
+              <PromptsPanel key={batch._count.prompts} batchId={batch.id} canWrite={batch.canWrite} onCountChange={(delta) => setPromptCount((c) => c + delta)} />
             </div>
           )}
         </div>
@@ -1123,6 +1376,7 @@ function BatchCard({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function RunPage() {
+  const activeProject = useActiveProject()
   const [batches, setBatches] = useState<BatchInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState<string | null>(null)
@@ -1133,9 +1387,12 @@ export default function RunPage() {
   const [notifyEmail, setNotifyEmail] = useState('')
   const [emailError, setEmailError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<BatchInfo | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [shareTarget, setShareTarget] = useState<BatchInfo | null>(null)
   const [scheduleTarget, setScheduleTarget] = useState<BatchInfo | null>(null)
   const [addPromptTarget, setAddPromptTarget] = useState<BatchInfo | null>(null)
+  const [importTarget, setImportTarget] = useState<BatchInfo | null>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const stopPolling = () => {
@@ -1211,13 +1468,27 @@ export default function RunPage() {
 
   const handleRename = (id: string, name: string) => setBatches((prev) => prev.map((b) => b.id === id ? { ...b, name } : b))
 
+  // The dialog stays open until the delete succeeds, so a failure is shown, not swallowed.
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return
+    setDeleting(true)
+    setDeleteError(null)
     try {
-      const res = await fetch(`/api/projects/${deleteTarget.id}`, { method: 'DELETE' })
-      if (res.ok) setBatches((prev) => prev.filter((b) => b.id !== deleteTarget.id))
-    } catch {} finally { setDeleteTarget(null) }
+      const res = await fetch(`/api/batches/${deleteTarget.id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setBatches((prev) => prev.filter((b) => b.id !== deleteTarget.id))
+        setDeleteTarget(null)
+      } else {
+        const data = await res.json().catch(() => ({}))
+        setDeleteError(data.error || `The prompt set couldn't be deleted (error ${res.status}).`)
+      }
+    } catch {
+      setDeleteError("The prompt set couldn't be deleted. Check your connection and try again.")
+    } finally {
+      setDeleting(false)
+    }
   }
+  const closeDeleteDialog = () => { setDeleteTarget(null); setDeleteError(null) }
 
   const handleShareTokenChange = (batchId: string, token: string | null) =>
     setBatches((prev) => prev.map((b) => b.id === batchId ? { ...b, shareToken: token } : b))
@@ -1230,11 +1501,12 @@ export default function RunPage() {
   const totalUnrun = batches.filter((b) => b.canWrite).reduce((sum, b) => sum + b.unrunCount, 0)
 
   return (
+    <LabelsContext.Provider value={activeProject?.labels ?? PRESET_LABELS['senior-living']}>
     <div className="max-w-4xl mx-auto">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Run Prompts</h1>
-          <p className="text-[#5a7a85] mt-1 text-sm">Send prompts to 5 AI platforms and capture responses</p>
+          <h1 className="text-2xl font-bold text-(--c-ink)" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>Run Prompts</h1>
+          <p className="text-(--c-muted) mt-1 text-sm">Send prompts to 5 AI platforms and capture responses</p>
         </div>
         <div className="flex items-center gap-3">
           <Button variant="outline" onClick={fetchBatches} size="sm">
@@ -1256,38 +1528,42 @@ export default function RunPage() {
       </div>
 
       {/* Email notification */}
-      <div className="bg-white rounded-xl border border-[#dde6ea] p-5 mb-6">
+      {GOOGLE_ONLY_SIGN_IN ? (
+        <p className="text-xs text-(--c-muted) mb-6">Prompts run in the background — you can close this tab and check results later.</p>
+      ) : (
+      <div className="bg-white rounded-xl border border-(--c-line) p-5 mb-6">
         <div className="flex items-center gap-2 mb-3">
-          <Mail className="h-4 w-4 text-[#177e89]" />
-          <p className="text-sm font-semibold text-[#084c61]">Email notification (optional)</p>
+          <Mail className="h-4 w-4 text-(--c-accent)" />
+          <p className="text-sm font-semibold text-(--c-ink)">Email notification (optional)</p>
         </div>
-        <p className="text-xs text-[#5a7a85] mb-3">Prompts run in the background — you can close this tab. Enter your email to get notified when complete.</p>
+        <p className="text-xs text-(--c-muted) mb-3">Prompts run in the background — you can close this tab. Enter your email to get notified when complete.</p>
         <input
           type="email" value={notifyEmail}
           onChange={(e) => { setNotifyEmail(e.target.value); setEmailError(null) }}
           placeholder="you@example.com" disabled={running !== null}
-          className="w-full max-w-sm px-3 py-2 text-sm border border-[#dde6ea] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#084c61] disabled:opacity-50 disabled:bg-[#f5f8fa]"
+          className="w-full max-w-sm px-3 py-2 text-sm border border-(--c-line) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--c-ink) disabled:opacity-50 disabled:bg-(--c-surface)"
         />
         {emailError && <p className="text-xs text-rose-500 mt-1.5">{emailError}</p>}
         {notifyEmail.trim() && !emailError && (
-          <p className="text-xs text-[#177e89] mt-1.5 flex items-center gap-1">
+          <p className="text-xs text-(--c-accent) mt-1.5 flex items-center gap-1">
             <CheckCircle2 className="h-3 w-3" />A summary will be emailed to {notifyEmail.trim()} when the run finishes
           </p>
         )}
       </div>
+      )}
 
       {/* Progress */}
       {running !== null && (
         <Card className="mb-6">
           <CardContent className="p-5">
             <div className="flex items-center gap-3 mb-3">
-              <RefreshCw className="h-5 w-5 text-[#177e89] animate-spin" />
-              <span className="text-sm font-medium text-[#084c61]">Processing in background — you can close this tab</span>
-              <span className="ml-auto text-sm text-[#5a7a85]">{progress}%</span>
+              <RefreshCw className="h-5 w-5 text-(--c-accent) animate-spin" />
+              <span className="text-sm font-medium text-(--c-ink)">Processing in background — you can close this tab</span>
+              <span className="ml-auto text-sm text-(--c-muted)">{progress}%</span>
             </div>
             <Progress value={progress} className="h-2 mb-3" />
             {runStatus && (
-              <p className="text-xs text-[#5a7a85]">
+              <p className="text-xs text-(--c-muted)">
                 {runStatus.doneCount + runStatus.failCount} / {runStatus.totalPrompts} prompts complete
                 {runStatus.failCount > 0 && ` (${runStatus.failCount} errors)`}
               </p>
@@ -1320,19 +1596,19 @@ export default function RunPage() {
       )}
 
       {/* Tip about scheduled runs */}
-      <div className="flex items-center gap-2 text-xs text-[#8aadb8] mb-4">
+      <div className="flex items-center gap-2 text-xs text-(--c-subtle) mb-4">
         <Clock className="h-3.5 w-3.5" />
         <span>Use the <Calendar className="h-3 w-3 inline" /> calendar icon on each batch to schedule automatic re-runs for trend tracking.</span>
       </div>
 
       {loading ? (
-        <Card><CardContent className="py-12 text-center text-[#5a7a85]">Loading batches…</CardContent></Card>
+        <Card><CardContent className="py-12 text-center text-(--c-muted)">Loading batches…</CardContent></Card>
       ) : batches.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
-            <BarChart3 className="h-12 w-12 text-[#b8cdd3] mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-[#084c61] mb-2">No batches yet</h3>
-            <p className="text-[#5a7a85] mb-4">Upload a spreadsheet first to create a batch of prompts.</p>
+            <BarChart3 className="h-12 w-12 text-(--c-faint) mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-(--c-ink) mb-2">No batches yet</h3>
+            <p className="text-(--c-muted) mb-4">Upload a spreadsheet first to create a batch of prompts.</p>
             <Link href="/upload"><Button>Upload Spreadsheet</Button></Link>
           </CardContent>
         </Card>
@@ -1350,16 +1626,25 @@ export default function RunPage() {
               onShare={(b) => setShareTarget(b)}
               onSchedule={(b) => setScheduleTarget(b)}
               onAddPrompt={(b) => setAddPromptTarget(b)}
+              onImport={(b) => setImportTarget(b)}
               onDeleteSession={handleDeleteSession}
             />
           ))}
         </div>
       )}
 
-      {deleteTarget && <DeleteConfirmDialog batchName={deleteTarget.name} onConfirm={handleDeleteConfirm} onCancel={() => setDeleteTarget(null)} />}
+      {deleteTarget && (
+        <DeleteConfirmDialog batchName={deleteTarget.name} deleting={deleting} error={deleteError}
+          onConfirm={handleDeleteConfirm} onCancel={() => { if (!deleting) closeDeleteDialog() }} />
+      )}
       {shareTarget && <ShareModal batch={shareTarget} onClose={() => setShareTarget(null)} onShareTokenChange={handleShareTokenChange} />}
       {scheduleTarget && <ScheduleModal batch={scheduleTarget} onClose={() => setScheduleTarget(null)} />}
       {addPromptTarget && <AddPromptModal batch={addPromptTarget} onClose={() => setAddPromptTarget(null)} onAdded={fetchBatches} />}
+      {importTarget && (
+        <ImportPromptsModal batch={importTarget} onClose={() => setImportTarget(null)} onImported={fetchBatches}
+          onRun={(batchId, rerun) => queueRun(batchId, rerun)} />
+      )}
     </div>
+    </LabelsContext.Provider>
   )
 }

@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation'
 import { PLATFORMS, PLATFORM_LABELS, formatPercent } from '@/lib/utils'
 import { BarChart3, Target, Quote, Layers } from 'lucide-react'
 import Link from 'next/link'
+import { getLabelsForProject } from '@/lib/projects'
+import { APP_INITIALS, APP_OWNER_NAME, APP_PRODUCT_NAME, APP_TITLE } from '@/lib/app-config'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,6 +38,7 @@ export default async function SharedBatchPage({ params }: Props) {
   }
 
   // Compute stats
+  const labels = await getLabelsForProject(batch.projectId)
   const allResults = batch.prompts.flatMap((p) => p.results)
   const totalResults = allResults.length
   const mentionedCount = allResults.filter((r) => r.isMentioned).length
@@ -73,20 +76,20 @@ export default async function SharedBatchPage({ params }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-[#f0f4f7]">
+    <div className="min-h-screen bg-(--c-page)">
       {/* Simple header */}
-      <div style={{ background: 'linear-gradient(90deg, #084c61 0%, #054166 100%)' }} className="px-4 sm:px-6 lg:px-8 py-4">
+      <div style={{ background: 'linear-gradient(90deg, var(--c-ink) 0%, var(--c-ink-hover) 100%)' }} className="px-4 sm:px-6 lg:px-8 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-white/15">
-              <span className="text-white font-bold text-sm tracking-tight select-none">SL</span>
+              <span className="text-white font-bold text-sm tracking-tight select-none">{APP_INITIALS}</span>
             </div>
             <div>
               <p className="text-sm font-bold text-white leading-none" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>
-                Senior Lifestyle
+                {APP_OWNER_NAME}
               </p>
               <p className="text-[11px] text-white/65 leading-none mt-0.5 font-medium tracking-wide">
-                AI Visibility Dashboard
+                {APP_PRODUCT_NAME}
               </p>
             </div>
           </div>
@@ -97,27 +100,27 @@ export default async function SharedBatchPage({ params }: Props) {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Batch name + meta */}
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-[#084c61]" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>
+          <h1 className="text-2xl font-bold text-(--c-ink)" style={{ fontFamily: 'var(--font-noto-serif), serif' }}>
             {batch.name}
           </h1>
-          <p className="text-[#5a7a85] mt-1 text-sm">
+          <p className="text-(--c-muted) mt-1 text-sm">
             {batch.prompts.length} prompts &bull; Shared on {new Date(batch.createdAt).toLocaleDateString()}
           </p>
         </div>
 
         {totalResults === 0 ? (
-          <div className="bg-white rounded-xl border border-[#dde6ea] py-16 text-center">
-            <BarChart3 className="h-12 w-12 text-[#b8cdd3] mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-[#084c61] mb-2">No results yet</h3>
-            <p className="text-[#5a7a85] text-sm">This project hasn&apos;t been run against AI platforms yet.</p>
+          <div className="bg-white rounded-xl border border-(--c-line) py-16 text-center">
+            <BarChart3 className="h-12 w-12 text-(--c-faint) mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-(--c-ink) mb-2">No results yet</h3>
+            <p className="text-(--c-muted) text-sm">This prompt set hasn&apos;t been run against AI platforms yet.</p>
           </div>
         ) : (
           <>
             {/* Stat strip */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
               <StatCard
-                icon={<BarChart3 className="h-5 w-5 text-[#084c61]" />}
-                iconBg="bg-[#e6f2f5]"
+                icon={<BarChart3 className="h-5 w-5 text-(--c-ink)" />}
+                iconBg="bg-(--c-tint)"
                 label="Prompts Analyzed"
                 value={batch.prompts.length.toLocaleString()}
               />
@@ -128,49 +131,49 @@ export default async function SharedBatchPage({ params }: Props) {
                 value={formatPercent(overallMentionRate)}
               />
               <StatCard
-                icon={<Quote className="h-5 w-5 text-[#177e89]" />}
-                iconBg="bg-[#e6f2f5]"
+                icon={<Quote className="h-5 w-5 text-(--c-accent)" />}
+                iconBg="bg-(--c-tint)"
                 label="Overall Citation Rate"
                 value={formatPercent(overallCitationRate)}
               />
               <StatCard
-                icon={<Layers className="h-5 w-5 text-[#084c61]" />}
-                iconBg="bg-[#e6f2f5]"
+                icon={<Layers className="h-5 w-5 text-(--c-ink)" />}
+                iconBg="bg-(--c-tint)"
                 label="Platforms"
                 value={String(platformStats.length)}
               />
             </div>
 
             {/* Platform breakdown */}
-            <div className="bg-white rounded-xl border border-[#dde6ea] p-6 mb-6">
-              <h2 className="text-sm font-semibold text-[#084c61] mb-4">Performance by Platform</h2>
+            <div className="bg-white rounded-xl border border-(--c-line) p-6 mb-6">
+              <h2 className="text-sm font-semibold text-(--c-ink) mb-4">Performance by Platform</h2>
               <div className="space-y-3">
                 {platformStats.map((ps) => (
                   <div key={ps.platform} className="flex items-center gap-4">
-                    <span className="text-xs font-medium text-[#084c61] w-32 shrink-0">
+                    <span className="text-xs font-medium text-(--c-ink) w-32 shrink-0">
                       {PLATFORM_LABELS[ps.platform] ?? ps.platform}
                     </span>
                     <div className="flex-1 grid grid-cols-2 gap-3">
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] text-[#8aadb8]">Mention</span>
-                          <span className="text-[10px] font-medium text-[#084c61]">{formatPercent(ps.mentionRate)}</span>
+                          <span className="text-[10px] text-(--c-subtle)">Mention</span>
+                          <span className="text-[10px] font-medium text-(--c-ink)">{formatPercent(ps.mentionRate)}</span>
                         </div>
-                        <div className="h-1.5 bg-[#f0f4f7] rounded-full overflow-hidden">
+                        <div className="h-1.5 bg-(--c-page) rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-[#177e89] rounded-full"
+                            className="h-full bg-(--c-accent) rounded-full"
                             style={{ width: `${ps.mentionRate * 100}%` }}
                           />
                         </div>
                       </div>
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] text-[#8aadb8]">Citation</span>
-                          <span className="text-[10px] font-medium text-[#084c61]">{formatPercent(ps.citationRate)}</span>
+                          <span className="text-[10px] text-(--c-subtle)">Citation</span>
+                          <span className="text-[10px] font-medium text-(--c-ink)">{formatPercent(ps.citationRate)}</span>
                         </div>
-                        <div className="h-1.5 bg-[#f0f4f7] rounded-full overflow-hidden">
+                        <div className="h-1.5 bg-(--c-page) rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-[#084c61] rounded-full"
+                            className="h-full bg-(--c-ink) rounded-full"
                             style={{ width: `${ps.citationRate * 100}%` }}
                           />
                         </div>
@@ -183,24 +186,24 @@ export default async function SharedBatchPage({ params }: Props) {
 
             {/* Community breakdown */}
             {communityMap.size > 0 && (
-              <div className="bg-white rounded-xl border border-[#dde6ea] p-6">
-                <h2 className="text-sm font-semibold text-[#084c61] mb-4">Performance by Community</h2>
+              <div className="bg-white rounded-xl border border-(--c-line) p-6">
+                <h2 className="text-sm font-semibold text-(--c-ink) mb-4">Performance by {labels.entity}</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {Array.from(communityMap.entries()).map(([name, stats]) => (
-                    <div key={name} className="p-4 rounded-xl border border-[#dde6ea]">
-                      <h3 className="font-semibold text-[#084c61] text-sm mb-3 truncate">{name}</h3>
+                    <div key={name} className="p-4 rounded-xl border border-(--c-line)">
+                      <h3 className="font-semibold text-(--c-ink) text-sm mb-3 truncate">{name}</h3>
                       <div className="grid grid-cols-2 gap-2">
-                        <div className="text-center p-2 bg-[#f5f8fa] rounded-lg">
-                          <p className="text-lg font-bold text-[#177e89]">
+                        <div className="text-center p-2 bg-(--c-surface) rounded-lg">
+                          <p className="text-lg font-bold text-(--c-accent)">
                             {formatPercent(stats.total > 0 ? stats.mentioned / stats.total : 0)}
                           </p>
-                          <p className="text-[10px] text-[#8aadb8]">Mention</p>
+                          <p className="text-[10px] text-(--c-subtle)">Mention</p>
                         </div>
-                        <div className="text-center p-2 bg-[#f5f8fa] rounded-lg">
-                          <p className="text-lg font-bold text-[#084c61]">
+                        <div className="text-center p-2 bg-(--c-surface) rounded-lg">
+                          <p className="text-lg font-bold text-(--c-ink)">
                             {formatPercent(stats.total > 0 ? stats.cited / stats.total : 0)}
                           </p>
-                          <p className="text-[10px] text-[#8aadb8]">Citation</p>
+                          <p className="text-[10px] text-(--c-subtle)">Citation</p>
                         </div>
                       </div>
                     </div>
@@ -212,10 +215,10 @@ export default async function SharedBatchPage({ params }: Props) {
         )}
 
         <div className="mt-8 text-center">
-          <p className="text-xs text-[#8aadb8]">
+          <p className="text-xs text-(--c-subtle)">
             Powered by{' '}
-            <Link href="/" className="text-[#177e89] hover:underline">
-              Senior Lifestyle AI Visibility Dashboard
+            <Link href="/" className="text-(--c-accent) hover:underline">
+              {APP_TITLE}
             </Link>
           </p>
         </div>
@@ -236,12 +239,12 @@ function StatCard({
   value: string
 }) {
   return (
-    <div className="bg-white rounded-xl border border-[#dde6ea] p-5">
+    <div className="bg-white rounded-xl border border-(--c-line) p-5">
       <div className="flex items-center gap-3 mb-3">
         <div className={`p-2 rounded-lg ${iconBg}`}>{icon}</div>
-        <p className="text-xs font-medium text-[#5a7a85]">{label}</p>
+        <p className="text-xs font-medium text-(--c-muted)">{label}</p>
       </div>
-      <p className="text-3xl font-bold text-[#084c61] leading-none">{value}</p>
+      <p className="text-3xl font-bold text-(--c-ink) leading-none">{value}</p>
     </div>
   )
 }

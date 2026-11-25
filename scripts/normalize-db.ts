@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client'
-import { normalizeRow } from '../lib/normalize'
+import { normalizeRow, toGenericFields } from '../lib/normalize'
 
 const prisma = new PrismaClient()
 
@@ -62,6 +62,7 @@ async function main() {
         market: norm.market,
         levelOfCare: norm.levelOfCare,
         promptText: norm.promptText,
+        ...toGenericFields(norm),
       },
     })
     updated++

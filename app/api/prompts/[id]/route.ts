@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { canWrite } from '@/lib/access'
+import { canWrite, canReadBatch, getViewer } from '@/lib/access'
+import { toGenericFields } from '@/lib/normalize'
 
 export async function GET(
   req: Request,
@@ -9,6 +10,11 @@ export async function GET(
 ) {
   const { id } = await params
   try {
+    const viewer = await getViewer()
+    if (!viewer) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const prompt = await prisma.prompt.findUnique({
       where: { id },
       include: {
@@ -21,7 +27,7 @@ export async function GET(
       },
     })
 
-    if (!prompt) {
+    if (!prompt || !(await canReadBatch(viewer, prompt.batchId))) {
       return NextResponse.json({ error: 'Prompt not found' }, { status: 404 })
     }
 
@@ -69,16 +75,20 @@ export async function PATCH(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    const legacy = {
+      communityName: (communityName ?? existing.communityName ?? '').trim(),
+      city: (city ?? existing.city ?? '').trim(),
+      market: (market ?? existing.market ?? '').trim(),
+      levelOfCare: levelOfCare ?? existing.levelOfCare,
+    }
     const updated = await prisma.prompt.update({
       where: { id },
       data: {
         promptText: promptText.trim(),
-        communityName: (communityName ?? existing.communityName ?? '').trim(),
         promptType: promptType ?? existing.promptType,
         category: (category ?? existing.category ?? '').trim(),
-        city: (city ?? existing.city ?? '').trim(),
-        market: (market ?? existing.market ?? '').trim(),
-        levelOfCare: levelOfCare ?? existing.levelOfCare,
+        ...legacy,
+        ...toGenericFields(legacy),
       },
     })
 

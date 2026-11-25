@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
+import { promptScope, getSegmentLabels } from '@/lib/projects'
 import { PLATFORM_LABELS, PLATFORM_COLORS } from '@/lib/utils'
 import { PromptTypeToggle, PromptTypeFilter } from '@/components/prompt-type-toggle'
 import { SentimentBreakdown } from '@/components/sentiment-breakdown'
@@ -25,7 +26,8 @@ export default async function PlatformDrillDownPage({
   }
 
   const platformLabel = PLATFORM_LABELS[name]
-  const platformColor = PLATFORM_COLORS[name] || '#084c61'
+  const labels = await getSegmentLabels()
+  const platformColor = PLATFORM_COLORS[name] || 'var(--c-ink)'
   const dashboardQuery = new URLSearchParams()
   if (sessionId) dashboardQuery.set('session', sessionId)
   if (promptType) dashboardQuery.set('type', promptType)
@@ -53,7 +55,7 @@ export default async function PlatformDrillDownPage({
       where: {
         platform: name,
         ...(sessionId ? { runSessionId: sessionId } : {}),
-        ...(promptType ? { prompt: { promptType } } : {}),
+        prompt: { ...(await promptScope()), ...(promptType ? { promptType } : {}) },
       },
       include: {
         prompt: {
@@ -68,7 +70,7 @@ export default async function PlatformDrillDownPage({
         },
         citations: { select: { id: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { runAt: 'desc' },
     })
   } catch {
     // DB not configured
@@ -97,13 +99,13 @@ export default async function PlatformDrillDownPage({
       <div className="flex items-center gap-2">
         <Link
           href={backHref}
-          className="flex items-center gap-1 text-sm text-[#177e89] hover:text-[#084c61] font-medium transition-colors"
+          className="flex items-center gap-1 text-sm text-(--c-accent) hover:text-(--c-ink) font-medium transition-colors"
         >
           <ChevronLeft className="h-4 w-4" />
           Dashboard
         </Link>
-        <span className="text-[#b8cdd3]">/</span>
-        <span className="text-sm text-[#5a7a85]">{platformLabel}</span>
+        <span className="text-(--c-faint)">/</span>
+        <span className="text-sm text-(--c-muted)">{platformLabel}</span>
       </div>
 
       {/* Page title */}
@@ -111,7 +113,7 @@ export default async function PlatformDrillDownPage({
         <div className="flex items-center gap-3">
           <div className="h-3 w-3 rounded-full" style={{ backgroundColor: platformColor }} />
           <h1
-            className="text-2xl font-bold text-[#084c61]"
+            className="text-2xl font-bold text-(--c-ink)"
             style={{ fontFamily: 'var(--font-noto-serif), serif' }}
           >
             {platformLabel}
@@ -122,47 +124,47 @@ export default async function PlatformDrillDownPage({
 
       {/* Stat cards */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-[#dde6ea] p-5">
+        <div className="bg-white rounded-xl border border-(--c-line) p-5">
           <div className="flex items-center gap-3 mb-3">
             <div className="p-2 rounded-lg bg-emerald-50">
               <Target className="h-5 w-5 text-emerald-600" />
             </div>
-            <p className="text-xs font-medium text-[#5a7a85]">Mention Rate</p>
+            <p className="text-xs font-medium text-(--c-muted)">Mention Rate</p>
           </div>
-          <p className="text-3xl font-bold text-[#084c61] leading-none">
+          <p className="text-3xl font-bold text-(--c-ink) leading-none">
             {Math.round(mentionRate * 100)}%
           </p>
-          <p className="text-xs text-[#8aadb8] mt-1">
+          <p className="text-xs text-(--c-subtle) mt-1">
             {mentionedCount} of {totalResults} results
           </p>
         </div>
 
-        <div className="bg-white rounded-xl border border-[#dde6ea] p-5">
+        <div className="bg-white rounded-xl border border-(--c-line) p-5">
           <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 rounded-lg bg-[#e6f2f5]">
-              <Quote className="h-5 w-5 text-[#177e89]" />
+            <div className="p-2 rounded-lg bg-(--c-tint)">
+              <Quote className="h-5 w-5 text-(--c-accent)" />
             </div>
-            <p className="text-xs font-medium text-[#5a7a85]">Citation Rate</p>
+            <p className="text-xs font-medium text-(--c-muted)">Citation Rate</p>
           </div>
-          <p className="text-3xl font-bold text-[#084c61] leading-none">
+          <p className="text-3xl font-bold text-(--c-ink) leading-none">
             {Math.round(citationRate * 100)}%
           </p>
-          <p className="text-xs text-[#8aadb8] mt-1">
+          <p className="text-xs text-(--c-subtle) mt-1">
             {citedCount} of {totalResults} results
           </p>
         </div>
 
-        <div className="bg-white rounded-xl border border-[#dde6ea] p-5">
+        <div className="bg-white rounded-xl border border-(--c-line) p-5">
           <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 rounded-lg bg-[#e6f2f5]">
-              <Smile className="h-5 w-5 text-[#084c61]" />
+            <div className="p-2 rounded-lg bg-(--c-tint)">
+              <Smile className="h-5 w-5 text-(--c-ink)" />
             </div>
-            <p className="text-xs font-medium text-[#5a7a85]">Sentiment</p>
+            <p className="text-xs font-medium text-(--c-muted)">Sentiment</p>
           </div>
           <p className={`text-3xl font-bold leading-none ${sentimentColor}`}>
             {sentimentLabel}
           </p>
-          <p className="text-xs text-[#8aadb8] mt-1">
+          <p className="text-xs text-(--c-subtle) mt-1">
             {positiveCount}+ / {neutralCount}~ / {negativeCount}-
           </p>
         </div>
@@ -171,47 +173,47 @@ export default async function PlatformDrillDownPage({
       <SentimentBreakdown results={results} />
 
       {/* Prompts table */}
-      <div className="bg-white rounded-xl border border-[#dde6ea] overflow-hidden">
-        <div className="px-6 py-4 border-b border-[#eef3f5]">
-          <h2 className="text-sm font-semibold text-[#084c61]">All Prompts</h2>
+      <div className="bg-white rounded-xl border border-(--c-line) overflow-hidden">
+        <div className="px-6 py-4 border-b border-(--c-line-soft)">
+          <h2 className="text-sm font-semibold text-(--c-ink)">All Prompts</h2>
         </div>
         {results.length === 0 ? (
           <div className="py-12 text-center">
-            <p className="text-[#8aadb8] text-sm">No results for this platform yet.</p>
+            <p className="text-(--c-subtle) text-sm">No results for this platform yet.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[#eef3f5] bg-[#f5f8fa]">
-                  <th className="text-left px-6 py-3 font-medium text-[#5a7a85] text-xs min-w-[200px]">Prompt</th>
-                  <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Community</th>
-                  <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Category</th>
-                  <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Level of Care</th>
-                  <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Mentioned</th>
-                  <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Cited</th>
-                  <th className="text-left px-4 py-3 font-medium text-[#5a7a85] text-xs">Sentiment</th>
+                <tr className="border-b border-(--c-line-soft) bg-(--c-surface)">
+                  <th className="text-left px-6 py-3 font-medium text-(--c-muted) text-xs min-w-[200px]">Prompt</th>
+                  <th className="text-left px-4 py-3 font-medium text-(--c-muted) text-xs">{labels.entity}</th>
+                  <th className="text-left px-4 py-3 font-medium text-(--c-muted) text-xs">Category</th>
+                  <th className="text-left px-4 py-3 font-medium text-(--c-muted) text-xs">{labels.levelOfCare}</th>
+                  <th className="text-left px-4 py-3 font-medium text-(--c-muted) text-xs">Mentioned</th>
+                  <th className="text-left px-4 py-3 font-medium text-(--c-muted) text-xs">Cited</th>
+                  <th className="text-left px-4 py-3 font-medium text-(--c-muted) text-xs">Sentiment</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#f0f4f7]">
+              <tbody className="divide-y divide-(--c-page)">
                 {results.map((result) => (
-                  <tr key={result.id} className="hover:bg-[#f5f8fa] transition-colors">
+                  <tr key={result.id} className="hover:bg-(--c-surface) transition-colors">
                     <td className="px-6 py-4">
-                      <p className="line-clamp-2 text-[#1a1a1a] text-xs leading-relaxed">
+                      <p className="line-clamp-2 text-(--c-text) text-xs leading-relaxed">
                         {result.prompt.promptText}
                       </p>
                     </td>
                     <td className="px-4 py-4">
-                      <p className="text-[#084c61] text-xs font-medium">{result.prompt.communityName || '—'}</p>
+                      <p className="text-(--c-ink) text-xs font-medium">{result.prompt.communityName || '—'}</p>
                       {result.prompt.city && (
-                        <p className="text-[#8aadb8] text-[10px] mt-0.5">{result.prompt.city}</p>
+                        <p className="text-(--c-subtle) text-[10px] mt-0.5">{result.prompt.city}</p>
                       )}
                     </td>
-                    <td className="px-4 py-4 text-[#5a7a85] text-xs">{result.prompt.category || '—'}</td>
-                    <td className="px-4 py-4 text-[#5a7a85] text-xs">{result.prompt.levelOfCare || '—'}</td>
+                    <td className="px-4 py-4 text-(--c-muted) text-xs">{result.prompt.category || '—'}</td>
+                    <td className="px-4 py-4 text-(--c-muted) text-xs">{result.prompt.levelOfCare || '—'}</td>
                     <td className="px-4 py-4">
                       {result.responseText?.startsWith('[No AI Overview]') ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#f0f4f7] text-[#b8cdd3] italic">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-(--c-page) text-(--c-faint) italic">
                           No AI Overview
                         </span>
                       ) : result.isMentioned ? (
@@ -219,23 +221,23 @@ export default async function PlatformDrillDownPage({
                           Mentioned
                         </span>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#f0f4f7] text-[#8aadb8]">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-(--c-page) text-(--c-subtle)">
                           Not Mentioned
                         </span>
                       )}
                     </td>
                     <td className="px-4 py-4">
                       {result.isCited ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#e6f2f5] text-[#177e89] border border-[#b8d8e0]">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-(--c-tint) text-(--c-accent) border border-(--c-accent-faint)">
                           Cited
                         </span>
                       ) : (
-                        <span className="text-[#b8cdd3] text-xs">—</span>
+                        <span className="text-(--c-faint) text-xs">—</span>
                       )}
                     </td>
                     <td className="px-4 py-4">
                       {!result.isMentioned ? (
-                        <span className="text-[#b8cdd3] text-xs">—</span>
+                        <span className="text-(--c-faint) text-xs">—</span>
                       ) : result.sentiment === 'positive' ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                           Positive
@@ -245,7 +247,7 @@ export default async function PlatformDrillDownPage({
                           Negative
                         </span>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#f0f4f7] text-[#8aadb8]">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-(--c-page) text-(--c-subtle)">
                           Neutral
                         </span>
                       )}
