@@ -813,7 +813,13 @@ function ShareModal({
 
 // ─── Delete Confirm Dialog ────────────────────────────────────────────────────
 
-function DeleteConfirmDialog({ batchName, onConfirm, onCancel }: { batchName: string; onConfirm: () => void; onCancel: () => void }) {
+function DeleteConfirmDialog({ batchName, deleting, error, onConfirm, onCancel }: {
+  batchName: string
+  deleting: boolean
+  error: string | null
+  onConfirm: () => void
+  onCancel: () => void
+}) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
@@ -822,9 +828,12 @@ function DeleteConfirmDialog({ batchName, onConfirm, onCancel }: { batchName: st
         <p className="text-sm text-(--c-muted) mb-6">
           Are you sure you want to delete <strong className="text-(--c-ink)">{batchName}</strong>? This will also delete all prompts and results. This action cannot be undone.
         </p>
+        {error && <p className="text-sm text-rose-600 -mt-3 mb-4">{error}</p>}
         <div className="flex gap-3 justify-end">
-          <Button variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
-          <button onClick={onConfirm} className="px-4 py-2 text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors">Delete</button>
+          <Button variant="outline" size="sm" onClick={onCancel} disabled={deleting}>Cancel</Button>
+          <button onClick={onConfirm} disabled={deleting} className="px-4 py-2 text-sm font-semibold bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white rounded-lg transition-colors">
+            {deleting ? 'Deleting…' : error ? 'Try again' : 'Delete'}
+          </button>
         </div>
       </div>
     </div>
@@ -1378,6 +1387,8 @@ export default function RunPage() {
   const [notifyEmail, setNotifyEmail] = useState('')
   const [emailError, setEmailError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<BatchInfo | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [shareTarget, setShareTarget] = useState<BatchInfo | null>(null)
   const [scheduleTarget, setScheduleTarget] = useState<BatchInfo | null>(null)
   const [addPromptTarget, setAddPromptTarget] = useState<BatchInfo | null>(null)
@@ -1457,13 +1468,27 @@ export default function RunPage() {
 
   const handleRename = (id: string, name: string) => setBatches((prev) => prev.map((b) => b.id === id ? { ...b, name } : b))
 
+  // The dialog stays open until the delete succeeds, so a failure is shown, not swallowed.
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return
+    setDeleting(true)
+    setDeleteError(null)
     try {
       const res = await fetch(`/api/batches/${deleteTarget.id}`, { method: 'DELETE' })
-      if (res.ok) setBatches((prev) => prev.filter((b) => b.id !== deleteTarget.id))
-    } catch {} finally { setDeleteTarget(null) }
+      if (res.ok) {
+        setBatches((prev) => prev.filter((b) => b.id !== deleteTarget.id))
+        setDeleteTarget(null)
+      } else {
+        const data = await res.json().catch(() => ({}))
+        setDeleteError(data.error || `The prompt set couldn't be deleted (error ${res.status}).`)
+      }
+    } catch {
+      setDeleteError("The prompt set couldn't be deleted. Check your connection and try again.")
+    } finally {
+      setDeleting(false)
+    }
   }
+  const closeDeleteDialog = () => { setDeleteTarget(null); setDeleteError(null) }
 
   const handleShareTokenChange = (batchId: string, token: string | null) =>
     setBatches((prev) => prev.map((b) => b.id === batchId ? { ...b, shareToken: token } : b))
@@ -1608,7 +1633,10 @@ export default function RunPage() {
         </div>
       )}
 
-      {deleteTarget && <DeleteConfirmDialog batchName={deleteTarget.name} onConfirm={handleDeleteConfirm} onCancel={() => setDeleteTarget(null)} />}
+      {deleteTarget && (
+        <DeleteConfirmDialog batchName={deleteTarget.name} deleting={deleting} error={deleteError}
+          onConfirm={handleDeleteConfirm} onCancel={() => { if (!deleting) closeDeleteDialog() }} />
+      )}
       {shareTarget && <ShareModal batch={shareTarget} onClose={() => setShareTarget(null)} onShareTokenChange={handleShareTokenChange} />}
       {scheduleTarget && <ScheduleModal batch={scheduleTarget} onClose={() => setScheduleTarget(null)} />}
       {addPromptTarget && <AddPromptModal batch={addPromptTarget} onClose={() => setAddPromptTarget(null)} onAdded={fetchBatches} />}

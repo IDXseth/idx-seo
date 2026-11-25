@@ -133,6 +133,9 @@ model BatchRun {
   status       String      @default("running")  // "running" | "done"
   startedAt    DateTime    @default(now())
   finishedAt   DateTime?
+
+  @@index([batchId])
+  @@index([runSessionId])
 }
 
 model RunSession {
@@ -147,6 +150,9 @@ model RunSession {
   results     Result[]
   startedAt   DateTime   @default(now())
   finishedAt  DateTime?
+
+  @@index([batchId])
+  @@index([scheduleId])
 }
 
 model Schedule {
@@ -164,6 +170,8 @@ model Schedule {
   lastRunAt   DateTime?
   runSessions RunSession[]
   createdAt   DateTime     @default(now())
+
+  @@index([batchId])
 }
 
 model Prompt {
@@ -188,6 +196,7 @@ model Prompt {
   createdAt     DateTime @default(now())
 
   @@index([projectId])
+  @@index([batchId])
 }
 
 model Result {
@@ -211,6 +220,9 @@ model Result {
   searchCount  Int?
   costUsd      Float?
   runAt        DateTime    @default(now())
+
+  @@index([promptId])
+  @@index([runSessionId])
 }
 
 
@@ -225,6 +237,8 @@ model Citation {
   // false: the source was retrieved by the platform's web search but not directly
   // cited — surfaced separately so it isn't counted toward isMentioned/isCited stats.
   isExplicitCitation Boolean @default(true)
+
+  @@index([resultId])
 }
 
 // A named competitor tracked against the user's existing prompt set.
