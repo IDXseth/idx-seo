@@ -8,7 +8,7 @@ import { Progress } from '@/components/ui/progress'
 import {
   Play, CheckCircle2, AlertCircle, RefreshCw, BarChart3,
   Mail, Pencil, Trash2, Share2, X, Check, Link2, UserPlus,
-  Calendar, Plus, Clock, RotateCcw, ChevronDown, ChevronUp, History, Download,
+  Calendar, Plus, Clock, RotateCcw, ChevronDown, ChevronUp, History, Download, FileSpreadsheet,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useActiveProject } from '@/components/active-project-banner'
@@ -454,6 +454,215 @@ function AddPromptModal({
             <Button onClick={handleSave} disabled={saving}>{saving ? 'Adding…' : 'Add prompt'}</Button>
             <Button variant="outline" onClick={onClose}>Cancel</Button>
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Import Prompts Modal ─────────────────────────────────────────────────────
+
+interface ImportSummary {
+  saved: boolean
+  rows: number
+  blankRows: number
+  duplicates: string[]
+  alreadyInSet: number
+  added: number
+  alsoInOtherSets: number
+  updatedInSet: number
+  updatedElsewhere: number
+  unlistedCount: number
+  unlisted: string[]
+  setTotalAfter: number
+}
+
+function ImportPromptsModal({
+  batch,
+  onClose,
+  onImported,
+  onRun,
+}: {
+  batch: BatchInfo
+  onClose: () => void
+  onImported: () => void
+  onRun: (batchId: string, rerun: boolean) => void
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [file, setFile] = useState<File | null>(null)
+  const [updateExisting, setUpdateExisting] = useState(true)
+  const [updateOtherSets, setUpdateOtherSets] = useState(true)
+  const [summary, setSummary] = useState<ImportSummary | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Every option change re-previews, so the counts shown are what Save does.
+  const send = async (f: File, commit: boolean, opts = { updateExisting, updateOtherSets }) => {
+    setBusy(true)
+    setSaving(commit)
+    setError(null)
+    try {
+      const form = new FormData()
+      form.append('file', f)
+      form.append('commit', String(commit))
+      form.append('updateExisting', String(opts.updateExisting))
+      form.append('updateOtherSets', String(opts.updateOtherSets))
+      const res = await fetch(`/api/batches/${batch.id}/import`, { method: 'POST', body: form })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setSummary(null); setError(data.error || 'Import failed'); return }
+      setSummary(data)
+      if (commit) onImported()
+    } catch {
+      setError('Import failed')
+    } finally {
+      setBusy(false)
+      setSaving(false)
+    }
+  }
+
+  const chooseFile = (f: File | undefined) => {
+    if (!f) return
+    setFile(f)
+    setSummary(null)
+    send(f, false)
+  }
+
+  const toggle = (which: 'existing' | 'other', value: boolean) => {
+    const opts = which === 'existing' ? { updateExisting: value, updateOtherSets } : { updateExisting, updateOtherSets: value }
+    setUpdateExisting(opts.updateExisting)
+    setUpdateOtherSets(opts.updateOtherSets)
+    if (file) send(file, false, opts)
+  }
+
+  const s = summary
+  const changes = s ? s.added + s.updatedInSet + s.updatedElsewhere : 0
+  const line = (label: string, value: number) => (
+    <div className="flex justify-between text-sm py-1">
+      <span className="text-(--c-muted)">{label}</span>
+      <span className="font-semibold text-(--c-ink) tabular-nums">{value}</span>
+    </div>
+  )
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative w-full max-w-lg bg-white rounded-2xl border border-(--c-line) shadow-xl overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-(--c-line)">
+          <div>
+            <h2 className="font-semibold text-(--c-ink)">Add prompts from spreadsheet</h2>
+            <p className="text-xs text-(--c-muted) mt-0.5 truncate max-w-xs">{batch.name}</p>
+          </div>
+          <button onClick={onClose} className="text-(--c-subtle) hover:text-(--c-ink) transition-colors">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+          {s?.saved ? (
+            <>
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+                <p className="text-sm text-(--c-ink)">
+                  Added {s.added} prompt{s.added === 1 ? '' : 's'} and recategorized {s.updatedInSet + s.updatedElsewhere}.
+                  The set now has {s.setTotalAfter} prompts.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {s.added > 0 && (
+                  <Button onClick={() => { onRun(batch.id, false); onClose() }}>
+                    <Play className="h-4 w-4 mr-1.5" /> Run new prompts
+                  </Button>
+                )}
+                <Button variant="outline" onClick={() => { onRun(batch.id, true); onClose() }}>
+                  <RotateCcw className="h-4 w-4 mr-1.5" /> Re-run whole set
+                </Button>
+                <Button variant="outline" onClick={onClose}>Done</Button>
+              </div>
+              {s.added > 0 && (
+                <p className="text-xs text-(--c-subtle)">&ldquo;Run new prompts&rdquo; runs every prompt in the set that has no results yet.</p>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-(--c-muted)">
+                Same columns as an upload: <code>prompt</code>, <code>category</code>, <code>prompt_type</code>, and optionally
+                location, city, market and service. Prompts already in this set are matched by their text. Nothing is deleted.
+              </p>
+
+              <div className="flex items-center gap-3">
+                <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
+                  onChange={(e) => { chooseFile(e.target.files?.[0]); e.target.value = '' }} />
+                <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={busy}>
+                  <FileSpreadsheet className="h-4 w-4 mr-1.5" /> {file ? 'Choose another file' : 'Choose file'}
+                </Button>
+                {file && <span className="text-xs text-(--c-muted) truncate">{file.name}</span>}
+              </div>
+
+              <div className="space-y-2">
+                <label className="flex items-start gap-2 text-sm text-(--c-ink)">
+                  <input type="checkbox" className="mt-1" checked={updateExisting} disabled={busy}
+                    onChange={(e) => toggle('existing', e.target.checked)} />
+                  <span>Update the category and type of prompts already in this set</span>
+                </label>
+                <label className="flex items-start gap-2 text-sm text-(--c-ink)">
+                  <input type="checkbox" className="mt-1" checked={updateOtherSets} disabled={busy}
+                    onChange={(e) => toggle('other', e.target.checked)} />
+                  <span>
+                    Also update the same prompts in this project&rsquo;s other sets
+                    <span className="block text-xs text-(--c-subtle)">So every set reports them in the same category. Only sets you can edit.</span>
+                  </span>
+                </label>
+              </div>
+
+              {busy && !s && <p className="text-xs text-(--c-muted)">Reading the spreadsheet…</p>}
+
+              {s && (
+                <div className="rounded-lg border border-(--c-line) px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-(--c-subtle) mb-1">Preview</p>
+                  {line('Prompts in the spreadsheet', s.rows)}
+                  {line('Already in this set', s.alreadyInSet)}
+                  {line('Added to this set', s.added)}
+                  {s.alsoInOtherSets > 0 && (
+                    <p className="text-xs text-(--c-subtle) -mt-0.5 mb-1">
+                      {`${s.alsoInOtherSets} of these ${s.alsoInOtherSets === 1 ? 'is' : 'are'} already tracked in another set. They're copied in, and the other set keeps its results.`}
+                    </p>
+                  )}
+                  {line('Recategorized in this set', s.updatedInSet)}
+                  {line('Recategorized in other sets', s.updatedElsewhere)}
+                  {line('Prompts in the set afterwards', s.setTotalAfter)}
+                  {(s.blankRows > 0 || s.duplicates.length > 0) && (
+                    <p className="text-xs text-amber-700 mt-2">
+                      Skipped {[
+                        s.blankRows > 0 && `${s.blankRows} row${s.blankRows === 1 ? '' : 's'} with no prompt`,
+                        s.duplicates.length > 0 && `${s.duplicates.length} prompt${s.duplicates.length === 1 ? '' : 's'} listed twice (the first row is used)`,
+                      ].filter(Boolean).join(' and ')}.
+                    </p>
+                  )}
+                  {s.unlistedCount > 0 && (
+                    <details className="mt-2">
+                      <summary className="text-xs text-(--c-muted) cursor-pointer">
+                        {s.unlistedCount} prompt{s.unlistedCount === 1 ? ' is' : 's are'} in the set but not in the spreadsheet; {s.unlistedCount === 1 ? 'it stays' : 'they stay'}
+                      </summary>
+                      <ul className="mt-1 space-y-0.5 text-xs text-(--c-muted) list-disc pl-4">
+                        {s.unlisted.map((t) => <li key={t}>{t}</li>)}
+                        {s.unlistedCount > s.unlisted.length && <li>and {s.unlistedCount - s.unlisted.length} more</li>}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              )}
+
+              {error && <p className="text-xs text-rose-500">{error}</p>}
+
+              <div className="flex gap-2 pt-1">
+                <Button onClick={() => file && send(file, true)} disabled={!file || !s || busy || changes === 0}>
+                  {saving ? 'Saving…' : changes === 0 && s ? 'Nothing to change' : 'Save changes'}
+                </Button>
+                <Button variant="outline" onClick={onClose}>Cancel</Button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -989,7 +1198,7 @@ function RunHistoryPanel({
 // ─── Batch Card ───────────────────────────────────────────────────────────────
 
 function BatchCard({
-  batch, running, onRun, onRerun, onRename, onDelete, onShare, onSchedule, onAddPrompt, onDeleteSession,
+  batch, running, onRun, onRerun, onRename, onDelete, onShare, onSchedule, onAddPrompt, onImport, onDeleteSession,
 }: {
   batch: BatchInfo
   running: string | null
@@ -1000,6 +1209,7 @@ function BatchCard({
   onShare: (batch: BatchInfo) => void
   onSchedule: (batch: BatchInfo) => void
   onAddPrompt: (batch: BatchInfo) => void
+  onImport: (batch: BatchInfo) => void
   onDeleteSession: (batchId: string, sessionId: string) => void
 }) {
   const [editMode, setEditMode] = useState(false)
@@ -1008,6 +1218,12 @@ function BatchCard({
   const [showHistory, setShowHistory] = useState(false)
   const [showPrompts, setShowPrompts] = useState(false)
   const [promptCount, setPromptCount] = useState(batch._count.prompts)
+  // Follow the server's count when the set is refetched (after an import or an added prompt).
+  const [serverCount, setServerCount] = useState(batch._count.prompts)
+  if (serverCount !== batch._count.prompts) {
+    setServerCount(batch._count.prompts)
+    setPromptCount(batch._count.prompts)
+  }
   const inputRef = useRef<HTMLInputElement>(null)
   const sessions = batch.recentSessions ?? []
 
@@ -1093,6 +1309,9 @@ function BatchCard({
                 <button onClick={() => onAddPrompt(batch)} className="p-1.5 text-(--c-faint) hover:text-(--c-accent) transition-colors" title="Add prompt">
                   <Plus className="h-4 w-4" />
                 </button>
+                <button onClick={() => onImport(batch)} className="p-1.5 text-(--c-faint) hover:text-(--c-accent) transition-colors" title="Add prompts from spreadsheet">
+                  <FileSpreadsheet className="h-4 w-4" />
+                </button>
                 <button onClick={() => onSchedule(batch)} className="p-1.5 text-(--c-faint) hover:text-(--c-accent) transition-colors" title="Schedule">
                   <Calendar className="h-4 w-4" />
                 </button>
@@ -1136,7 +1355,7 @@ function BatchCard({
           </button>
           {showPrompts && (
             <div className="mt-3">
-              <PromptsPanel batchId={batch.id} canWrite={batch.canWrite} onCountChange={(delta) => setPromptCount((c) => c + delta)} />
+              <PromptsPanel key={batch._count.prompts} batchId={batch.id} canWrite={batch.canWrite} onCountChange={(delta) => setPromptCount((c) => c + delta)} />
             </div>
           )}
         </div>
@@ -1162,6 +1381,7 @@ export default function RunPage() {
   const [shareTarget, setShareTarget] = useState<BatchInfo | null>(null)
   const [scheduleTarget, setScheduleTarget] = useState<BatchInfo | null>(null)
   const [addPromptTarget, setAddPromptTarget] = useState<BatchInfo | null>(null)
+  const [importTarget, setImportTarget] = useState<BatchInfo | null>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const stopPolling = () => {
@@ -1381,6 +1601,7 @@ export default function RunPage() {
               onShare={(b) => setShareTarget(b)}
               onSchedule={(b) => setScheduleTarget(b)}
               onAddPrompt={(b) => setAddPromptTarget(b)}
+              onImport={(b) => setImportTarget(b)}
               onDeleteSession={handleDeleteSession}
             />
           ))}
@@ -1391,6 +1612,10 @@ export default function RunPage() {
       {shareTarget && <ShareModal batch={shareTarget} onClose={() => setShareTarget(null)} onShareTokenChange={handleShareTokenChange} />}
       {scheduleTarget && <ScheduleModal batch={scheduleTarget} onClose={() => setScheduleTarget(null)} />}
       {addPromptTarget && <AddPromptModal batch={addPromptTarget} onClose={() => setAddPromptTarget(null)} onAdded={fetchBatches} />}
+      {importTarget && (
+        <ImportPromptsModal batch={importTarget} onClose={() => setImportTarget(null)} onImported={fetchBatches}
+          onRun={(batchId, rerun) => queueRun(batchId, rerun)} />
+      )}
     </div>
     </LabelsContext.Provider>
   )

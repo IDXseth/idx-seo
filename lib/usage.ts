@@ -22,7 +22,6 @@ const SEARCH_PRICES = {
   claude_web_search: 0.01,    // Anthropic web search: $10 / 1K searches
   gemini_grounding: 0.035,    // Grounding with Google Search: $35 / 1K prompts
   perplexity_request: 0.005,  // Sonar request fee, low search context: $5 / 1K
-  searchapi: 0.004,           // SearchAPI.io Developer plan: $40 / 10K searches
 } as const
 
 export type SearchKind = keyof typeof SEARCH_PRICES
