@@ -85,12 +85,15 @@ export function normalizeRow(raw: {
   const care = seniorLiving
     ? normalizeLevelOfCare(raw.levelOfCare)
     : { value: raw.levelOfCare?.trim() ?? '', isKnown: true }
+  // Senior-living labels are title-cased so "assisted living" and "Assisted Living"
+  // group together. Other industries keep their capitalization ("POS", "SaaS").
+  const label = seniorLiving ? toTitleCase : (s: string) => s?.replace(/\s+/g, ' ').trim() ?? ''
   return {
     promptType: normalizePromptType(raw.promptType || 'nonbrand'),
-    category: toTitleCase(raw.category),
-    communityName: toTitleCase(raw.communityName),
-    city: toTitleCase(raw.city),
-    market: toTitleCase(raw.market),
+    category: label(raw.category),
+    communityName: label(raw.communityName),
+    city: label(raw.city),
+    market: label(raw.market),
     levelOfCare: care.value,
     promptText: raw.promptText.trim(),
     isUnknownCare: care.isKnown === false,
